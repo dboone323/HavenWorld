@@ -29,7 +29,7 @@ let nextPlayerNumber = 101;
 const PORT = process.env.PORT || 3000;
 
 // Client assets
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../client')));
 // Shared isomorphic modules served to the browser as ESM (game.js imports them)
 app.use('/shared', express.static(path.join(__dirname, '../shared'), {
   setHeaders: (res, filePath) => {

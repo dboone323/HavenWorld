@@ -6,17 +6,24 @@
   "type": "module",
   "scripts": {
     "start": "node src/server/server.js",
-    "dev": "node --watch src/server/server.js",
+    "dev": "concurrently \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "node --watch src/server/server.js",
+    "dev:web": "vite",
     "lint": "node --check src/server/server.js && node --check src/server/db.js && node --check src/server/rooms.js && node --check src/server/moderation.js && node --check src/server/protocol.js",
+    "tsc": "tsc --noEmit",
     "test": "node --test && node tests/integration-runner.mjs",
     "test:watch": "node --test --watch",
-    "test:coverage": "c8 node --test && c8 node tests/integration-runner.mjs",
     "test:integration": "node tests/integration-runner.mjs",
+    "test:coverage": "c8 node --test && c8 node tests/integration-runner.mjs",
     "ci": "npm run test:coverage",
     "pack:web": "vite build",
-    "dev:web": "vite",
+    "build:web": "vite build",
     "pack:desktop": "electron .",
-    "cap": "cap"
+    "dev:desktop": "electron .",
+    "build:desktop": "electron-builder build",
+    "cap": "cap",
+    "cap:ios": "cap add ios && cap sync ios",
+    "cap:dev": "cap sync ios && cap open ios"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -39,24 +46,35 @@
   "author": "Daniel Stevens",
   "license": "MIT",
   "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "concurrently": "^10.0.5",
     "c8": "^12.0.0",
     "electron": "^32.0.0",
     "electron-builder": "^26.0.0",
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/cli": "^7.0.0",
-    "@capacitor/android": "^7.0.0",
-    "@capacitor/ios": "^7.0.0",
+    "electron-updater": "^6.8.9",
+    "typescript": "^5.6.3",
     "vite": "^5.0.0"
   },
   "build": {
-    "appId": "com.havenworld.app",
+    "appId": "com.havenworld.game",
     "productName": "HavenWorld",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
     "files": [
-      "src/**/*",
+      "dist/**/*",
+      "electron/**/*",
+      "src/server/**/*",
+      "src/shared/**/*",
       "package.json",
-      "capacitor.config.json"
+      "package-lock.json",
+      "tsconfig.json"
     ],
-    "extraMetadata": { "main": "src/server/server.js" }
+    "extraMetadata": {
+      "main": "src/server/server.js"
+    }
   }
 }
