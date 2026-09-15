@@ -1,0 +1,43 @@
+# =============================================================================
+# HavenWorld — .gitignore
+# =============================================================================
+
+# Environment variables & secrets (CRITICAL: Never commit API secrets or keys)
+.env
+.env*.local
+*.env
+!.env.example
+
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+miniworld.db
+
+# Logs
+logs/
+*.log
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Supabase CLI temp files
+supabase/.temp/
