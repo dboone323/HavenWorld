@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HavenWorld / MiniWorld — Automated Oracle Cloud VM Deployment Script
+# HavenWorld — Automated Oracle Cloud VM Deployment Script
 # Targets: Ubuntu / Oracle Linux on Oracle Cloud (ARM64 / Ampere or x86_64)
 # =============================================================================
 
 set -e
 
 echo "===================================================="
-echo "🚀 HavenWorld / MiniWorld — Oracle Cloud VM Setup"
+echo "🚀 HavenWorld — Oracle Cloud VM Setup"
 echo "===================================================="
 
-APP_DIR="/opt/miniworld"
+APP_DIR="/opt/havenworld"
 USER_NAME=$(whoami)
 
 echo "👤 Current user: ${USER_NAME}"
@@ -66,10 +66,10 @@ if sudo iptables -L INPUT -n 2>/dev/null | grep -q "REJECT"; then
 fi
 
 # 6. Create systemd Service
-echo "⚙️ Configuring systemd service (miniworld.service)..."
-sudo tee /etc/systemd/system/miniworld.service > /dev/null <<EOF
+echo "⚙️ Configuring systemd service (havenworld.service)..."
+sudo tee /etc/systemd/system/havenworld.service > /dev/null <<EOF
 [Unit]
-Description=HavenWorld / MiniWorld Multiplayer Game Server
+Description=HavenWorld Multiplayer Game Server
 After=network.target
 
 [Service]
@@ -87,11 +87,11 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable miniworld
-sudo systemctl restart miniworld
+sudo systemctl enable havenworld
+sudo systemctl restart havenworld
 
 echo "✅ HavenWorld systemd service started and enabled on boot!"
-sudo systemctl status miniworld --no-pager
+sudo systemctl status havenworld --no-pager
 
 # 7. Cloudflare Tunnel Setup (Optional & Recommended)
 echo ""

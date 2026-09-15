@@ -31,7 +31,7 @@ The user prompt specifically requests:
 
 ## 2. Strategic Brand Candidates (Cleared & Distinctive)
 
-To protect the project while retaining the nostalgic spirit of *MiniPlanet* + *YoWorld*, the project folder can remain `/Users/danielstevens/Developer/MiniWorld` as the internal engineering codename, while deploying one of the following cleared brand identities:
+To protect the project while retaining the nostalgic spirit of *MiniPlanet* + *YoWorld*, the project folder can remain `/Users/danielstevens/Developer/HavenWorld` as the internal engineering codename, while deploying one of the following cleared brand identities:
 
 ### Candidate A: **HavenWorld** (Top Recommendation)
 - **Concept & Emotional Fit**: Directly aligns with the marketing angle: *"A virtual world to get away from reality"*. "Haven" signals safety, peace, comfort, and cozy escapism.
@@ -59,5 +59,5 @@ To protect the project while retaining the nostalgic spirit of *MiniPlanet* + *Y
 1. **USPTO TESS Search**: Perform exact and phonetic boolean searches for the final chosen candidate across Nice Classes 09 and 41.
 2. **Domain & Social Handle Acquisition**: Secure primary `.com` or `.game`/`.io` domain, plus `@PlayHavenWorld` on TikTok, Instagram, X, and YouTube.
 3. **Internal vs External Naming**:
-   - **Internal Codebase**: Keep `/Users/danielstevens/Developer/MiniWorld` (standard industry practice for internal project codenames).
+   - **Internal Codebase**: Keep `/Users/danielstevens/Developer/HavenWorld` (standard industry practice for internal project codenames).
    - **External Public Brand**: Launch commercially as **HavenWorld** (or chosen alternative).

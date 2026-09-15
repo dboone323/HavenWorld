@@ -1,4 +1,4 @@
-# Cloudflare & Supabase Setup Guide: HavenWorld / MiniWorld
+# Cloudflare & Supabase Setup Guide: HavenWorld
 
 This guide walks you step-by-step through configuring **Supabase** (for your PostgreSQL database, player authentication, and inventory persistence) and **Cloudflare** (for edge DDoS security, free SSL/TLS encryption, automated WebSocket proxying, and instant public deployment).
 
@@ -65,7 +65,7 @@ This guide walks you step-by-step through configuring **Supabase** (for your Pos
 We have already prepared the complete database schema in your repository:
 1. In your Supabase Dashboard, click on **"SQL Editor"** in the left navigation menu.
 2. Click **"New query"**.
-3. Open the file [`supabase/schema.sql`](file:///Users/danielstevens/Developer/MiniWorld/supabase/schema.sql) in your project.
+3. Open the file [`supabase/schema.sql`](file:///Users/danielstevens/Developer/HavenWorld/supabase/schema.sql) in your project.
 4. Copy the entire contents of `supabase/schema.sql` and paste it into the Supabase SQL Editor.
 5. Click **"Run"** (or press `Cmd + Enter`).
 6. **What this creates automatically**:
@@ -78,7 +78,7 @@ We have already prepared the complete database schema in your repository:
    - **Row Level Security (RLS)**: Enforces that only room owners can delete or place furniture.
 
 ### Step 4: Configure Local Project Environment (`.env`)
-1. In your terminal inside `/Users/danielstevens/Developer/MiniWorld`:
+1. In your terminal inside `/Users/danielstevens/Developer/HavenWorld`:
    ```bash
    cp .env.example .env
    ```
@@ -89,7 +89,7 @@ We have already prepared the complete database schema in your repository:
    SUPABASE_ANON_KEY=eyJhbGciOi...
    SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
    ```
-3. Your server's database helper [`src/server/db.js`](file:///Users/danielstevens/Developer/MiniWorld/src/server/db.js) will now automatically connect to your live PostgreSQL database on launch!
+3. Your server's database helper [`src/server/db.js`](file:///Users/danielstevens/Developer/HavenWorld/src/server/db.js) will now automatically connect to your live PostgreSQL database on launch!
 
 ---
 
@@ -111,7 +111,7 @@ Cloudflare provides a lightweight daemon called `cloudflared` that creates a sec
    ```
 2. **Start your HavenWorld game server** in one terminal:
    ```bash
-   cd /Users/danielstevens/Developer/MiniWorld
+   cd /Users/danielstevens/Developer/HavenWorld
    npm start
    ```
 3. **Launch the Cloudflare Tunnel** in a second terminal:
@@ -165,7 +165,7 @@ When you are ready to bind a real domain name:
 
 ## Summary of Completed Files in Your Repo
 
-- [`supabase/schema.sql`](file:///Users/danielstevens/Developer/MiniWorld/supabase/schema.sql): Complete SQL tables, automated triggers, starter furniture, and RLS policies.
-- [`.env.example`](file:///Users/danielstevens/Developer/MiniWorld/.env.example): Environment variable template for your Supabase keys.
-- [`src/server/db.js`](file:///Users/danielstevens/Developer/MiniWorld/src/server/db.js): Modular database client supporting both Supabase persistence and instant local memory fallback.
-- [`package.json`](file:///Users/danielstevens/Developer/MiniWorld/package.json): Updated with `@supabase/supabase-js` and `dotenv`.
+- [`supabase/schema.sql`](file:///Users/danielstevens/Developer/HavenWorld/supabase/schema.sql): Complete SQL tables, automated triggers, starter furniture, and RLS policies.
+- [`.env.example`](file:///Users/danielstevens/Developer/HavenWorld/.env.example): Environment variable template for your Supabase keys.
+- [`src/server/db.js`](file:///Users/danielstevens/Developer/HavenWorld/src/server/db.js): Modular database client supporting both Supabase persistence and instant local memory fallback.
+- [`package.json`](file:///Users/danielstevens/Developer/HavenWorld/package.json): Updated with `@supabase/supabase-js` and `dotenv`.

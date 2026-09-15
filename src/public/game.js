@@ -1,6 +1,9 @@
 // HavenWorld — Game Engine & Multiplayer Client (HTML5 Canvas + WebSockets)
-(function() {
-  'use strict';
+// ES module: pure logic is imported from shared/ (unit-tested in Node).
+import { toScreen as isoToScreen, toGrid as isoToGrid } from '../shared/iso.mjs';
+import { stepToward, frameDt, fadeAlpha } from '../shared/movement.mjs';
+import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from '../shared/pizza.mjs';
+import { escapeHtml } from '../shared/chat.mjs';
 
   // State
   let ws = null;
@@ -43,23 +46,15 @@
   const TILE_HEIGHT = 32;
   const GRID_SIZE = 12;
 
+    // Bind canvas-derived origin to the shared pure isometric converters.
+  function origin() { return { x: canvas.width / 2, y: Math.max(120, canvas.height * 0.22) }; }
   function toScreen(gx, gy) {
-    const originX = canvas.width / 2;
-    const originY = Math.max(120, canvas.height * 0.22);
-    return {
-      x: originX + (gx - gy) * (TILE_WIDTH / 2),
-      y: originY + (gx + gy) * (TILE_HEIGHT / 2)
-    };
+    const o = origin();
+    return isoToScreen(gx, gy, o.x, o.y, TILE_WIDTH, TILE_HEIGHT);
   }
-
   function toGrid(sx, sy) {
-    const originX = canvas.width / 2;
-    const originY = Math.max(120, canvas.height * 0.22);
-    const dx = sx - originX;
-    const dy = sy - originY;
-    const gx = (dy / (TILE_HEIGHT / 2) + dx / (TILE_WIDTH / 2)) / 2;
-    const gy = (dy / (TILE_HEIGHT / 2) - dx / (TILE_WIDTH / 2)) / 2;
-    return { x: gx, y: gy };
+    const o = origin();
+    return isoToGrid(sx, sy, o.x, o.y, TILE_WIDTH, TILE_HEIGHT);
   }
 
   // Resize Canvas
@@ -204,8 +199,8 @@
   // ==========================================================================
   let lastTime = performance.now();
 
-  function gameLoop(now) {
-    const dt = Math.min(0.1, (now - lastTime) / 1000);
+    function gameLoop(now) {
+    const dt = frameDt(now, lastTime);
     lastTime = now;
 
     update(dt);
@@ -230,23 +225,8 @@
     }
   }
 
-  function updatePlayerMovement(p, dt) {
-    const speed = 3.8; // grid units per second
-    const dx = p.targetX - p.x;
-    const dy = p.targetY - p.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist > 0.05) {
-      const step = Math.min(dist, speed * dt);
-      p.x += (dx / dist) * step;
-      p.y += (dy / dist) * step;
-      p.isWalking = true;
-      p.walkCycle = (p.walkCycle || 0) + dt * 10;
-    } else {
-      p.x = p.targetX;
-      p.y = p.targetY;
-      p.isWalking = false;
-    }
+    function updatePlayerMovement(p, dt) {
+    stepToward(p, dt, 3.8);
   }
 
   function render() {
@@ -525,7 +505,7 @@
       return;
     }
 
-    const alpha = age > 5 ? 1 - (age - 5) : 1;
+        const alpha = fadeAlpha(age, 6, 5);
     const pt = toScreen(p.x, p.y);
     const cx = pt.x;
     const cy = pt.y + TILE_HEIGHT / 2 - 76;
@@ -639,9 +619,7 @@
     box.scrollTop = box.scrollHeight;
   }
 
-  function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
+    // escapeHtml is imported from shared/chat.mjs (XSS-safe, also used by the server).
 
   function updateCoinUI(coins) {
     document.getElementById('coin-amount').textContent = coins.toLocaleString();
@@ -801,12 +779,7 @@
   let pizzaScore = 0;
   let currentIngredients = [];
 
-  const RECIPES = [
-    { name: 'Margherita', steps: ['Crust', 'Sauce', 'Cheese', 'Basil'] },
-    { name: 'Funghi Rustica', steps: ['Crust', 'Sauce', 'Cheese', 'Mushrooms'] },
-    { name: 'Green Garden', steps: ['Crust', 'Cheese', 'Mushrooms', 'Basil'] }
-  ];
-  let activeRecipe = RECIPES[0];
+    let activeRecipe = RECIPES[0];
 
   document.getElementById('btn-minigame').addEventListener('click', () => {
     minigameModal.classList.remove('hidden');
@@ -839,7 +812,7 @@
   }
 
   function pickNewRecipe() {
-    activeRecipe = RECIPES[Math.floor(Math.random() * RECIPES.length)];
+        activeRecipe = pickRecipe();
     document.getElementById('target-recipe').textContent = activeRecipe.steps.join(' ➔ ');
     currentIngredients = [];
     updateAssembledDisplay();
@@ -868,13 +841,12 @@
   });
 
   document.getElementById('btn-bake-pizza').addEventListener('click', () => {
-    const isMatch = currentIngredients.length === activeRecipe.steps.length &&
-      currentIngredients.every((val, index) => val === activeRecipe.steps[index]);
+        const isMatch = matchRecipe(currentIngredients, activeRecipe);
 
     if (isMatch) {
       pizzaScore++;
       document.getElementById('pizza-score').textContent = String(pizzaScore);
-      document.getElementById('pizza-coins').textContent = `+${pizzaScore * 100} Coins`;
+            document.getElementById('pizza-coins').textContent = `+${scoreCoins(pizzaScore)} Coins`;
       pickNewRecipe();
     } else {
       alert('Recipe mismatched! Check the ticket and try again.');
@@ -883,8 +855,8 @@
     }
   });
 
-  function finishPizzaGame() {
-    const finalCoins = pizzaScore * 100;
+    function finishPizzaGame() {
+    const finalCoins = scoreCoins(pizzaScore);
     alert(`Time's up! You served ${pizzaScore} delicious pizzas and earned ${finalCoins} HavenCoins!`);
     minigameModal.classList.add('hidden');
 
@@ -896,7 +868,6 @@
     }
   }
 
-  // Start Client
+    // Start Client
   initWebSocket();
   requestAnimationFrame(gameLoop);
-})();

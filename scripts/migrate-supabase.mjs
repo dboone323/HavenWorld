@@ -1,17 +1,16 @@
 /**
  * Automated Verification & Diagnostics Script for Supabase
  * Tests connectivity against your live Supabase project.
- * 
+ *
  * Usage from Terminal:
- *   node scripts/migrate-supabase.js
+ *   node scripts/migrate-supabase.mjs
  */
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+import 'dotenv/config';
+import { createClient } from '@supabase/supabase-js';
 
 async function runDiagnostics() {
   console.log('====================================================');
-  console.log('🚀 HavenWorld / MiniWorld — Supabase Diagnostics');
+  console.log('🚀 HavenWorld — Supabase Diagnostics');
   console.log('====================================================');
 
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -23,7 +22,7 @@ async function runDiagnostics() {
     console.error('❌ Error: Missing SUPABASE_URL or API keys in .env file.');
     console.log('\n👉 If you just want a working local database immediately:');
     console.log('   Run "npm start" — the server will automatically use the built-in');
-    console.log('   native SQLite database (miniworld.db) on your Mac.\n');
+    console.log('   native SQLite database (havenworld.db) on your Mac.\n');
     process.exit(1);
   }
 
@@ -36,7 +35,6 @@ async function runDiagnostics() {
   }
 
   try {
-    const { createClient } = require('@supabase/supabase-js');
     const supabase = createClient(supabaseUrl, activeKey, {
       auth: { persistSession: false }
     });
@@ -50,7 +48,7 @@ async function runDiagnostics() {
       if (pErr.code === '42P01') {
         console.log('   👉 The tables have not been created yet.');
         console.log('   Please copy supabase/schema.sql and paste it into:');
-        console.log(`   https://supabase.com/dashboard/project/ruphxzwfgwtrheprvpdq/sql`);
+        console.log(`   https://supabase.com/dashboard/project/${supabaseUrl.split('//')[1].split('.')[0]}/sql`);
       }
     } else {
       console.log(`✅ profiles table: Ready (${profiles.length} records found)`);

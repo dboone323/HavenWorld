@@ -20,7 +20,7 @@ yarn-error.log*
 *.db-wal
 *.db-shm
 *.sqlite
-miniworld.db
+havenworld.db
 
 # Logs
 logs/

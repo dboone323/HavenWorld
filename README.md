@@ -1,4 +1,4 @@
-# HavenWorld (Codename: MiniWorld) 🌸
+# HavenWorld (HavenWorld) 🌸
 > **A cozy social virtual world to escape from reality, express creativity, and connect with friends.**
 
 *Inspired by the room-building craft and nostalgic mini-games of **MegaPlanet / MiniPlanet** and the rich social economy, housing estates, and player-driven events of **YoWorld**.*
@@ -37,7 +37,7 @@ Explore the complete architectural and design blueprints created for this projec
 The codebase in this repository is a **fully working, interactive multiplayer application**. You can start it up and test it with multiple players in under 60 seconds:
 
 ### 1. Install Dependencies
-Open your terminal in this directory (`/Users/danielstevens/Developer/MiniWorld`):
+Open your terminal in this directory (`/Users/danielstevens/Developer/HavenWorld`):
 ```bash
 npm install
 ```
@@ -49,7 +49,7 @@ npm start
 *You will see the console announce:*
 ```text
 ====================================================
-🚀 HavenWorld / MiniWorld Multiplayer Server Online
+🚀 HavenWorld Multiplayer Server Online
 📡 Local Web Client: http://localhost:3000
 🌐 Real-Time WebSockets active on port 3000
 ====================================================

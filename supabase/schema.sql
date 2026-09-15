@@ -1,5 +1,5 @@
 -- =============================================================================
--- HavenWorld / MiniWorld — Supabase Schema & Initial Migration (Clean Setup)
+-- HavenWorld — Supabase Schema & Initial Migration (Clean Setup)
 -- Compatible with both Anonymous Guests (usr_...) and Supabase Auth (UUIDs)
 -- =============================================================================
 
