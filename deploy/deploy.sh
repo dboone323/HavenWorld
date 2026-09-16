@@ -5,7 +5,7 @@
 # =============================================================================
 set -euo pipefail
 
-APP_DIR="${HOME}/HavenWorld"
+APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 echo "===================================================="
 echo "🚀 Deploying HavenWorld on Oracle Cloud..."
@@ -30,13 +30,9 @@ npm run build:web
 # 4. Verify logs directory exists
 mkdir -p logs
 
-# 5. Reload PM2 process with zero downtime
-echo "🔄 Reloading PM2 process..."
-if pm2 describe havenworld > /dev/null 2>&1; then
-  pm2 reload deploy/ecosystem.config.cjs --update-env
-else
-  pm2 start deploy/ecosystem.config.cjs
-fi
+# 5. Reload PM2 processes with zero downtime (starts them if not yet registered)
+echo "🔄 Applying PM2 process definitions..."
+pm2 startOrReload deploy/ecosystem.config.cjs --update-env
 
 pm2 save
 
