@@ -13,7 +13,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { RoomManager, serializePlayer } from './rooms.ts';
+import { RoomManager, serializePlayer, getUserLoftRoomId } from './rooms.ts';
 import { handleMessage } from './protocol.ts';
 import * as db from './db.ts';
 
@@ -28,6 +28,10 @@ export const globalPlayers = new Map<string, import('./rooms.ts').Player>();
 let nextPlayerNumber = 101;
 
 const PORT = process.env.PORT || 3000;
+
+// Express middleware for JSON bodies (used by auth API endpoints)
+app.use(express.json({ limit: '1kb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // Client assets (Vite dist/ in prod, src/client/ in dev)
 const clientDir = path.join(__dirname, '../../dist');
@@ -48,54 +52,147 @@ app.use('/shared', express.static(path.join(__dirname, '../shared'), {
   }
 }));
 
-wss.on('connection', async (ws: WebSocket) => {
-  const playerId = 'usr_' + Math.random().toString(36).substring(2, 9);
+// --- Auth API Endpoints ---
+
+/**
+ * POST /api/auth/signup
+ * Body: { username: string, password: string }
+ * Returns: { success: true, playerId: string, name: string } | { success: false, error: string }
+ */
+app.post('/api/auth/signup', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    res.status(400).json({ success: false, error: 'Username and password are required.' });
+    return;
+  }
+  const result = await db.signupAccount(username, password);
+  if ('error' in result) {
+    res.status(409).json({ success: false, error: result.error });
+    return;
+  }
+  // Create the player profile and avatar in DB
+  await db.initPlayerProfile(result.id, result.name);
+  res.json({ success: true, playerId: result.id, name: result.name });
+});
+
+/**
+ * POST /api/auth/login
+ * Body: { username: string, password: string }
+ * Returns: { success: true, playerId: string, name: string } | { success: false, error: string }
+ */
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    res.status(400).json({ success: false, error: 'Username and password are required.' });
+    return;
+  }
+  const result = await db.loginAccount(username, password);
+  if ('error' in result) {
+    res.status(401).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, playerId: result.id, name: result.name });
+});
+
+/**
+ * GET /api/auth/player/:playerId
+ * Returns the player's persisted profile (name, coins, gems, avatar, lastDailyClaim).
+ */
+app.get('/api/auth/player/:playerId', async (req, res) => {
+  const { playerId } = req.params;
+  const profile = await db.loadPlayerProfile(playerId);
+  if (!profile) {
+    res.status(404).json({ success: false, error: 'Player not found.' });
+    return;
+  }
+  res.json({ success: true, profile });
+});
+
+// --- WebSocket Connection Handler ---
+
+wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
+  // Check for authentication token in the query string or headers.
+  // Authenticated players use their persistent account ID;
+  // unauthenticated players get a temporary guest ID (backward compatibility).
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const authToken = url.searchParams.get('token') || (req.headers['x-haven-token'] as string) || null;
+
+  let playerId: string;
+  let authUserId: string | null = null;
+
+  if (authToken) {
+    // The token is the player's persistent account ID
+    playerId = authToken;
+    authUserId = authToken;
+  } else {
+    // Guest / no-auth: generate a temporary session ID (not persisted between server restarts)
+    playerId = 'usr_' + Math.random().toString(36).substring(2, 9);
+  }
+
   const defaultName = 'Traveler #' + (nextPlayerNumber++);
+
+  // Try to load existing player profile from DB (works with account IDs)
+  let playerName = defaultName;
+  let playerCoins = 1000;
+  let playerGems = 50;
+  let playerLastDailyClaim = 0;
+  let playerAvatar = {
+    skin: '#f5cba7',
+    hairStyle: 'cozy_messy',
+    hairColor: '#4a235a',
+    shirtColor: '#2e86c1',
+    pantsColor: '#34495e'
+  };
+
+  const existingPlayer = await db.loadPlayerProfile(playerId);
+  if (existingPlayer) {
+    playerName = existingPlayer.name || defaultName;
+    playerCoins = existingPlayer.coins || 1000;
+    playerGems = existingPlayer.gems || 50;
+    playerLastDailyClaim = existingPlayer.lastDailyClaim || 0;
+    if (existingPlayer.avatar) {
+      playerAvatar = { ...playerAvatar, ...existingPlayer.avatar };
+    }
+  } else {
+    // Ensure profile is persisted for new players
+    await db.initPlayerProfile(playerId, defaultName);
+  }
 
   const player = {
     id: playerId,
-    name: defaultName,
+    name: playerName,
     room: 'plaza',
     x: 4.5,
     y: 7.5,
     targetX: 4.5,
     targetY: 7.5,
-    coins: 1000,
-    gems: 50,
-    lastDailyClaim: 0,
+    coins: playerCoins,
+    gems: playerGems,
+    lastDailyClaim: playerLastDailyClaim,
     ws,
-    avatar: {
-      skin: '#f5cba7',
-      hairStyle: 'cozy_messy',
-      hairColor: '#4a235a',
-      shirtColor: '#2e86c1',
-      pantsColor: '#34495e'
-    },
+    avatar: playerAvatar,
     lastChat: null,
     friends: [] as string[],
+    authUserId,
   };
 
-  // Ensure profile is persisted
-  await db.initPlayerProfile(playerId, defaultName);
-
-  // Try to load existing player profile from DB
-  const existingPlayer = await db.loadPlayerProfile(playerId);
-  if (existingPlayer) {
-    player.name = existingPlayer.name || defaultName;
-    player.coins = existingPlayer.coins || 1000;
-    player.gems = existingPlayer.gems || 50;
-    player.lastDailyClaim = existingPlayer.lastDailyClaim || 0;
-    if (existingPlayer.avatar) {
-      player.avatar = { ...player.avatar, ...existingPlayer.avatar };
-    }
-  }
-
-  // Hydrate persisted room furniture (works in both sqlite & supabase modes)
+  // Hydrate persisted room furniture for public/lobby rooms
   for (const roomId of rooms.list()) {
     const dbFurniture = await db.getRoomFurniture(roomId);
     if (dbFurniture && dbFurniture.length > 0) {
       rooms.setFurniture(roomId, dbFurniture);
     }
+  }
+
+  // Ensure the player has their own personal sanctuary loft.
+  // The room is created lazily in RoomManager.getUserLoft, and furniture
+  // is loaded from DB if it was previously saved there.
+  const playerLoftId = getUserLoftRoomId(playerId);
+  const loftRoom = await rooms.getUserLoft(playerId, playerName);
+  // Load furniture from DB for the player's personal loft
+  const dbLoftFurniture = await db.getLoftFurniture(loftRoom.id);
+  if (dbLoftFurniture && dbLoftFurniture.length > 0) {
+    rooms.setFurniture(loftRoom.id, dbLoftFurniture);
   }
 
   // Assign to initial room
@@ -108,23 +205,29 @@ wss.on('connection', async (ws: WebSocket) => {
     type: 'INIT_STATE',
     payload: {
       selfId: playerId,
-      room: { id: plaza!.id, name: plaza!.name, furniture: plaza!.furniture },
       player: serializePlayer(player),
-      otherPlayers: rooms.othersIn('plaza', playerId)
+      room: { id: plaza!.id, name: plaza!.name, furniture: plaza!.furniture },
+      otherPlayers: rooms.othersIn('plaza', playerId),
+      // Inform the client about available personal lofts
+      playerLoftRoomId: playerLoftId,
+      playerLoftName: loftRoom.name
     }
   });
 
   // Notify others that the new player has arrived
   rooms.broadcast('plaza', { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, ws);
 
-  ws.on('message', (raw: Buffer) => {
+  ws.on('message', async (raw: Buffer) => {
     let msg;
     try {
       msg = JSON.parse(raw.toString());
     } catch {
       return;
     }
-    handleMessage(msg, player, { rooms, db, ws, globalPlayers });
+    await handleMessage(msg, player, {
+      rooms, db, ws, globalPlayers,
+      dailyCooldownMs: 24 * 60 * 60 * 1000,
+    });
   });
 
   ws.on('close', () => {
@@ -143,11 +246,14 @@ if (isMain) {
     console.log(`🚀 HavenWorld Multiplayer Server Online`);
     console.log(`📡 Local Web Client: http://localhost:${PORT}`);
     console.log(`🌐 Real-Time WebSockets active on port ${PORT}`);
+    console.log(`🔐 Auth API: http://localhost:${PORT}/api/auth/signup  |  /api/auth/login`);
     if (db.isConfigured()) {
       console.log(`🗄️  Database: Connected to Supabase PostgreSQL`);
     } else {
       console.log(`💾  Database: ${db.getMode()} mode (add .env keys to enable Supabase)`);
     }
+    console.log(`🏠  Each player gets a personal Sanctuary Loft (auto-created on connect)`);
+    console.log(`⏰  Daily bonus: once per 24h with cooldown timer`);
     console.log(`====================================================`);
   });
 }

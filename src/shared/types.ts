@@ -97,9 +97,10 @@ export type ClientMessage =
   | { type: 'REMOVE_ITEM'; payload: RemoveItemPayload }
   | { type: 'MINIGAME_SCORE'; payload: MinigameScorePayload }
   | { type: 'CLAIM_DAILY_BONUS'; payload: null }
+  | { type: 'GET_DAILY_COOLDOWN'; payload: null }
+  | { type: 'CLEAR_ROOM'; payload: null }
   | { type: 'UPDATE_AVATAR'; payload: { avatar?: Partial<Avatar>; name?: string } }
   | { type: 'SWITCH_ROOM'; payload: JoinRoomPayload }
-  | { type: 'CLEAR_ROOM'; payload: null }
   | { type: 'GET_FRIENDS_LIST'; payload: null }
   | { type: 'SEND_FRIEND_REQUEST'; payload: SendFriendRequestPayload }
   | { type: 'ACCEPT_FRIEND_REQUEST'; payload: AcceptFriendRequestPayload }
@@ -219,7 +220,7 @@ export type ServerMessage =
   | { type: 'COINS_UPDATED'; payload: { coins: number; earned: number; reason: string } }
   | { type: 'SYSTEM_ANNOUNCEMENT'; payload: { text: string } }
   | { type: 'PLAYER_PROFILE_UPDATED'; payload: { playerId: string; player: PlayerInfo } }
-  | { type: 'INIT_STATE'; payload: { playerId: string; player: PlayerInfo; room: RoomInfo; otherPlayers: PlayerInfo[] } }
+  | { type: 'INIT_STATE'; payload: { playerId: string; player: PlayerInfo; room: RoomInfo; otherPlayers: PlayerInfo[]; playerLoftRoomId?: string; playerLoftName?: string } }
   // Friends & Private Messaging
   | { type: 'FRIENDS_LIST_UPDATE'; payload: FriendsListUpdatePayload }
   | { type: 'FRIEND_REQUEST_SENT'; payload: { message: string; targetPlayerId?: string } }
@@ -228,7 +229,12 @@ export type ServerMessage =
   | { type: 'FRIEND_REQUEST_ERROR'; payload: { message: string } }
   | { type: 'PRIVATE_MESSAGE_RECEIVED'; payload: PrivateMessageReceivedPayload }
   | { type: 'PRIVATE_MESSAGE_ERROR'; payload: { message: string } }
-  | { type: 'PRIVATE_MESSAGES_LIST'; payload: PrivateMessagesListPayload };
+  | { type: 'PRIVATE_MESSAGES_LIST'; payload: PrivateMessagesListPayload }
+  // Daily Bonus
+  | { type: 'DAILY_BONUS_ERROR'; payload: { message: string; lastClaim: number; nextClaimAvailable: number } }
+  | { type: 'DAILY_COOLDOWN_UPDATE'; payload: { canClaim: boolean; lastClaim: number; nextClaimAvailable: number; timeRemainingMs: number } }
+  // Furniture errors
+  | { type: 'FURNITURE_ERROR'; payload: { message: string } };
 
 /* ── Convenience: narrow a typed payload from a raw envelope ── */
 export type ClientMessageOf<T extends ClientMessage['type']> = Extract<ClientMessage, { type: T }>;

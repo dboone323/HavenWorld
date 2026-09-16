@@ -8,7 +8,19 @@ import { WebSocket } from 'ws';
 import assert from 'node:assert/strict';
 
 const LOCAL_URL = 'http://localhost:3999';
-const TUNNEL_URL = process.argv[2] || null;
+
+// Dynamically read the current tunnel URL from the log file
+// (the tunnel URL changes on each restart, so we must read the latest)
+import { readFileSync } from 'node:fs';
+let TUNNEL_URL = process.argv[2] || '';
+if (!TUNNEL_URL) {
+  try {
+    const log = readFileSync('/home/ubuntu/havenworld-tunnel.log', 'utf-8');
+    const matches = [...log.matchAll(/https:\/\/[a-z-]+\.trycloudflare\.com/g)];
+    if (matches.length > 0) TUNNEL_URL = matches[matches.length - 1][0];
+  } catch { /* log file not available yet */ }
+}
+if (!TUNNEL_URL) TUNNEL_URL = 'http://localhost:3999'; // fallback to local only
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -172,7 +184,7 @@ async function run() {
   });
 
   // Test 9: Tunnel public accessibility
-  const tunnelUrl = TUNNEL_URL || 'https://approach-furniture-built-office.trycloudflare.com';
+  const tunnelUrl = TUNNEL_URL;
   await test(`Tunnel URL is publicly reachable`, async () => {
     const tunnelPage = await browser.newPage();
     await tunnelPage.goto(tunnelUrl, { waitUntil: 'networkidle', timeout: 15000 });

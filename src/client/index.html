@@ -25,7 +25,6 @@
         <label for="room-select">Location:</label>
         <select id="room-select">
           <option value="plaza">🏢 Central Plaza & Lounge</option>
-          <option value="sanctuary_loft">🏡 My Personal Sanctuary Loft</option>
         </select>
       </div>
 
@@ -50,6 +49,11 @@
         <button id="btn-avatar" class="action-btn avatar-btn" title="Customize Character">
           👤 Wardrobe
         </button>
+
+        <button id="btn-account" class="action-btn account-btn" title="Account Login / Signup">
+          🔐 Account
+        </button>
+
         <button id="btn-friends" class="action-btn friends-btn" title="Friends & Messages">
           👥 Friends <span id="friends-badge" class="badge hidden">0</span>
         </button>
@@ -77,6 +81,81 @@
         </div>
         <div class="decor-actions">
           <button id="btn-clear-room" class="chip-danger">🗑️ Clear Room</button>
+        </div>
+      </div>
+
+      <!-- Daily Bonus Popup (shown when already claimed) -->
+      <div id="daily-popup" class="modal-overlay hidden">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3>🎁 Daily Gift Already Claimed</h3>
+            <button id="btn-close-daily" class="close-btn">✕</button>
+          </div>
+          <div class="modal-body">
+            <p id="daily-popup-message" class="panel-tip">You've already collected your daily gift today!</p>
+            <div class="daily-cooldown-display">
+              <div id="daily-cooldown-text"></div>
+            </div>
+            <p style="margin-top: 12px; font-size: 13px; color: var(--text-muted);">Come back tomorrow for your next daily gift of 250 HavenCoins!</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Login/Signup Modal -->
+      <div id="account-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3>🔐 HavenWorld Account</h3>
+            <button id="btn-close-account" class="close-btn">✕</button>
+          </div>
+          <div class="modal-body">
+            <div id="account-form-signed-out">
+              <p class="panel-tip">Sign in or create an account to save your progress across sessions.</p>
+              <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <button id="btn-tab-login" class="action-btn" style="flex: 1;">Login</button>
+                <button id="btn-tab-signup" class="action-btn" style="flex: 1;">Sign Up</button>
+              </div>
+              <form id="login-form">
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Username</label>
+                  <input type="text" id="login-username" maxlength="32" autocomplete="off"
+                    style="width: 100%; background: var(--bg-glass); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; font-family: var(--font-body); font-size: 14px; margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Password</label>
+                  <input type="password" id="login-password" maxlength="64" autocomplete="off"
+                    style="width: 100%; background: var(--bg-glass); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; font-family: var(--font-body); font-size: 14px; margin-top: 4px;">
+                </div>
+                <div id="login-error" class="panel-tip" style="color: #f87171; display: none;"></div>
+                <button type="submit" class="primary-btn" style="width: 100%;">Sign In</button>
+              </form>
+              <form id="signup-form" style="display: none;">
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Username</label>
+                  <input type="text" id="signup-username" maxlength="32" autocomplete="off"
+                    style="width: 100%; background: var(--bg-glass); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; font-family: var(--font-body); font-size: 14px; margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Password</label>
+                  <input type="password" id="signup-password" maxlength="64" autocomplete="off"
+                    style="width: 100%; background: var(--bg-glass); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; font-family: var(--font-body); font-size: 14px; margin-top: 4px;">
+                </div>
+                <div id="signup-error" class="panel-tip" style="color: #f87171; display: none;"></div>
+                <button type="submit" class="primary-btn" style="width: 100%;">Create Account</button>
+              </form>
+            </div>
+            <div id="account-form-logged-in" style="display: none;">
+              <p style="font-size: 14px; margin-bottom: 12px;">You are signed in as:</p>
+              <div id="account-player-info" style="background: var(--bg-glass); padding: 12px; border-radius: 8px; border: 1px solid var(--border-glass);">
+                <div style="font-weight: 600; color: #c084fc;" id="account-player-name">Player</div>
+                <div style="font-size: 12px; color: var(--text-muted);" id="account-player-id"></div>
+              </div>
+              <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">Reconnect to the server to switch accounts.</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-close-account" class="action-btn">Close</button>
+          </div>
         </div>
       </div>
 
@@ -185,7 +264,6 @@
                 <span id="pizza-preview-text">Empty Tray</span>
               </div>
             </div>
-
             <div class="ingredient-buttons">
               <button class="ing-btn" data-ing="Crust">🫓 Dough Crust</button>
               <button class="ing-btn" data-ing="Sauce">🥫 Tomato Sauce</button>

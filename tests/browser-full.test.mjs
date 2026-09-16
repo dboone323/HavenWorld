@@ -177,6 +177,106 @@ async function run() {
     ws.close();
   });
 
+  // Test 13: Surface parenting — click table then place item on it
+  await test('Surface parenting: click table, place item with elevation', async () => {
+    // Close all modals via JS
+    await page.evaluate(() => {
+      ['#friends-modal', '#avatar-modal', '#minigame-modal'].forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) el.classList.add('hidden');
+      });
+    });
+    await page.waitForTimeout(300);
+
+    // Exit edit mode if Test 10 left it on (editMode is module-level state)
+    // The palette is shown from Test 10 — toggle it off first
+    const paletteHidden = await page.evaluate(() => {
+      const p = document.getElementById('decor-palette');
+      return p.classList.contains('hidden');
+    });
+    if (!paletteHidden) {
+      await page.evaluate(() => document.getElementById('btn-edit-mode').click());
+      await page.waitForTimeout(200);
+    }
+
+    // Switch to sanctuary_loft via the select dropdown
+    await page.selectOption('#room-select', 'sanctuary_loft');
+    // Ensure change event fires
+    await page.$eval('#room-select', el => el.dispatchEvent(new Event('change')));
+    // Wait for WebSocket round-trip
+    await page.waitForTimeout(1500);
+
+    // Enter edit mode via JS click
+    await page.evaluate(() => {
+      document.getElementById('btn-edit-mode').click();
+    });
+    await page.waitForTimeout(500);
+
+    // Verify edit mode is active
+    const paletteVisible = await page.evaluate(() => {
+      const p = document.getElementById('decor-palette');
+      return !p.classList.contains('hidden');
+    });
+    assert.ok(paletteVisible, 'decor palette is visible in edit mode');
+
+    // Calculate click coordinates using the game's toScreen formula
+    const clickResult = await page.evaluate(() => {
+      const canvas = document.getElementById('viewport');
+      const rect = canvas.getBoundingClientRect();
+      const originX = canvas.width / 2;
+      const originY = Math.max(120, canvas.height * 0.22);
+      const TILE_W = 64, TILE_H = 32;
+      const tableX = originX + (5 - 4) * (TILE_W / 2);
+      const tableY = originY + (5 + 4) * (TILE_H / 2);
+      const placeX = originX + (6 - 4) * (TILE_W / 2);
+      const placeY = originY + (6 + 4) * (TILE_H / 2);
+      return {
+        tableX: rect.left + tableX,
+        tableY: rect.top + tableY,
+        placeX: rect.left + placeX,
+        placeY: rect.top + placeY,
+      };
+    });
+
+    // Click the table first (to enter surface parenting mode)
+    await page.mouse.click(clickResult.tableX, clickResult.tableY);
+    await page.waitForTimeout(300);
+
+    // Click to place item on the table surface
+    await page.mouse.click(clickResult.placeX, clickResult.placeY);
+    await page.waitForTimeout(800);
+
+    // Exit edit mode
+    await page.evaluate(() => {
+      document.getElementById('btn-edit-mode').click();
+    });
+    await page.waitForTimeout(300);
+
+    // Verify via WebSocket that elevated furniture exists
+    const ws2 = new WebSocket(`ws://localhost:3999`);
+    await new Promise(r => ws2.on('open', r));
+    await new Promise((resolve) => {
+      ws2.on('message', (d) => {
+        const m = JSON.parse(d.toString());
+        if (m.type === 'INIT_STATE') resolve();
+      });
+    });
+    ws2.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: 'sanctuary_loft' } }));
+    const changed = await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error('timeout')), 3000);
+      ws2.on('message', (data) => {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'ROOM_CHANGED') {
+          clearTimeout(to);
+          resolve(msg);
+        }
+      });
+    });
+    const hasElevated = changed.payload.room.furniture.some(f => f.elevation > 0);
+    assert.ok(hasElevated, 'elevated furniture found in room state');
+    ws2.close();
+  });
+
   await browser.close();
   console.log(`\n  ${passed} passed, ${failed} failed`);
   if (errors.length > 0) {

@@ -23,6 +23,7 @@ export interface Player {
   avatar: Avatar;
   lastChat: { text: string; timestamp: number } | null;
   friends: string[];
+  authUserId: string | null; // Supabase auth user ID (if logged in via account)
 }
 
 export interface Room {
@@ -31,6 +32,7 @@ export interface Room {
   isPublic: boolean;
   players: Map<string, Player>;
   furniture: PlacedFurniture[];
+  ownerId: string | null; // for private per-user rooms
 }
 
 const plazaFurniture: PlacedFurniture[] = [
@@ -59,11 +61,11 @@ export function createDefaultRooms(): Record<string, Room> {
   return {
     plaza: {
       id: 'plaza', name: 'Central Plaza & Lounge', isPublic: true,
-      players: new Map(), furniture: cloneFurniture(plazaFurniture)
+      players: new Map(), furniture: cloneFurniture(plazaFurniture), ownerId: null
     },
     sanctuary_loft: {
       id: 'sanctuary_loft', name: 'Cozy Personal Loft', isPublic: false,
-      players: new Map(), furniture: cloneFurniture(loftFurniture)
+      players: new Map(), furniture: cloneFurniture(loftFurniture), ownerId: null
     },
   };
 }
@@ -84,6 +86,14 @@ export function serializePlayer(p: Player): PlayerInfo {
   };
 }
 
+/**
+ * Derive a per-user sanctuary loft room ID from a player ID.
+ * e.g. "usr_a1b2c3d4" -> "loft_a1b2c3d4"
+ */
+export function getUserLoftRoomId(playerId: string): string {
+  return `loft_${playerId.replace(/^usr_/, '')}`;
+}
+
 export class RoomManager {
   rooms: Record<string, Room>;
 
@@ -94,6 +104,34 @@ export class RoomManager {
   get(id: string): Room | undefined { return this.rooms[id]; }
   has(id: string): boolean { return id in this.rooms; }
   list(): string[] { return Object.keys(this.rooms); }
+
+  /**
+   * Get or create a personal sanctuary loft for a player.
+   * The room is created lazily (on demand) so that each player gets
+   * their own private space with their own furniture.
+   */
+  async getUserLoft(playerId: string, playerName: string): Promise<Room> {
+    const roomId = getUserLoftRoomId(playerId);
+    if (this.rooms[roomId]) return this.rooms[roomId];
+
+    // Create an empty room — furniture will be populated from DB by the caller
+    this.rooms[roomId] = {
+      id: roomId,
+      name: `${playerName}'s Personal Sanctuary Loft`,
+      isPublic: false,
+      players: new Map(),
+      furniture: [],
+      ownerId: playerId,
+    };
+    return this.rooms[roomId];
+  }
+
+  /**
+   * Check whether a room is a personal loft (private per-user sanctuary).
+   */
+  isUserLoft(roomId: string): boolean {
+    return roomId.startsWith('loft_') && roomId !== 'sanctuary_loft';
+  }
 
   join(roomId: string, player: Player): boolean {
     const room = this.rooms[roomId];
@@ -161,4 +199,4 @@ export class RoomManager {
   }
 }
 
-export default { RoomManager, createDefaultRooms, serializePlayer };
+export default { RoomManager, createDefaultRooms, serializePlayer, getUserLoftRoomId };

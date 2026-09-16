@@ -10,6 +10,7 @@
 import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import type { PlacedFurniture } from '../shared/types.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,7 +49,9 @@ if (mode !== 'supabase') {
     sqliteDb.exec(`
       CREATE TABLE IF NOT EXISTS profiles (
         id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE,
+        password_hash TEXT,
+        auth_user_id TEXT,
         coins INTEGER DEFAULT 1000,
         gems INTEGER DEFAULT 50,
         last_daily_claim TEXT DEFAULT '1970-01-01T00:00:00.000Z'
@@ -69,6 +72,7 @@ if (mode !== 'supabase') {
         grid_x REAL NOT NULL,
         grid_y REAL NOT NULL,
         rotation INTEGER DEFAULT 0,
+        elevation REAL DEFAULT 0,
         parent_furniture_id TEXT
       );
       CREATE TABLE IF NOT EXISTS user_inventory (
@@ -92,6 +96,15 @@ if (mode !== 'supabase') {
         recipient_id TEXT NOT NULL,
         text TEXT NOT NULL,
         sent_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS rooms (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT,
+        room_code TEXT UNIQUE,
+        name TEXT NOT NULL,
+        is_public INTEGER DEFAULT 1,
+        likes_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
       );
     `);
     console.log(`🗄️  Native Local SQLite Database active: ${dbPath}`);
@@ -133,6 +146,23 @@ export interface PlayerProfile {
   avatar: AvatarData | null;
 }
 
+// --- Internal password hashing (PBKDF2 with salt) ---
+
+const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, stored: string): boolean {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, hash] = stored.split(':');
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha256').toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(verifyHash));
+}
+
 /** Ensure a player profile row exists (no-op in memory mode) */
 export async function initPlayerProfile(userId: string, username: string): Promise<void> {
   if (mode === 'supabase') {
@@ -146,16 +176,223 @@ export async function initPlayerProfile(userId: string, username: string): Promi
       console.warn('Supabase initPlayerProfile warning:', (err as Error).message);
     }
   } else if (mode === 'sqlite') {
-    const stmt = sqliteDb!.prepare(`
-      INSERT INTO profiles (id, username, coins, gems)
-      VALUES (?, ?, 1000, 50)
-      ON CONFLICT(id) DO NOTHING
-    `);
-    stmt.run(userId, username || userId);
+    try {
+      const stmt = sqliteDb!.prepare(`
+        INSERT INTO profiles (id, username, coins, gems)
+        VALUES (?, ?, 1000, 50)
+        ON CONFLICT(id) DO NOTHING
+      `);
+      stmt.run(userId, username || userId);
+    } catch (e) {
+      // Username may already exist for a different player — that's OK,
+      // the profile will be loaded from the DB on connect.
+    }
   }
 }
 
-// Persist (or merge) a player's avatar styling
+// --- Account / Auth Persistence ---
+
+/**
+ * Signup a new account. Returns the player record on success.
+ * Throws if the username is already taken.
+ */
+export async function signupAccount(username: string, password: string): Promise<{ id: string; name: string } | { error: string }> {
+  const cleanName = username.trim().slice(0, 32);
+  if (!cleanName || cleanName.length < 2) {
+    return { error: 'Username must be at least 2 characters.' };
+  }
+  if (!password || password.length < 4) {
+    return { error: 'Password must be at least 4 characters.' };
+  }
+
+  const userId = 'usr_' + crypto.randomBytes(8).toString('hex');
+  const passwordHash = hashPassword(password);
+
+  if (mode === 'supabase') {
+    try {
+      // Check if username already exists
+      const { data: existing } = await supabase!
+        .from('profiles').select('id').eq('username', cleanName).maybeSingle();
+      if (existing) return { error: 'Username already taken.' };
+
+      const { error } = await supabase!.from('profiles').insert({
+        id: userId, username: cleanName, password_hash: passwordHash,
+        coins: 1000, gems: 50, auth_user_id: null
+      });
+      if (error) {
+        if (error.message?.includes('unique') || error.message?.includes('duplicate')) {
+          return { error: 'Username already taken.' };
+        }
+        throw error;
+      }
+      return { id: userId, name: cleanName };
+    } catch (err) {
+      console.warn('Supabase signupAccount warning:', (err as Error).message);
+      return { error: 'Signup failed. Try again.' };
+    }
+  } else if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare(`
+        INSERT INTO profiles (id, username, password_hash, coins, gems, auth_user_id)
+        VALUES (?, ?, ?, 1000, 50, NULL)
+      `);
+      stmt.run(userId, cleanName, passwordHash);
+      return { id: userId, name: cleanName };
+    } catch (e: any) {
+      if (e.code === 'SQLITE_CONSTRAINT') {
+        return { error: 'Username already taken.' };
+      }
+      console.warn('SQLite signupAccount warning:', e.message);
+      return { error: 'Signup failed. Try again.' };
+    }
+  }
+  return { error: 'Database not configured.' };
+}
+
+/**
+ * Login by username/password. Returns the player record on success.
+ */
+export async function loginAccount(username: string, password: string): Promise<{ id: string; name: string } | { error: string }> {
+  const cleanName = username.trim().slice(0, 32);
+
+  if (mode === 'supabase') {
+    try {
+      const { data: profile, error } = await supabase!
+        .from('profiles').select('id, username, password_hash').eq('username', cleanName).maybeSingle();
+      if (error) throw error;
+      if (!profile) return { error: 'Account not found. Did you sign up?' };
+      if (!profile.password_hash || !verifyPassword(password, profile.password_hash)) {
+        return { error: 'Incorrect password.' };
+      }
+      return { id: profile.id, name: profile.username };
+    } catch (err) {
+      console.warn('Supabase loginAccount warning:', (err as Error).message);
+      return { error: 'Login failed. Try again.' };
+    }
+  } else if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT id, username, password_hash FROM profiles WHERE username = ?');
+      const row = stmt.get(cleanName) as { id: string; username: string; password_hash: string } | undefined;
+      if (!row) return { error: 'Account not found. Did you sign up?' };
+      if (!row.password_hash || !verifyPassword(password, row.password_hash)) {
+        return { error: 'Incorrect password.' };
+      }
+      return { id: row.id, name: row.username };
+    } catch (e: any) {
+      console.warn('SQLite loginAccount warning:', e.message);
+      return { error: 'Login failed. Try again.' };
+    }
+  }
+  return { error: 'Database not configured.' };
+}
+
+// --- Per-User Sanctuary Loft Rooms ---
+
+/**
+ * Get or create a personal sanctuary loft room for a given player.
+ * Each user gets their own private loft so they can decorate independently.
+ */
+export async function getUserSanctuaryRoom(userId: string, playerName: string): Promise<{ roomId: string; roomCode: string; name: string } | null> {
+  const roomId = `loft_${userId.substring(4, 12)}`; // e.g. loft_abcd1234
+  const roomName = `${playerName}'s Personal Sanctuary Loft`;
+  const starterFurniture = [
+    { id: 'f_sofa_' + crypto.randomBytes(4).toString('hex'), itemType: 'sofa', x: 3, y: 4 },
+    { id: 'f_table_' + crypto.randomBytes(4).toString('hex'), itemType: 'table', x: 5, y: 4 },
+    { id: 'f_tv_' + crypto.randomBytes(4).toString('hex'), itemType: 'tv', x: 5, y: 2 },
+    { id: 'f_plant_' + crypto.randomBytes(4).toString('hex'), itemType: 'plant', x: 2, y: 2 },
+    { id: 'f_neon_' + crypto.randomBytes(4).toString('hex'), itemType: 'neon', x: 7, y: 1 },
+  ];
+
+  if (mode === 'supabase') {
+    try {
+      // Try to fetch existing room
+      const { data: room, error: roomErr } = await supabase!
+        .from('rooms').select('id, room_code, name').eq('room_code', roomId).maybeSingle();
+      if (roomErr) throw roomErr;
+      if (room) return { roomId: room.id, roomCode: room.room_code, name: room.name };
+
+      // Create the room
+      const { error: createErr } = await supabase!.from('rooms').insert({
+        id: roomId, owner_id: userId, room_code: roomId, name: roomName, is_public: false
+      });
+      if (createErr) throw createErr;
+
+      // Insert starter furniture
+      const furnitureRows = starterFurniture.map(f => ({
+        id: f.id, room_id: roomId, item_type: f.itemType,
+        grid_x: f.x, grid_y: f.y, rotation: 0, elevation: 0, parent_furniture_id: null
+      }));
+      const { error: furnErr } = await supabase!.from('placed_furniture').insert(furnitureRows);
+      if (furnErr) throw furnErr;
+
+      return { roomId, roomCode: roomId, name: roomName };
+    } catch (err) {
+      console.warn('Supabase getUserSanctuaryRoom warning:', (err as Error).message);
+      return null;
+    }
+  } else if (mode === 'sqlite') {
+    try {
+      // Create room table if not exists (for memory mode compatibility)
+      const checkStmt = sqliteDb!.prepare('SELECT id, name FROM rooms WHERE room_code = ?');
+      const existing = checkStmt.get(roomId) as { id: string; name: string } | undefined;
+      if (existing) return { roomId: existing.id, roomCode: roomId, name: existing.name };
+
+      const insertRoomStmt = sqliteDb!.prepare(`
+        INSERT INTO rooms (id, owner_id, room_code, name, is_public) VALUES (?, ?, ?, ?, 0)
+      `);
+      insertRoomStmt.run(roomId, userId, roomId, roomName);
+
+      // Insert starter furniture
+      const insertFurnStmt = sqliteDb!.prepare(`
+        INSERT INTO placed_furniture (id, room_id, item_type, grid_x, grid_y, rotation, elevation, parent_furniture_id)
+        VALUES (?, ?, ?, ?, ?, 0, 0, NULL)
+      `);
+      for (const f of starterFurniture) {
+        insertFurnStmt.run(f.id, roomId, f.itemType, f.x, f.y);
+      }
+
+      return { roomId, roomCode: roomId, name: roomName };
+    } catch (e: any) {
+      console.warn('SQLite getUserSanctuaryRoom warning:', e.message);
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get furniture for a per-user sanctuary loft from the DB.
+ */
+export async function getLoftFurniture(roomId: string): Promise<PlacedFurniture[] | null> {
+  return getRoomFurniture(roomId);
+}
+
+/**
+ * Get the last daily claim timestamp for a user (used by daily bonus logic).
+ */
+export async function getLastDailyClaim(userId: string): Promise<number> {
+  if (mode === 'supabase') {
+    try {
+      const { data, error } = await supabase!
+        .from('profiles').select('last_daily_claim').eq('id', userId).maybeSingle();
+      if (error || !data) return 0;
+      return data.last_daily_claim ? new Date(data.last_daily_claim).getTime() : 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+  if (mode === 'sqlite') {
+    const stmt = sqliteDb!.prepare('SELECT last_daily_claim FROM profiles WHERE id = ?');
+    const row = stmt.get(userId) as { last_daily_claim: string } | undefined;
+    if (!row) return 0;
+    return row.last_daily_claim ? new Date(row.last_daily_claim).getTime() : 0;
+  }
+  return 0;
+}
+
+// --- Avatar persistence ---
+
+/** Persist (or merge) a player's avatar styling */
 export async function saveAvatar(userId: string, avatar: AvatarData): Promise<void> {
   if (mode === 'supabase') {
     try {
@@ -201,8 +438,7 @@ export async function saveAvatar(userId: string, avatar: AvatarData): Promise<vo
 export async function addCoins(userId: string, amount: number): Promise<void> {
   if (mode === 'supabase') {
     try {
-      const { data: profile, error } = await supabase!
-        .from('profiles').select('coins').eq('id', userId).maybeSingle();
+      const { data: profile, error } = await supabase!.from('profiles').select('coins').eq('id', userId).maybeSingle();
       if (error) throw error;
       const currentCoins = profile ? (profile.coins || 0) : 1000;
       const newCoins = Math.max(0, currentCoins + amount);
@@ -232,12 +468,14 @@ export async function addCoins(userId: string, amount: number): Promise<void> {
 export async function getRoomFurniture(roomId: string): Promise<PlacedFurniture[] | null> {
   if (mode === 'supabase') {
     try {
-      const { data, error } = await supabase!
-        .from('placed_furniture').select('*').eq('room_id', roomId);
+      const { data, error } = await supabase!.from('placed_furniture').select('*').eq('room_id', roomId);
       if (error) throw error;
       if (!data || data.length === 0) return null;
       return data.map((f: Record<string, unknown>) => ({
-        id: f.id as string, type: f.item_type as string, x: f.grid_x as number, y: f.grid_y as number, rotation: f.rotation as number
+        id: f.id as string, type: f.item_type as string, x: f.grid_x as number, y: f.grid_y as number,
+        rotation: f.rotation as number,
+        elevation: (f.elevation as number) || 0,
+        parentSurfaceId: (f.parent_furniture_id as string) || null
       }));
     } catch (err) {
       console.warn('Supabase getRoomFurniture warning:', (err as Error).message);
@@ -246,12 +484,14 @@ export async function getRoomFurniture(roomId: string): Promise<PlacedFurniture[
   }
   if (mode === 'sqlite') {
     const stmt = sqliteDb!.prepare(
-      'SELECT id, item_type, grid_x, grid_y, rotation FROM placed_furniture WHERE room_id = ?'
+      'SELECT id, item_type, grid_x, grid_y, rotation, elevation, parent_furniture_id FROM placed_furniture WHERE room_id = ?'
     );
-    const rows = stmt.all(roomId) as Array<{ id: string; item_type: string; grid_x: number; grid_y: number; rotation: number }>;
+    const rows = stmt.all(roomId) as Array<{ id: string; item_type: string; grid_x: number; grid_y: number; rotation: number; elevation: number; parent_furniture_id: string | null }>;
     if (rows && rows.length > 0) {
       return rows.map((r) => ({
-        id: r.id, type: r.item_type, x: r.grid_x, y: r.grid_y, rotation: r.rotation
+        id: r.id, type: r.item_type, x: r.grid_x, y: r.grid_y, rotation: r.rotation,
+        elevation: r.elevation || 0,
+        parentSurfaceId: r.parent_furniture_id || null
       }));
     }
     return null;
@@ -265,7 +505,9 @@ export async function addFurniture(roomId: string, item: PlacedFurniture): Promi
     try {
       const { error } = await supabase!.from('placed_furniture').upsert({
         id: item.id, room_id: roomId, item_type: item.type,
-        grid_x: item.x, grid_y: item.y, rotation: item.rotation || 0
+        grid_x: item.x, grid_y: item.y, rotation: item.rotation || 0,
+        elevation: item.elevation || 0,
+        parent_furniture_id: item.parentSurfaceId || null
       });
       if (error) throw error;
     } catch (err) {
@@ -276,10 +518,10 @@ export async function addFurniture(roomId: string, item: PlacedFurniture): Promi
   if (mode === 'sqlite') {
     const stmt = sqliteDb!.prepare(`
       INSERT OR REPLACE INTO placed_furniture
-        (id, room_id, item_type, grid_x, grid_y, rotation)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (id, room_id, item_type, grid_x, grid_y, rotation, elevation, parent_furniture_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(item.id, roomId, item.type, item.x, item.y, item.rotation || 0);
+    stmt.run(item.id, roomId, item.type, item.x, item.y, item.rotation || 0, item.elevation || 0, item.parentSurfaceId || null);
   }
 }
 
@@ -304,11 +546,9 @@ export async function removeFurniture(furnitureId: string): Promise<void> {
 export async function loadPlayerProfile(userId: string): Promise<PlayerProfile | null> {
   if (mode === 'supabase') {
     try {
-      const { data: profile, error: pErr } = await supabase!
-        .from('profiles').select('username, coins, gems, last_daily_claim').eq('id', userId).maybeSingle();
+      const { data: profile, error: pErr } = await supabase!.from('profiles').select('username, coins, gems, last_daily_claim').eq('id', userId).maybeSingle();
       if (pErr || !profile) return null;
-      const { data: avatar, error: aErr } = await supabase!
-        .from('avatar_profiles').select('skin, hair_style, hair_color, shirt_color, pants_color').eq('user_id', userId).maybeSingle();
+      const { data: avatar, error: aErr } = await supabase!.from('avatar_profiles').select('skin, hair_style, hair_color, shirt_color, pants_color').eq('user_id', userId).maybeSingle();
       return {
         id: userId,
         name: profile.username || userId,
@@ -628,6 +868,9 @@ export async function getMessages(userId: string): Promise<MessageRecord[]> {
   return [];
 }
 
+// Export the cooldown constant for protocol.ts
+export const DAILY_COOLDOWN = DAILY_COOLDOWN_MS;
+
 export default {
   getMode, isConfigured, close,
   initPlayerProfile, saveAvatar, addCoins,
@@ -636,4 +879,7 @@ export default {
   getInventory, addItem, removeItem,
   getFriends, getPendingFriendRequests, sendFriendRequest, acceptFriendRequest, areFriends,
   saveMessage, getMessages,
+  signupAccount, loginAccount,
+  getUserSanctuaryRoom, getLoftFurniture, getLastDailyClaim,
+  DAILY_COOLDOWN,
 };

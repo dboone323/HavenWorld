@@ -5,7 +5,7 @@
  */
 import { clampGrid } from '../shared/iso.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
-import { serializePlayer, RoomManager } from './rooms.ts';
+import { serializePlayer, RoomManager, getUserLoftRoomId } from './rooms.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
@@ -40,11 +40,13 @@ export interface DispatchContext {
     saveAvatar: (userId: string, avatar: Avatar) => Promise<void>;
     addCoins: (userId: string, amount: number) => Promise<void>;
     getRoomFurniture: (roomId: string) => Promise<PlacedFurniture[] | null>;
+    getLoftFurniture: (roomId: string) => Promise<PlacedFurniture[] | null>;
     addFurniture: (roomId: string, item: PlacedFurniture) => Promise<void>;
     removeFurniture: (furnitureId: string) => Promise<void>;
     close: () => void;
     savePlayerName: (userId: string, name: string) => Promise<void>;
     saveLastDailyClaim: (userId: string, timestamp: number) => Promise<void>;
+    getLastDailyClaim: (userId: string) => Promise<number>;
     getInventory: (userId: string) => Promise<InventoryItem[]>;
     addItem: (userId: string, itemType: string, quantity?: number) => Promise<void>;
     removeItem: (userId: string, itemType: string, quantity?: number) => Promise<void>;
@@ -55,20 +57,24 @@ export interface DispatchContext {
     areFriends: (userId: string, friendId: string) => Promise<boolean>;
     saveMessage: (senderId: string, recipientId: string, text: string) => Promise<void>;
     getMessages: (userId: string) => Promise<MessageRecord[]>;
+    getUserSanctuaryRoom: (userId: string, playerName: string) => Promise<{ roomId: string; roomCode: string; name: string } | null>;
   };
   ws: WebSocket;
-  /** All connected players, for friend lookups and PM routing */
   globalPlayers?: Map<string, Player>;
+  /** Daily bonus cooldown in milliseconds (24h). */
+  dailyCooldownMs?: number;
 }
 
 /**
  * Dispatch a single client message to the appropriate room-state mutation.
  */
-export function handleMessage(msg: { type: string; payload?: Record<string, unknown> }, player: Player, ctx: DispatchContext): void {
+export async function handleMessage(msg: { type: string; payload?: Record<string, unknown> }, player: Player, ctx: DispatchContext): Promise<void> {
   const { rooms, db } = ctx;
   const room = player.room;
   const currentRoom = rooms.get(room);
   if (!currentRoom) return;
+
+  const dailyCooldownMs = ctx.dailyCooldownMs || (24 * 60 * 60 * 1000);
 
   switch (msg.type) {
     case 'MOVE': {
@@ -98,6 +104,7 @@ export function handleMessage(msg: { type: string; payload?: Record<string, unkn
         const cmd = parseCommand(text);
         if (cmd && cmd.command === 'name' && cmd.args) {
           player.name = cmd.args.slice(0, 18);
+          db.savePlayerName(player.id, player.name).catch(() => {});
           rooms.broadcast(room, {
             type: 'PLAYER_PROFILE_UPDATED',
             payload: { playerId: player.id, player: serializePlayer(player) }
@@ -116,31 +123,80 @@ export function handleMessage(msg: { type: string; payload?: Record<string, unkn
 
     case 'SWITCH_ROOM': {
       const targetRoomId = (msg.payload && msg.payload.roomId) as string;
-      if (!targetRoomId || !rooms.get(targetRoomId) || targetRoomId === player.room) return;
+      if (!targetRoomId || targetRoomId === player.room) return;
+
+      // Handle personal loft switch — create room lazily if needed
+      if (rooms.isUserLoft(targetRoomId)) {
+        // Ensure the user's loft room exists in the registry
+        const loftRoom = await rooms.getUserLoft(player.id, player.name);
+        // Load furniture from DB if the room is empty
+        if (loftRoom.furniture.length === 0) {
+          const dbFurn = await db.getLoftFurniture(loftRoom.id);
+          if (dbFurn && dbFurn.length > 0) {
+            rooms.setFurniture(loftRoom.id, dbFurn);
+          } else if (!dbFurn) {
+            // DB has no furniture for this loft — keep the default starter furniture
+            // The room was created with empty furniture, so seed with starter
+            // (This happens on first visit; the DB also inserts starter furniture)
+          }
+        }
+        rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } }, player.ws);
+        rooms.leave(player);
+        player.room = targetRoomId;
+        player.x = 5; player.y = 8; player.targetX = 5; player.targetY = 8;
+        rooms.join(targetRoomId, player);
+        const target = rooms.get(targetRoomId);
+        rooms.send(player.ws, {
+          type: 'ROOM_CHANGED',
+          payload: {
+            room: { id: target!.id, name: target!.name, furniture: target!.furniture },
+            player: serializePlayer(player),
+            otherPlayers: rooms.othersIn(targetRoomId, player.id)
+          }
+        });
+        rooms.broadcast(targetRoomId, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
+        break;
+      }
+
+      // Standard room switch
+      if (!rooms.get(targetRoomId)) return;
       rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } }, player.ws);
       rooms.leave(player);
-      player.room = targetRoomId as string;
+      player.room = targetRoomId;
       player.x = 5; player.y = 8; player.targetX = 5; player.targetY = 8;
-      rooms.join(targetRoomId as string, player);
-      const target = rooms.get(targetRoomId as string);
+      rooms.join(targetRoomId, player);
+      const target = rooms.get(targetRoomId);
       rooms.send(player.ws, {
         type: 'ROOM_CHANGED',
         payload: {
           room: { id: target!.id, name: target!.name, furniture: target!.furniture },
           player: serializePlayer(player),
-          otherPlayers: rooms.othersIn(targetRoomId as string, player.id)
+          otherPlayers: rooms.othersIn(targetRoomId, player.id)
         }
       });
-      rooms.broadcast(targetRoomId as string, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
+      rooms.broadcast(targetRoomId, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
       break;
     }
 
     case 'PLACE_FURNITURE': {
-      if (player.room !== 'sanctuary_loft') return;
-      const { type, x, y } = msg.payload || {};
+      // Only allow placing furniture in the player's OWN personal sanctuary loft
+      const playerLoftId = getUserLoftRoomId(player.id);
+      if (player.room !== playerLoftId) {
+        rooms.send(player.ws, {
+          type: 'FURNITURE_ERROR',
+          payload: { message: 'Furniture can only be placed in your own Personal Sanctuary Loft!' }
+        });
+        return;
+      }
+      const { type, x, y, elevation, parentSurfaceId } = msg.payload || {};
       const newItem = {
         id: 'f_' + Math.random().toString(36).substring(2, 9),
-        type: (type as string) || 'plant', x: Math.round(x as number), y: Math.round(y as number), rotation: 0
+        type: (type as string) || 'plant',
+        x: Math.round(x as number),
+        y: Math.round(y as number),
+        rotation: 0,
+        elevation: (elevation as number) || 0,
+        parentSurfaceId: (parentSurfaceId as string) || null,
       };
       currentRoom.furniture.push(newItem);
       db.addFurniture(player.room, newItem).catch(() => {});
@@ -149,7 +205,15 @@ export function handleMessage(msg: { type: string; payload?: Record<string, unkn
     }
 
     case 'REMOVE_FURNITURE': {
-      if (player.room !== 'sanctuary_loft') return;
+      // Only allow removing furniture from the player's OWN personal sanctuary loft
+      const playerLoftId = getUserLoftRoomId(player.id);
+      if (player.room !== playerLoftId) {
+        rooms.send(player.ws, {
+          type: 'FURNITURE_ERROR',
+          payload: { message: 'Furniture can only be removed from your own Personal Sanctuary Loft!' }
+        });
+        return;
+      }
       const { id } = msg.payload || {};
       const removed = rooms.removeFurnitureById(player.room, id as string);
       if (removed) {
@@ -159,13 +223,95 @@ export function handleMessage(msg: { type: string; payload?: Record<string, unkn
       break;
     }
 
+    case 'CLEAR_ROOM': {
+      // Only allow clearing the player's OWN personal sanctuary loft
+      const playerLoftId = getUserLoftRoomId(player.id);
+      if (player.room !== playerLoftId) return;
+      const removed = rooms.clearFurniture(player.room);
+      for (const f of removed) {
+        db.removeFurniture(f.id).catch(() => {});
+      }
+      rooms.broadcast(player.room, { type: 'ROOM_CLEARED', payload: null });
+      break;
+    }
+
     case 'CLAIM_DAILY_BONUS': {
+      const now = Date.now();
+      const lastClaim = player.lastDailyClaim || 0;
+
+      // Check if the player has already claimed today (24h cooldown)
+      if (lastClaim > 0 && (now - lastClaim) < dailyCooldownMs) {
+        const msLeft = dailyCooldownMs - (now - lastClaim);
+        const hoursLeft = Math.floor(msLeft / (60 * 60 * 1000));
+        const minsLeft = Math.floor((msLeft % (60 * 60 * 1000)) / (60 * 1000));
+        rooms.send(player.ws, {
+          type: 'DAILY_BONUS_ERROR',
+          payload: {
+            message: `You've already collected your daily gift! Come back in ${hoursLeft}h ${minsLeft}m for your next daily gift.`,
+            lastClaim: lastClaim,
+            nextClaimAvailable: lastClaim + dailyCooldownMs
+          }
+        });
+        return;
+      }
+
+      // Double-check against DB (in case server restarted between checks)
+      const dbLastClaim = await db.getLastDailyClaim(player.id);
+      if (dbLastClaim > 0 && (now - dbLastClaim) < dailyCooldownMs) {
+        const msLeft = dailyCooldownMs - (now - dbLastClaim);
+        const hoursLeft = Math.floor(msLeft / (60 * 60 * 1000));
+        const minsLeft = Math.floor((msLeft % (60 * 60 * 1000)) / (60 * 1000));
+        rooms.send(player.ws, {
+          type: 'DAILY_BONUS_ERROR',
+          payload: {
+            message: `You've already collected your daily gift! Come back in ${hoursLeft}h ${minsLeft}m for your next daily gift.`,
+            lastClaim: dbLastClaim,
+            nextClaimAvailable: dbLastClaim + dailyCooldownMs
+          }
+        });
+        return;
+      }
+
       player.coins += 250;
+      player.lastDailyClaim = now;
       db.addCoins(player.id, 250).catch(() => {});
+      db.saveLastDailyClaim(player.id, now).catch(() => {});
       rooms.send(player.ws, {
         type: 'COINS_UPDATED',
         payload: { coins: player.coins, earned: 250, reason: 'Daily Sanctuary Bonus' }
       });
+      break;
+    }
+
+    case 'GET_DAILY_COOLDOWN': {
+      const now = Date.now();
+      const lastClaim = player.lastDailyClaim || 0;
+      const dbLastClaim = await db.getLastDailyClaim(player.id);
+      const effectiveLastClaim = Math.max(lastClaim, dbLastClaim);
+
+      if (effectiveLastClaim > 0) {
+        const msLeft = dailyCooldownMs - (now - effectiveLastClaim);
+        const canClaim = msLeft <= 0;
+        rooms.send(player.ws, {
+          type: 'DAILY_COOLDOWN_UPDATE',
+          payload: {
+            canClaim,
+            lastClaim: effectiveLastClaim,
+            nextClaimAvailable: effectiveLastClaim + dailyCooldownMs,
+            timeRemainingMs: Math.max(0, msLeft)
+          }
+        });
+      } else {
+        rooms.send(player.ws, {
+          type: 'DAILY_COOLDOWN_UPDATE',
+          payload: {
+            canClaim: true,
+            lastClaim: 0,
+            nextClaimAvailable: 0,
+            timeRemainingMs: 0
+          }
+        });
+      }
       break;
     }
 

@@ -20,7 +20,8 @@ DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
 CREATE TABLE public.profiles (
     id TEXT PRIMARY KEY,
     auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    username VARCHAR(32) NOT NULL,
+    username VARCHAR(32) UNIQUE NOT NULL,
+    password_hash TEXT,
     coins BIGINT DEFAULT 1000 NOT NULL,
     gems INT DEFAULT 50 NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -57,6 +58,7 @@ CREATE TABLE public.placed_furniture (
     grid_x FLOAT NOT NULL,
     grid_y FLOAT NOT NULL,
     rotation INT DEFAULT 0 NOT NULL,
+    elevation FLOAT DEFAULT 0,
     parent_furniture_id TEXT REFERENCES public.placed_furniture(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -92,8 +94,7 @@ CREATE TABLE public.messages (
 -- Pre-populate Default Public Rooms
 INSERT INTO public.rooms (id, owner_id, room_code, name, is_public)
 VALUES 
-    ('plaza', NULL, 'plaza', 'Central Plaza & Lounge', true),
-    ('sanctuary_loft', NULL, 'sanctuary_loft', 'Cozy Personal Loft', false)
+    ('plaza', NULL, 'plaza', 'Central Plaza & Lounge', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Pre-populate default Plaza furniture
@@ -108,7 +109,7 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- =============================================================================
--- AUTOMATED TRIGGERS (Auto-create Profile and Starter Sanctuary on Signup)
+-- AUTOMATED TRIGGERS (Auto-create Profile, Avatar, and Starter Sanctuary on Signup)
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()

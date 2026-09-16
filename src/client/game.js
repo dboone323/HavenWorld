@@ -8,6 +8,7 @@ import { escapeHtml } from './shared/chat.js';
   // State
   let ws = null;
   let selfId = null;
+  let authPlayerId = null; // Persisted account player ID (if logged in)
   let selfPlayer = {
     id: null,
     name: 'Traveler',
@@ -25,7 +26,6 @@ import { escapeHtml } from './shared/chat.js';
     },
     lastChat: null
   };
-
   const otherPlayers = new Map();
   let currentRoom = {
     id: 'plaza',
@@ -37,6 +37,10 @@ import { escapeHtml } from './shared/chat.js';
   let friendsData = { friends: [], pendingRequests: [] };
   let pmTarget = null; // { id: string, name: string }
 
+  // Daily bonus cooldown state
+  let dailyCooldown = null; // { canClaim, lastClaim, nextClaimAvailable, timeRemainingMs }
+  let dailyCountdownInterval = null;
+
   // DOM References (friends panel)
   const friendsModal = document.getElementById('friends-modal');
   const friendsBadge = document.getElementById('friends-badge');
@@ -47,9 +51,28 @@ import { escapeHtml } from './shared/chat.js';
   const pmTargetInput = document.getElementById('pm-target');
   const pmTextInput = document.getElementById('pm-text');
 
+  // Account modal DOM
+  const accountModal = document.getElementById('account-modal');
+  const accountFormSignedOut = document.getElementById('account-form-signed-out');
+  const accountFormLoggedIn = document.getElementById('account-form-logged-in');
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
+  const loginErrorEl = document.getElementById('login-error');
+  const signupErrorEl = document.getElementById('signup-error');
+  const loginUsernameInput = document.getElementById('login-username');
+  const loginPasswordInput = document.getElementById('login-password');
+  const signupUsernameInput = document.getElementById('signup-username');
+  const signupPasswordInput = document.getElementById('signup-password');
+
+  // Daily bonus popup DOM
+  const dailyPopup = document.getElementById('daily-popup');
+  const dailyPopupMsg = document.getElementById('daily-popup-message');
+  const dailyCooldownText = document.getElementById('daily-cooldown-text');
+
   let editMode = false;
   let selectedFurnitureType = 'sofa';
   let targetIndicator = null; // { x, y, alpha }
+  let parentSurfaceId = null; // Furniture id to place on top of (surface parenting)
 
   // Canvas & Context
   const canvas = document.getElementById('viewport');
@@ -82,13 +105,19 @@ import { escapeHtml } from './shared/chat.js';
   // ==========================================================================
   // WebSocket Multiplayer Networking
   // ==========================================================================
-  function initWebSocket() {
+  function initWebSocket(token = null) {
+    authToken = token;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
+    let wsUrl = `${protocol}//${window.location.host}`;
+    if (token) {
+      wsUrl += (wsUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+    }
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       appendChatMessage('system', 'Connected to HavenWorld real-time server.');
+      // Request daily cooldown state on connect
+      sendWs({ type: 'GET_DAILY_COOLDOWN', payload: null });
     };
 
     ws.onmessage = (event) => {
@@ -102,7 +131,7 @@ import { escapeHtml } from './shared/chat.js';
 
     ws.onclose = () => {
       appendChatMessage('system', 'Disconnected from server. Retrying in 3 seconds...');
-      setTimeout(initWebSocket, 3000);
+      setTimeout(() => initWebSocket(authToken), 3000);
     };
   }
 
@@ -116,6 +145,16 @@ import { escapeHtml } from './shared/chat.js';
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
         updateCoinUI(selfPlayer.coins);
         document.getElementById('room-select').value = currentRoom.id;
+
+        // If the server sent us a personal loft room ID, add it to the dropdown
+        if (msg.payload.playerLoftRoomId) {
+          addLoftToRoomSelector(msg.payload.playerLoftRoomId, msg.payload.playerLoftName);
+          // Default room-select to the loft if we were in it
+          const roomSelect = document.getElementById('room-select');
+          if (currentRoom.id.startsWith('loft_')) {
+            roomSelect.value = currentRoom.id;
+          }
+        }
         break;
       }
 
@@ -148,6 +187,10 @@ import { escapeHtml } from './shared/chat.js';
         if (playerId === selfId) {
           selfPlayer.name = player.name;
           selfPlayer.avatar = player.avatar;
+          // If name changed, update the account display
+          if (authPlayerId) {
+            document.getElementById('account-player-name').textContent = selfPlayer.name;
+          }
         } else if (otherPlayers.has(playerId)) {
           const existing = otherPlayers.get(playerId);
           otherPlayers.set(playerId, { ...existing, ...player });
@@ -171,6 +214,13 @@ import { escapeHtml } from './shared/chat.js';
         otherPlayers.clear();
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
         appendChatMessage('system', `Entered: ${currentRoom.name}`);
+
+        // Update room selector
+        const roomSelect = document.getElementById('room-select');
+        roomSelect.value = currentRoom.id;
+        if (currentRoom.id.startsWith('loft_')) {
+          addLoftToRoomSelector(currentRoom.id, currentRoom.name);
+        }
         break;
       }
 
@@ -185,10 +235,36 @@ import { escapeHtml } from './shared/chat.js';
         break;
       }
 
+      case 'ROOM_CLEARED': {
+        currentRoom.furniture = [];
+        break;
+      }
+
+      case 'FURNITURE_ERROR': {
+        appendChatMessage('system', `Error: ${msg.payload.message}`);
+        break;
+      }
+
       case 'COINS_UPDATED': {
         selfPlayer.coins = msg.payload.coins;
         updateCoinUI(selfPlayer.coins);
         appendChatMessage('system', `🪙 +${msg.payload.earned} HavenCoins (${msg.payload.reason})!`);
+        break;
+      }
+
+      case 'DAILY_BONUS_ERROR': {
+        // Show the popup warning that the daily gift was already claimed
+        showDailyBonusPopup(msg.payload.message, msg.payload.nextClaimAvailable);
+        break;
+      }
+
+      case 'DAILY_COOLDOWN_UPDATE': {
+        dailyCooldown = msg.payload;
+        updateDailyCountdown();
+        if (dailyCountdownInterval) clearInterval(dailyCountdownInterval);
+        dailyCountdownInterval = setInterval(updateDailyCountdown, 1000);
+        // If can't claim, update the button to show it's on cooldown
+        updateDailyBonusButton();
         break;
       }
 
@@ -269,11 +345,75 @@ import { escapeHtml } from './shared/chat.js';
   }
 
   // ==========================================================================
-  // Render Loop (60 FPS)
+  // Daily Bonus Cooldown UI
   // ==========================================================================
+
+  function addLoftToRoomSelector(roomId, roomName) {
+    const roomSelect = document.getElementById('room-select');
+    // Check if this loft option already exists
+    let existing = null;
+    for (let i = 0; i < roomSelect.options.length; i++) {
+      if (roomSelect.options[i].value === roomId) {
+        existing = roomSelect.options[i];
+        break;
+      }
+    }
+    if (!existing) {
+      const opt = document.createElement('option');
+      opt.value = roomId;
+      opt.textContent = `🏡 ${roomName}`;
+      roomSelect.add(opt);
+    }
+    // Select it
+    roomSelect.value = roomId;
+  }
+
+  function showDailyBonusPopup(message, nextClaimAvailable) {
+    dailyPopupMsg.textContent = message;
+    const now = Date.now();
+    const msLeft = nextClaimAvailable - now;
+    if (msLeft > 0) {
+      updateDailyCountdownText(msLeft);
+    }
+    dailyPopup.classList.remove('hidden');
+  }
+
+  function updateDailyCountdown() {
+    if (!dailyCooldown) return;
+    if (!dailyCooldown.canClaim) {
+      const msLeft = dailyCooldown.timeRemainingMs;
+      if (msLeft > 0) {
+        updateDailyCountdownText(msLeft);
+      }
+    }
+  }
+
+  function updateDailyCountdownText(msLeft) {
+    const hours = Math.floor(msLeft / (60 * 60 * 1000));
+    const mins = Math.floor((msLeft % (60 * 60 * 1000)) / (60 * 1000));
+    const secs = Math.floor((msLeft % (60 * 1000)) / 1000);
+    dailyCooldownText.textContent = `Next gift available in: ${hours}h ${mins}m ${secs}s`;
+  }
+
+  function updateDailyBonusButton() {
+    const btn = document.getElementById('btn-daily-bonus');
+    if (!dailyCooldown || dailyCooldown.canClaim) {
+      btn.textContent = '🎁 Daily Gift';
+      btn.disabled = false;
+    } else {
+      const hours = Math.floor(dailyCooldown.timeRemainingMs / (60 * 60 * 1000));
+      const mins = Math.floor((dailyCooldown.timeRemainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      btn.textContent = `🎁 Come back in ${hours}h ${mins}m`;
+      btn.disabled = true;
+    }
+  }
+
+  // =========================================================================
+  // Render Loop (60 FPS)
+  // =========================================================================
   let lastTime = performance.now();
 
-    function gameLoop(now) {
+  function gameLoop(now) {
     const dt = frameDt(now, lastTime);
     lastTime = now;
 
@@ -299,7 +439,7 @@ import { escapeHtml } from './shared/chat.js';
     }
   }
 
-    function updatePlayerMovement(p, dt) {
+  function updatePlayerMovement(p, dt) {
     stepToward(p, dt, 3.8);
   }
 
@@ -319,10 +459,12 @@ import { escapeHtml } from './shared/chat.js';
 
     // Furniture
     currentRoom.furniture.forEach(f => {
+      // Sort by (x + y) + elevation so elevated furniture renders above floor-level
+      // but still respects depth ordering within the same elevation tier
       entities.push({
         type: 'furniture',
         item: f,
-        sortY: f.x + f.y
+        sortY: f.x + f.y + ((f.elevation || 0) * 2)
       });
     });
 
@@ -367,7 +509,8 @@ import { escapeHtml } from './shared/chat.js';
   // Isometric Drawing Helpers
   // ==========================================================================
   function drawIsometricFloor() {
-    const isPlaza = currentRoom.id === 'plaza';
+    const isPlaza = currentRoom.id === 'plaza' || !currentRoom.id.startsWith('loft_');
+    const isLoft = currentRoom.id.startsWith('loft_');
 
     for (let x = 0; x < GRID_SIZE; x++) {
       for (let y = 0; y < GRID_SIZE; y++) {
@@ -384,14 +527,17 @@ import { escapeHtml } from './shared/chat.js';
         if (isPlaza) {
           // Marble checkerboard
           ctx.fillStyle = (x + y) % 2 === 0 ? '#1e293b' : '#334155';
-        } else {
-          // Warm hardwood parquet
+        } else if (isLoft) {
+          // Warm hardwood parquet (personal loft)
           ctx.fillStyle = (x + y) % 2 === 0 ? '#78350f' : '#92400e';
+        } else {
+          // Default to plaza style
+          ctx.fillStyle = (x + y) % 2 === 0 ? '#1e293b' : '#334155';
         }
         ctx.fill();
 
         // Grid lines (highlighted in edit mode)
-        ctx.strokeStyle = editMode ? 'rgba(168, 85, 247, 0.4)' : 'rgba(0, 0, 0, 0.25)';
+        ctx.strokeStyle = editMode && isLoft ? 'rgba(168, 85, 247, 0.4)' : 'rgba(0, 0, 0, 0.25)';
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -412,7 +558,9 @@ import { escapeHtml } from './shared/chat.js';
   function drawFurniture(f) {
     const pt = toScreen(f.x, f.y);
     const cx = pt.x;
-    const cy = pt.y + TILE_HEIGHT / 2;
+    // Elevation offsets the furniture upward (z-ordering for multi-layer)
+    const elevationOffset = (f.elevation || 0) * 20;
+    const cy = pt.y + TILE_HEIGHT / 2 - elevationOffset;
 
     ctx.save();
     switch (f.type) {
@@ -579,7 +727,7 @@ import { escapeHtml } from './shared/chat.js';
       return;
     }
 
-        const alpha = fadeAlpha(age, 6, 5);
+    const alpha = fadeAlpha(age, 6, 5);
     const pt = toScreen(p.x, p.y);
     const cx = pt.x;
     const cy = pt.y + TILE_HEIGHT / 2 - 76;
@@ -625,7 +773,28 @@ import { escapeHtml } from './shared/chat.js';
 
     if (grid.x < 0 || grid.x > GRID_SIZE || grid.y < 0 || grid.y > GRID_SIZE) return;
 
-    if (editMode && currentRoom.id === 'sanctuary_loft') {
+    const isPersonalLoft = currentRoom.id.startsWith('loft_');
+
+    if (editMode && isPersonalLoft) {
+      // Check if clicking on existing furniture (surface parenting)
+      const clickedFurniture = currentRoom.furniture.find(f => {
+        if (f.elevation && f.elevation > 0) return false; // Skip elevated items
+        if (f.parentSurfaceId) return false; // Skip items already on a surface
+        const pt = toScreen(f.x, f.y);
+        const cx = pt.x;
+        const cy = pt.y + TILE_HEIGHT / 2;
+        const dx = sx - cx;
+        const dy = sy - cy;
+        return Math.hypot(dx, dy) < 30; // Approx click radius
+      });
+
+      if (clickedFurniture && !parentSurfaceId) {
+        // Select this furniture as a parent surface
+        parentSurfaceId = clickedFurniture.id;
+        targetIndicator = { x: grid.x, y: grid.y, alpha: 1.0, parentSurface: clickedFurniture.id };
+        return; // Don't place yet — now in "place on surface" mode
+      }
+
       // Place furniture
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
@@ -633,10 +802,14 @@ import { escapeHtml } from './shared/chat.js';
           payload: {
             type: selectedFurnitureType,
             x: grid.x,
-            y: grid.y
+            y: grid.y,
+            elevation: parentSurfaceId ? 1 : 0,
+            parentSurfaceId: parentSurfaceId || null
           }
         }));
       }
+      // Clear parent surface selection after placing
+      if (parentSurfaceId) parentSurfaceId = null;
     } else {
       // Walk to position
       targetIndicator = { x: grid.x, y: grid.y, alpha: 1.0 };
@@ -693,13 +866,13 @@ import { escapeHtml } from './shared/chat.js';
     box.scrollTop = box.scrollHeight;
   }
 
-    // escapeHtml is imported from shared/chat.ts (XSS-safe, also used by the server).
-
   function updateCoinUI(coins) {
     document.getElementById('coin-amount').textContent = coins.toLocaleString();
   }
 
+  // ==========================================================================
   // Room Selector
+  // ==========================================================================
   document.getElementById('room-select').addEventListener('change', (e) => {
     const targetRoom = e.target.value;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -710,22 +883,45 @@ import { escapeHtml } from './shared/chat.js';
     }
   });
 
+  // ==========================================================================
   // Daily Bonus
+  // ==========================================================================
   document.getElementById('btn-daily-bonus').addEventListener('click', () => {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'CLAIM_DAILY_BONUS' }));
+      ws.send(JSON.stringify({ type: 'CLAIM_DAILY_BONUS', payload: {} }));
     }
   });
 
+  document.getElementById('btn-close-daily').addEventListener('click', () => {
+    dailyPopup.classList.add('hidden');
+  });
+
+  // Close daily popup when clicking outside
+  dailyPopup.addEventListener('click', (e) => {
+    if (e.target === dailyPopup) {
+      dailyPopup.classList.add('hidden');
+    }
+  });
+
+  // ==========================================================================
   // Edit Mode Palette
+  // ==========================================================================
   const decorPalette = document.getElementById('decor-palette');
   document.getElementById('btn-edit-mode').addEventListener('click', () => {
-    if (currentRoom.id !== 'sanctuary_loft') {
-      alert('Room decorating is only available inside your Personal Sanctuary Loft! Switching you over now...');
-      document.getElementById('room-select').value = 'sanctuary_loft';
-      document.getElementById('room-select').dispatchEvent(new Event('change'));
+    if (!currentRoom.id.startsWith('loft_')) {
+      // Auto-switch to personal loft
+      const loftOption = Array.from(document.getElementById('room-select').options)
+        .find(opt => opt.value.startsWith('loft_'));
+      if (loftOption) {
+        document.getElementById('room-select').value = loftOption.value;
+        document.getElementById('room-select').dispatchEvent(new Event('change'));
+      } else {
+        alert('You need to be in your Personal Sanctuary Loft to decorate! Connect to claim your loft.');
+        return;
+      }
     }
     editMode = !editMode;
+    if (!editMode) parentSurfaceId = null; // Reset surface parenting when exiting edit mode
     decorPalette.classList.toggle('hidden', !editMode);
   });
 
@@ -751,6 +947,125 @@ import { escapeHtml } from './shared/chat.js';
       });
     }
   });
+
+  // ==========================================================================
+  // Account / Auth Flow
+  // ==========================================================================
+  document.getElementById('btn-account').addEventListener('click', () => {
+    accountModal.classList.remove('hidden');
+    if (authPlayerId) {
+      // Already logged in — show signed-in view
+      accountFormSignedOut.classList.add('hidden');
+      accountFormLoggedIn.classList.remove('hidden');
+    } else {
+      accountFormSignedOut.classList.remove('hidden');
+      accountFormLoggedIn.classList.add('hidden');
+      // Default to login tab
+      loginForm.classList.remove('hidden');
+      signupForm.classList.add('hidden');
+      document.getElementById('btn-tab-login').style.opacity = '1';
+      document.getElementById('btn-tab-signup').style.opacity = '0.6';
+    }
+  });
+
+  document.getElementById('btn-close-account').addEventListener('click', () => {
+    accountModal.classList.add('hidden');
+  });
+
+  // Account modal close when clicking outside
+  accountModal.addEventListener('click', (e) => {
+    if (e.target === accountModal) {
+      accountModal.classList.add('hidden');
+    }
+  });
+
+  // Tab switching
+  document.getElementById('btn-tab-login').addEventListener('click', () => {
+    loginForm.classList.remove('hidden');
+    signupForm.classList.add('hidden');
+    loginErrorEl.style.display = 'none';
+    signupErrorEl.style.display = 'none';
+  });
+
+  document.getElementById('btn-tab-signup').addEventListener('click', () => {
+    signupForm.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    loginErrorEl.style.display = 'none';
+    signupErrorEl.style.display = 'none';
+  });
+
+  // Login form submit
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = loginUsernameInput.value.trim();
+    const password = loginPasswordInput.value;
+    if (!username || !password) return;
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await response.json();
+      if (data.success) {
+        authToken = data.playerId;
+        authPlayerId = data.playerId;
+        selfId = data.playerId;
+        localStorage.setItem('haven_token', data.playerId);
+        showLoggedInState(data.playerId, data.name);
+        appendChatMessage('system', `Welcome back, ${data.name}! Reconnecting with your saved account...`);
+        // Reconnect the WebSocket with the auth token
+        if (ws) ws.close();
+      } else {
+        loginErrorEl.textContent = data.error || 'Login failed.';
+        loginErrorEl.style.display = 'block';
+      }
+    } catch (err) {
+      loginErrorEl.textContent = 'Network error. Try again.';
+      loginErrorEl.style.display = 'block';
+    }
+  });
+
+  // Signup form submit
+  signupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = signupUsernameInput.value.trim();
+    const password = signupPasswordInput.value;
+    if (!username || !password) return;
+
+    try {
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await response.json();
+      if (data.success) {
+        authToken = data.playerId;
+        authPlayerId = data.playerId;
+        selfId = data.playerId;
+        localStorage.setItem('haven_token', data.playerId);
+        showLoggedInState(data.playerId, data.name);
+        appendChatMessage('system', `Account created! Welcome, ${data.name}! Reconnecting with your saved account...`);
+        // Reconnect the WebSocket with the auth token
+        if (ws) ws.close();
+      } else {
+        signupErrorEl.textContent = data.error || 'Signup failed.';
+        signupErrorEl.style.display = 'block';
+      }
+    } catch (err) {
+      signupErrorEl.textContent = 'Network error. Try again.';
+      signupErrorEl.style.display = 'block';
+    }
+  });
+
+  function showLoggedInState(playerId, playerName) {
+    accountFormSignedOut.classList.add('hidden');
+    accountFormLoggedIn.classList.remove('hidden');
+    document.getElementById('account-player-name').textContent = playerName;
+    document.getElementById('account-player-id').textContent = playerId;
+  }
 
   // ==========================================================================
   // Wardrobe / Character Customizer Modal
@@ -853,7 +1168,7 @@ import { escapeHtml } from './shared/chat.js';
   let pizzaScore = 0;
   let currentIngredients = [];
 
-    let activeRecipe = RECIPES[0];
+  let activeRecipe = RECIPES[0];
 
   document.getElementById('btn-minigame').addEventListener('click', () => {
     minigameModal.classList.remove('hidden');
@@ -886,8 +1201,8 @@ import { escapeHtml } from './shared/chat.js';
   }
 
   function pickNewRecipe() {
-        activeRecipe = pickRecipe();
-    document.getElementById('target-recipe').textContent = activeRecipe.steps.join(' ➔ ');
+    activeRecipe = RECIPES[Math.floor(Math.random() * RECIPES.length)];
+    document.getElementById('target-recipe').textContent = activeRecipe.steps.join(' \u2794 ');
     currentIngredients = [];
     updateAssembledDisplay();
   }
@@ -915,12 +1230,12 @@ import { escapeHtml } from './shared/chat.js';
   });
 
   document.getElementById('btn-bake-pizza').addEventListener('click', () => {
-        const isMatch = matchRecipe(currentIngredients, activeRecipe);
+    const isMatch = matchRecipe(currentIngredients, activeRecipe);
 
     if (isMatch) {
       pizzaScore++;
       document.getElementById('pizza-score').textContent = String(pizzaScore);
-            document.getElementById('pizza-coins').textContent = `+${scoreCoins(pizzaScore)} Coins`;
+      document.getElementById('pizza-coins').textContent = `+${scoreCoins(pizzaScore)} Coins`;
       pickNewRecipe();
     } else {
       alert('Recipe mismatched! Check the ticket and try again.');
@@ -929,7 +1244,7 @@ import { escapeHtml } from './shared/chat.js';
     }
   });
 
-    function finishPizzaGame() {
+  function finishPizzaGame() {
     const finalCoins = scoreCoins(pizzaScore);
     alert(`Time's up! You served ${pizzaScore} delicious pizzas and earned ${finalCoins} HavenCoins!`);
     minigameModal.classList.add('hidden');
@@ -942,7 +1257,7 @@ import { escapeHtml } from './shared/chat.js';
     }
   }
 
-    function updateFriendRequestBadge() {
+  function updateFriendRequestBadge() {
     const count = friendsData.pendingRequests.length;
     friendsBadge.textContent = String(count);
     friendsBadge.classList.toggle('hidden', count === 0);
@@ -1060,5 +1375,12 @@ import { escapeHtml } from './shared/chat.js';
   });
 
   // --- Start Client ---
-  initWebSocket();
+  // Check for persisted account token from localStorage
+  const storedToken = localStorage.getItem('haven_token');
+  if (storedToken) {
+    authPlayerId = storedToken;
+    selfId = storedToken;
+  }
+
+  initWebSocket(storedToken);
   requestAnimationFrame(gameLoop);

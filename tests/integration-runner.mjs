@@ -26,9 +26,10 @@ await new Promise(r => server.listen(0, () => {
   r();
 }));
 
-function connect() {
+function connect(token) {
+  const url = `ws://localhost:${port}` + (token ? `?token=${encodeURIComponent(token)}` : '');
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}`);
+    const ws = new WebSocket(url);
     const msgs = [];
     ws.on('open', () => resolve({ ws, msgs }));
     ws.on('message', d => msgs.push(JSON.parse(d)));
@@ -67,6 +68,18 @@ await test('INIT_STATE is sent to each connecting client', async () => {
   await settle(100);
 });
 
+await test('INIT_STATE includes playerLoftRoomId for per-user sanctuary', async () => {
+  const a = await connect();
+  await settle(40);
+  const init = a.msgs.find(m => m.type === 'INIT_STATE');
+  assert.ok(init, 'got INIT_STATE');
+  assert.ok(init.payload.playerLoftRoomId, 'playerLoftRoomId present in INIT_STATE');
+  assert.ok(init.payload.playerLoftRoomId.startsWith('loft_'), 'loft room ID starts with loft_');
+  assert.ok(init.payload.playerLoftName, 'playerLoftName present');
+  a.ws.close();
+  await settle(100);
+});
+
 await test('CHAT is broadcast to the other occupant', async () => {
   const pam = await connect(); const jim = await connect();
   await settle(50);
@@ -94,15 +107,224 @@ await test('MOVE is broadcast to the other occupant', async () => {
   await settle(100);
 });
 
-await test('CLAIM_DAILY_BONUS updates coins to 1250', async () => {
+await test('CLAIM_DAILY_BONUS credits 250 coins on first claim', async () => {
   const a = await connect();
   await settle(40);
+  const playerId = a.msgs.find(m => m.type === 'INIT_STATE').payload.selfId;
   const before = a.msgs.length;
   a.ws.send(JSON.stringify({ type: 'CLAIM_DAILY_BONUS', payload: {} }));
   await settle(50);
   const upd = a.msgs.slice(before).find(m => m.type === 'COINS_UPDATED');
   assert.ok(upd, 'got COINS_UPDATED');
   assert.equal(upd.payload.coins, 1250);
+
+  // Verify last_daily_claim was persisted in DB
+  const claim = await db.getLastDailyClaim(playerId);
+  assert.ok(claim > 0, 'lastDailyClaim persisted in DB');
+
+  a.ws.close();
+  await settle(100);
+});
+
+await test('CLAIM_DAILY_BONUS returns error if already claimed within 24h', async () => {
+  const a = await connect();
+  await settle(40);
+  const playerId = a.msgs.find(m => m.type === 'INIT_STATE').payload.selfId;
+
+  // First claim — should succeed
+  a.ws.send(JSON.stringify({ type: 'CLAIM_DAILY_BONUS', payload: {} }));
+  await settle(50);
+
+  // Second claim — should get DAILY_BONUS_ERROR
+  const before = a.msgs.length;
+  a.ws.send(JSON.stringify({ type: 'CLAIM_DAILY_BONUS', payload: {} }));
+  await settle(50);
+  const err = a.msgs.slice(before).find(m => m.type === 'DAILY_BONUS_ERROR');
+  assert.ok(err, 'got DAILY_BONUS_ERROR on second claim');
+  assert.ok(err.payload.message.includes('already collected'), 'error mentions already collected');
+  assert.ok(err.payload.message.includes('Come back'), 'error mentions come back');
+
+  // Should NOT have received COINS_UPDATED for the second claim
+  const secondCoinsUpdate = a.msgs.slice(before).find(m => m.type === 'COINS_UPDATED');
+  assert.ok(!secondCoinsUpdate, 'should not get COINS_UPDATED on second claim');
+
+  a.ws.close();
+  await settle(100);
+});
+
+await test('GET_DAILY_COOLDOWN returns canClaim=true for new player', async () => {
+  const a = await connect();
+  await settle(40);
+  const before = a.msgs.length;
+  a.ws.send(JSON.stringify({ type: 'GET_DAILY_COOLDOWN', payload: null }));
+  await settle(50);
+  const upd = a.msgs.slice(before).find(m => m.type === 'DAILY_COOLDOWN_UPDATE');
+  assert.ok(upd, 'got DAILY_COOLDOWN_UPDATE');
+  assert.equal(upd.payload.canClaim, true);
+  a.ws.close();
+  await settle(100);
+});
+
+// --- Account Persistence Tests ---
+
+await test('Account signup persists player name across reconnects', async () => {
+  // Signup via HTTP API
+  const signupRes = await fetch(`http://localhost:${port}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'testplayer_' + Date.now(), password: 'secret123' })
+  });
+  const signupData = await signupRes.json();
+  assert.ok(signupData.success, 'signup succeeded');
+  const playerId = signupData.playerId;
+
+  // Connect with the token
+  const a = await connect(playerId);
+  await settle(40);
+  const init = a.msgs.find(m => m.type === 'INIT_STATE');
+  assert.equal(init.payload.selfId, playerId, 'server uses persistent player ID');
+  assert.equal(init.payload.player.name, signupData.name, 'player name persisted from account');
+
+  // Change the name
+  a.ws.send(JSON.stringify({
+    type: 'UPDATE_AVATAR',
+    payload: { name: 'CustomName123' }
+  }));
+  await settle(50);
+
+  // Verify name was persisted in DB
+  const profile = await db.loadPlayerProfile(playerId);
+  assert.ok(profile, 'profile loadable from DB');
+  assert.equal(profile.name, 'CustomName123', 'name persisted in DB');
+
+  a.ws.close();
+  await settle(100);
+});
+
+await test('Account login returns persistent player data', async () => {
+  // Signup first
+  const username = 'loginplayer_' + Date.now();
+  const password = 'secret456';
+  await fetch(`http://localhost:${port}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+
+  // Now login with the same credentials
+  const loginRes = await fetch(`http://localhost:${port}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const loginData = await loginRes.json();
+  assert.ok(loginData.success, 'login succeeded');
+  assert.equal(loginData.name, username, 'returned correct name');
+
+  // Connect with the token — should get the same player data
+  const a = await connect(loginData.playerId);
+  await settle(40);
+  const init = a.msgs.find(m => m.type === 'INIT_STATE');
+  assert.equal(init.payload.selfId, loginData.playerId, 'persistent ID on connect');
+  assert.equal(init.payload.player.name, username, 'name persisted across sessions');
+  assert.equal(init.payload.player.coins, 1000, 'coins persisted (default)');
+  a.ws.close();
+  await settle(100);
+});
+
+await test('Login with wrong password fails', async () => {
+  const username = 'wrongpass_' + Date.now();
+  const password = 'correctpass';
+  await fetch(`http://localhost:${port}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+
+  const loginRes = await fetch(`http://localhost:${port}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password: 'wrongpassword' })
+  });
+  const loginData = await loginRes.json();
+  assert.equal(loginData.success, false, 'login with wrong password fails');
+  assert.ok(loginData.error, 'error message present');
+});
+
+await test('Signup with duplicate username fails', async () => {
+  const username = 'dupuser_' + Date.now();
+  const password = 'pass1234';
+  const res1 = await fetch(`http://localhost:${port}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data1 = await res1.json();
+  assert.ok(data1.success, 'first signup succeeded');
+
+  const res2 = await fetch(`http://localhost:${port}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data2 = await res2.json();
+  assert.equal(data2.success, false, 'duplicate signup fails');
+  assert.ok(data2.error?.includes('taken'), 'error mentions username taken');
+});
+
+// --- Personal Sanctuary Loft Tests ---
+
+await test('Each player gets their own personal sanctuary loft', async () => {
+  const a = await connect();
+  const b = await connect();
+  await settle(60);
+
+  const aInit = a.msgs.find(m => m.type === 'INIT_STATE');
+  const bInit = b.msgs.find(m => m.type === 'INIT_STATE');
+
+  // Each player gets a different loft room ID
+  assert.notEqual(aInit.payload.playerLoftRoomId, bInit.payload.playerLoftRoomId, 'loft IDs are unique per player');
+
+  // The loft ID is derived from the player ID
+  assert.ok(aInit.payload.playerLoftRoomId.includes(aInit.payload.selfId.substring(4, 12)), 'loft ID derived from player ID');
+
+  a.ws.close(); b.ws.close();
+  await settle(100);
+});
+
+await test('SWITCH_ROOM to personal loft loads and persists furniture', async () => {
+  const a = await connect();
+  await settle(40);
+  const init = a.msgs.find(m => m.type === 'INIT_STATE');
+  const loftId = init.payload.playerLoftRoomId;
+
+  // Switch to the loft
+  const before = a.msgs.length;
+  a.ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: loftId } }));
+  await settle(60);
+
+  const roomChanged = a.msgs.slice(before).find(m => m.type === 'ROOM_CHANGED');
+  assert.ok(roomChanged, 'got ROOM_CHANGED');
+  assert.equal(roomChanged.payload.room.id, loftId, 'in the loft room');
+  assert.ok(roomChanged.payload.room.name.includes('Personal Sanctuary Loft'), 'loft name correct');
+  // Should have starter furniture
+  assert.ok(roomChanged.payload.room.furniture.length > 0, 'loft has starter furniture');
+
+  // Place new furniture
+  a.ws.send(JSON.stringify({
+    type: 'PLACE_FURNITURE',
+    payload: { type: 'plant', x: 2, y: 3 }
+  }));
+  await settle(40);
+
+  const furnAdded = a.msgs.find(m => m.type === 'FURNITURE_ADDED');
+  assert.ok(furnAdded, 'got FURNITURE_ADDED');
+
+  // Verify furniture was persisted in DB
+  const dbFurn = await db.getLoftFurniture(loftId);
+  assert.ok(dbFurn, 'furniture persisted in DB');
+  assert.ok(dbFurn.some(f => f.type === 'plant'), 'plant furniture found in DB');
+
   a.ws.close();
   await settle(100);
 });
