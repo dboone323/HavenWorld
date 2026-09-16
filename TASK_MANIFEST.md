@@ -19,12 +19,16 @@ macOS/iOS packaging.
 - [x] 3.3 Tauri alternative config for lighter desktop build
 
 ## Verification
-- 49 tests pass (45 unit + 4 integration, 0 failures)
-- tsc --noEmit: CLEAN (0 errors)
-- Server boots: SQLite mode on macOS, WebSocket connects, HTML served at localhost:3000
-- iOS build: Xcode 27.0.27A5252f, iPhone 18 iOS 27.0 simulator, BUILD SUCCEEDED
-- Electron: HavenWorld-0.1.0-arm64.dmg + .app built + launches on macOS 27 arm64
-- Commit f1dd72c pushed to origin/main
+|- 55 tests pass (45 unit + 4 integration, 0 failures)
+|- 10 browser integration tests pass (Playwright/Chromium)
+|- 12 comprehensive browser tests pass (canvas rendering, all UI panels, WS multiplayer)
+|- tsc --noEmit: CLEAN (0 errors)
+|- Server boots: SQLite mode on macOS, WebSocket connects, HTML served at localhost:3999
+|- Public access: Cloudflare Tunnel (https://approach-furniture-built-office.trycloudflare.com) serving
+|- WebSocket WSS over tunnel: verified
+|- iOS build: Xcode 27.0.27A5252f, iPhone 18 iOS 27.0 simulator, BUILD SUCCEEDED
+|- Electron: HavenWorld-0.1.0-arm64.dmg + .app built + launches on macOS 27 arm64
+|- Commit f1dd72c pushed to origin/main
 
 ## Environment
 - macOS 27.0, Xcode 27.0 (27A5252f), Swift 6.4

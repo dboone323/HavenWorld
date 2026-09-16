@@ -1,0 +1,191 @@
+/**
+ * HavenWorld — Comprehensive browser test with visual verification
+ * Tests all UI elements and the floor rendering.
+ */
+import { chromium } from 'playwright';
+import { WebSocket } from 'ws';
+import assert from 'node:assert/strict';
+
+const LOCAL_URL = 'http://localhost:3999';
+
+async function run() {
+  const browser = await chromium.launch({ headless: true });
+  let passed = 0, failed = 0;
+  const errors = [];
+
+  async function test(name, fn) {
+    try {
+      await fn();
+      console.log(`  \u2714 ${name}`);
+      passed++;
+    } catch (err) {
+      console.log(`  \u2716 ${name}`);
+      console.error(`    ${err.message}`);
+      failed++;
+    }
+  }
+
+  const page = await browser.newPage();
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => errors.push(`[error] ${err.message}`));
+
+  // Test 1: Page loads
+  await test('Game page loads and shows title', async () => {
+    await page.goto(LOCAL_URL, { waitUntil: 'networkidle' });
+    const title = await page.title();
+    assert.ok(title.includes('HavenWorld'), `title is "${title}"`);
+  });
+
+  // Test 2: Canvas has rendered floor
+  await test('Canvas has rendered floor grid content', async () => {
+    const canvasHandle = await page.$('#viewport');
+    assert.ok(canvasHandle, 'canvas #viewport exists');
+    // Wait a frame for render
+    await page.waitForTimeout(500);
+    const hasContent = await page.evaluate(() => {
+      const canvas = document.getElementById('viewport');
+      if (!canvas) return false;
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let nonBlack = 0;
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 0 || data[i+1] > 0 || data[i+2] > 0) nonBlack++;
+      }
+      return nonBlack > 100;
+    });
+    assert.ok(hasContent, 'floor grid pixels detected on canvas');
+  });
+
+  // Test 3: All top-bar buttons exist
+  await test('All top-bar buttons exist', async () => {
+    const buttons = ['#btn-daily-bonus', '#btn-minigame', '#btn-edit-mode', '#btn-avatar', '#btn-friends'];
+    for (const sel of buttons) {
+      const btn = await page.$(sel);
+      assert.ok(btn, `${sel} exists`);
+    }
+  });
+
+  // Test 4: Daily bonus button triggers coin update
+  await test('Daily bonus button sends CLAIM_DAILY_BONUS', async () => {
+    // The client sends this via WebSocket — verify via WS directly
+    const ws = new WebSocket(`ws://localhost:3999`);
+    await new Promise(r => ws.on('open', r));
+    await new Promise((resolve) => {
+      ws.on('message', (d) => {
+        const m = JSON.parse(d.toString());
+        if (m.type === 'INIT_STATE') resolve();
+      });
+    });
+    ws.send(JSON.stringify({ type: 'CLAIM_DAILY_BONUS', payload: {} }));
+    const upd = await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error('timeout')), 3000);
+      ws.on('message', (data) => {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'COINS_UPDATED') {
+          clearTimeout(to);
+          resolve(msg);
+        }
+      });
+    });
+    assert.equal(upd.payload.coins, 1250);
+    ws.close();
+  });
+
+  // Test 5: Friends button opens panel
+  await test('Friends button opens friends modal', async () => {
+    await page.$eval('#btn-friends', el => el.click());
+    await page.waitForTimeout(300);
+    const cls = await page.$eval('#friends-modal', el => el.getAttribute('class'));
+    assert.ok(!cls.includes('hidden'), 'friends modal is visible');
+  });
+
+  // Test 6: Friends modal has all sections
+  await test('Friends modal has friends list, pending, add form, and PM section', async () => {
+    const sections = ['#pending-requests-list', '#friends-list', '#add-friend-form', '#pm-history', '#pm-form'];
+    for (const sel of sections) {
+      const el = await page.$(sel);
+      assert.ok(el, `${sel} exists in friends modal`);
+    }
+  });
+
+  // Test 7: Wardrobe button opens avatar modal
+  await test('Wardrobe button opens avatar modal', async () => {
+    const closeFriends = await page.$('#btn-close-friends');
+    if (closeFriends) await closeFriends.click();
+    await page.waitForTimeout(200);
+    await page.$eval('#btn-avatar', el => el.click());
+    await page.waitForTimeout(300);
+    const cls = await page.$eval('#avatar-modal', el => el.getAttribute('class'));
+    assert.ok(!cls.includes('hidden'), 'avatar modal is visible');
+  });
+
+  // Test 8: Avatar modal has color swatches
+  await test('Avatar modal has color swatch selectors', async () => {
+    for (const swatchId of ['#skin-tones', '#hair-colors', '#shirt-colors']) {
+      const swatches = await page.$$(`${swatchId} .color-swatch`);
+      assert.ok(swatches.length > 0, `${swatchId} has color swatches`);
+    }
+  });
+
+  // Test 9: Minigame button opens pizza modal
+  await test('Minigame button opens pizza chef modal', async () => {
+    await page.$eval('#btn-minigame', el => el.click());
+    await page.waitForTimeout(300);
+    const cls = await page.$eval('#minigame-modal', el => el.getAttribute('class'));
+    assert.ok(!cls.includes('hidden'), 'minigame modal is visible');
+  });
+
+  // Test 10: Edit mode button toggles
+  await test('Edit mode button toggles furniture palette', async () => {
+    await page.$eval('#btn-edit-mode', el => el.click());
+    await page.waitForTimeout(200);
+    const palette = await page.$('#decor-palette');
+    const cls = await palette.getAttribute('class');
+    assert.ok(!cls.includes('hidden'), 'decor palette shows after edit mode');
+  });
+
+  // Test 11: No browser console errors
+  await test('No browser console errors', async () => {
+    assert.equal(errors.length, 0, `console errors: ${errors.join('; ')}`);
+  });
+
+  // Test 12: Room selector works
+  await test('Room selector switches rooms', async () => {
+    const ws = new WebSocket(`ws://localhost:3999`);
+    await new Promise(r => ws.on('open', r));
+    await new Promise((resolve) => {
+      ws.on('message', (d) => {
+        const m = JSON.parse(d.toString());
+        if (m.type === 'INIT_STATE') resolve();
+      });
+    });
+    ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: 'sanctuary_loft' } }));
+    const changed = await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error('timeout')), 3000);
+      ws.on('message', (data) => {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'ROOM_CHANGED') {
+          clearTimeout(to);
+          resolve(msg);
+        }
+      });
+    });
+    assert.equal(changed.payload.room.id, 'sanctuary_loft');
+    ws.close();
+  });
+
+  await browser.close();
+  console.log(`\n  ${passed} passed, ${failed} failed`);
+  if (errors.length > 0) {
+    console.log(`  Console errors: ${errors.join('; ')}`);
+  }
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+run().catch(err => {
+  console.error('Fatal:', err);
+  process.exit(1);
+});

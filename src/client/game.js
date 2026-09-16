@@ -1,9 +1,9 @@
 // HavenWorld — Game Engine & Multiplayer Client (HTML5 Canvas + WebSockets)
 // ES module: pure logic is imported from shared/ (unit-tested in Node).
-import { toScreen as isoToScreen, toGrid as isoToGrid } from '../shared/iso.ts';
-import { stepToward, frameDt, fadeAlpha } from '../shared/movement.ts';
-import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from '../shared/pizza.ts';
-import { escapeHtml } from '../shared/chat.ts';
+import { toScreen as isoToScreen, toGrid as isoToGrid } from './shared/iso.js';
+import { stepToward, frameDt, fadeAlpha } from './shared/movement.js';
+import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from './shared/pizza.js';
+import { escapeHtml } from './shared/chat.js';
 
   // State
   let ws = null;
