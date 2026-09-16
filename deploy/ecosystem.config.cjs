@@ -9,8 +9,17 @@
  *   - The Cloudflare quick tunnel is supervised here too, so `pm2 startup` +
  *     `pm2 save` keeps both the game server and the public edge alive 24/7.
  */
+const path = require('node:path');
+try {
+  require('dotenv').config({ path: path.join(__dirname, '../.env') });
+} catch {}
+
 const APP_DIR = '/home/ubuntu/Developer/HavenWorld';
 const PORT = 3000;
+const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
+const tunnelArgs = tunnelToken
+  ? `tunnel run --token ${tunnelToken}`
+  : `tunnel --url http://localhost:${PORT} --protocol http2 --logfile /home/ubuntu/havenworld-tunnel.log`;
 
 module.exports = {
   apps: [
@@ -45,12 +54,12 @@ module.exports = {
       merge_logs: true,
     },
     {
-      // Public edge: outbound-only Cloudflare quick tunnel -> localhost:3000.
-      // --protocol http2 avoids the QUIC/Safari incompatibility.
+      // Public edge: Cloudflare tunnel -> localhost:3000.
+      // Uses CLOUDFLARE_TUNNEL_TOKEN if present in .env, otherwise quick tunnel.
       name: 'havenworld-tunnel',
       cwd: APP_DIR,
       script: '/usr/bin/cloudflared',
-      args: `tunnel --url http://localhost:${PORT} --protocol http2 --logfile /home/ubuntu/havenworld-tunnel.log`,
+      args: tunnelArgs,
       interpreter: 'none',
       instances: 1,
       autorestart: true,
