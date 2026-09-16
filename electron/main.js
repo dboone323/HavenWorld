@@ -1,26 +1,23 @@
-'use strict';
+import { app, BrowserWindow, Menu, shell, ipcMain } from 'electron';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-/**
- * HavenWorld — Electron main process (macOS, arm64 native).
- *
- * Production: loads the Vite-built static files from dist/.
- * Development: loads from the Vite dev server (http://localhost:5173).
- *
- * Architecture:
- *   - main.js:  BrowserWindow lifecycle, menu, tray, auto-update
- *   - preload:  secure context bridge (window.haven API)
- *   - renderer: src/client/ (Vite-built, served from dist/ or dev server)
- *
- * See: electron-builder config in package.json
- *      (mac category: "public.app-category.games", target: dmg + zip)
- */
-
-const { app, BrowserWindow, Menu, shell } = require('electron');
-const { join } = require('node:path');
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 const isDev = !app.isPackaged;
 const DEV_URL = 'http://localhost:5173';
 const PROD_URL = `file://${join(__dirname, '../dist/index.html')}`;
+
+// IPC handlers for preload bridge
+ipcMain.handle('haven:open-external', (_event, url) => {
+  shell.openExternal(url);
+});
+ipcMain.handle('haven:app-version', () => app.getVersion());
+ipcMain.handle('haven:is-dev', () => isDev);
+ipcMain.handle('haven:server-url', () => {
+  // In production, the server URL is embedded; in dev, point to localhost
+  return isDev ? 'ws://localhost:3000' : 'wss://havenworld.com/ws';
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -50,9 +47,8 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  if (!isDev) {
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.checkForUpdatesAndNotify();
+  if (isDev) {
+    win.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
@@ -90,7 +86,13 @@ const template = [
 
 Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  if (!isDev) {
+    const { autoUpdater } = await import('electron-updater');
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

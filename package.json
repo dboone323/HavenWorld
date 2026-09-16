@@ -2,7 +2,7 @@
   "name": "havenworld",
   "version": "0.1.0",
   "description": "Cozy social virtual world hybrid of MegaPlanet and YoWorld",
-  "main": "src/server/server.ts",
+  "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "start": "node src/server/server.ts",
@@ -64,7 +64,7 @@
     "appId": "com.havenworld.game",
     "productName": "HavenWorld",
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
@@ -76,7 +76,8 @@
       "tsconfig.json"
     ],
     "extraMetadata": {
-      "main": "src/server/server.ts"
-    }
+      "main": "electron/main.js"
+    },
+    "asar": true
   }
 }

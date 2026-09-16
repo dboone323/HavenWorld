@@ -16,6 +16,7 @@ yarn-error.log*
 
 # Local SQLite databases + build artifacts
 dist/
+release/
 *.db
 *.db-journal
 *.db-wal

@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * HavenWorld — Electron preload script (context bridge).
  *
@@ -10,14 +8,13 @@
  *   - openExternal(url)   — open URLs in system browser
  *   - getAppVersion()     — app version string
  *   - isDev()             — true in development
+ *   - serverUrl()         — WebSocket URL for game server
  */
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('haven', {
   openExternal: (url) => ipcRenderer.invoke('haven:open-external', url),
   getAppVersion: () => ipcRenderer.invoke('haven:app-version'),
-  isDev: () => !require('electron').app.isPackaged,
-  // Game-server WebSocket URL — points to local Express in dev,
-  // remote in production
+  isDev: () => ipcRenderer.invoke('haven:is-dev'),
   serverUrl: () => ipcRenderer.invoke('haven:server-url'),
 });
