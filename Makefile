@@ -7,7 +7,7 @@ NODE := node
 NPM  := npm
 
 .DEFAULT_GOAL := help
-.PHONY: help install start dev test test:watch coverage lint check-supabase integration ci
+.PHONY: help install start dev test test-watch coverage lint check-supabase integration ci
 
 help: ## Show available targets
 	@awk 'BEGIN{FS=":.*##"; printf "Usage:\n  make [target]\n\nTargets:\n"} /##/{sub(/##/,"",$$1); printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -24,11 +24,11 @@ dev: ## Run server in watch mode
 test: ## Run the test suite
 	$(NPM) test
 
-test:watch: ## Watch tests
+test-watch: ## Watch tests
 	$(NODE) --test --watch
 
 coverage: ## Run tests with coverage gate (>= 70% lines, enforced by c8)
-	$(NPM) run coverage
+	$(NPM) run test:coverage
 
 lint: ## Syntax-check server + shared modules
 	$(NPM) run lint

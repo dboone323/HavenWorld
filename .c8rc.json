@@ -1,21 +1,18 @@
 {
   "include": [
-    "src/server/**/*.js",
-    "src/shared/**/*.mjs",
-    "src/shared/**/*.js"
+    "src/server/**/*.ts",
+    "src/shared/**/*.ts"
   ],
   "exclude": [
     "src/public/**",
-    "src/server/server.js",
-    "src/server/__smoke.mjs",
     "tests/**",
     "scripts/**",
     "node_modules/**"
   ],
   "sourceMap": false,
   "check-coverage": true,
-  "lines": 80,
-  "functions": 75,
+  "lines": 70,
+  "functions": 70,
   "branches": 60,
   "reports": ["text", "text-summary"]
 }

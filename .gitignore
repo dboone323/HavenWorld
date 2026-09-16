@@ -28,6 +28,10 @@ havenworld.db
 logs/
 *.log
 
+# Test coverage artifacts (c8 / nyc)
+coverage/
+.nyc_output/
+
 # macOS system files
 .DS_Store
 .DS_Store?
