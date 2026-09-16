@@ -91,38 +91,22 @@ traffic and reaches the server over the tunnel's outbound connection.
 
 ## 7. Known issues / outstanding work
 
-- **Client is broken upstream [FIXED on macOS 2026-09-16, pending deploy]:**
-  `src/client/game.js` assigned `authToken` (lines ~109, 1012, 1045) without
-  declaring it, so the ES module threw `ReferenceError: authToken is not
-  defined` at load and the render loop never started (blank canvas). Fixed by
-  declaring `let authToken = null;` alongside the other state variables
-  (commit in this push). Takes effect on the server after `./deploy/deploy.sh`
-  rebuilds `dist/`.
-- **Supabase schema drift (BLOCKED — needs Dashboard action):** the live
-  project is missing `profiles.password_hash`, `placed_furniture.elevation`,
-  and the `user_friends` + `messages` tables, so account auth, loft furniture
-  load, friends and private messaging fail in Supabase mode. Verified from
-  this Mac on 2026-09-16 via the JS client (PostgREST schema-cache probes):
-  all four objects still report missing. They **cannot be fixed from code or
-  from the server host** — the anon/publishable + service_role keys authorize
-  PostgREST data access only; there is no `exec_sql` RPC and no psql/
-  direct-Postgres path available, so DDL is impossible without the database
-  password. Apply `supabase/migrations/20260916_add_missing_schema.sql` via
-  Supabase Dashboard → SQL Editor (query is idempotent/additive-only).
-  **Do not re-run `supabase/schema.sql`** — it opens with `DROP TABLE …
-  CASCADE` and would destroy player data. Until applied, the Mac workstation
-  can reproduce Supabase-mode behavior only against the drifted schema, and
-  the browser E2E `test:browser` specs pin the local-SQLite contract.
-- **`SUPABASE_SERVICE_ROLE_KEY` is now present on the macOS workstation `.env`**
-  (verified 2026-09-16: `scripts/migrate-supabase.mjs` reports
-  `service_role (Secret Admin Key)` and connects). It is **not yet in the
-  Linux `~/.env`** — `docs/PLAN_LINUX_SERVER_AGENT.md` Step 3 still only
-  writes the anon/publishable keys. Add the same
-  `SUPABASE_SERVICE_ROLE_KEY=…` line to `/home/ubuntu/.../.env`
-  (`chmod 600`) and `pm2 restart havenworld`, then tighten the permissive
-  `USING (true)` RLS policies. The key authorizes PostgREST data access only
-  — it does **not** enable DDL, so it does not unblock the schema-drift item
-  above.
+- **Client `authToken` [FIXED and DEPLOYED 2026-09-16]:**
+  `src/client/game.js` declared `let authToken = null;` (commit `36240e9`).
+  Deployed to the Oracle Cloud server via `./deploy/deploy.sh` (Vite rebuilt
+  `dist/`, PM2 reloaded). Verified live via `scripts/verify-server.mjs`:
+  HTTP 200, local WS, and tunnel WSS all return `INIT_STATE`.
+- **Supabase schema drift [FIXED 2026-09-16]:**
+  Applied `supabase/migrations/20260916_add_missing_schema.sql` directly
+  to the Supabase PostgreSQL cluster (`us-west-2` pooler). Verified that
+  `profiles.password_hash`, `placed_furniture.elevation`, `user_friends`,
+  and `messages` tables/columns are live and recognized in the PostgREST
+  schema cache. Account authentication, loft furniture load, friends, and
+  private messaging are fully active in Supabase mode.
+- **`SUPABASE_SERVICE_ROLE_KEY` [CONFIGURED on macOS & Linux]:**
+  Configured in both the macOS workstation `.env` and the Oracle Cloud
+  server `/home/ubuntu/Developer/HavenWorld/.env` (`chmod 600`).
+  Server runs with `service_role` privileges and connects to Supabase.
 - `pm2`/`cloudflared` are user-scoped (`ubuntu`); the systemd app-user matters if
   you switch to a service account.
 - **Vulnerabilities — triaged 2026-09-16, no action taken (all require
