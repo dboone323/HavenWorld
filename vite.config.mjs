@@ -44,7 +44,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'src/client/index.html'),
+        main: resolve(import.meta.dirname, 'src/client/index.html'),
       },
     },
     // Optimize for canvas rendering performance

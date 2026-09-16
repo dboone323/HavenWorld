@@ -202,10 +202,17 @@ async function run() {
       await page.waitForTimeout(200);
     }
 
-    // Switch to sanctuary_loft via the select dropdown
-    await page.selectOption('#room-select', 'sanctuary_loft');
-    // Ensure change event fires
-    await page.$eval('#room-select', el => el.dispatchEvent(new Event('change')));
+    // Switch to sanctuary loft via the select dropdown (which uses player-specific loft ID)
+    const loftRoomId = await page.evaluate(() => {
+      const sel = document.getElementById('room-select');
+      const opt = Array.from(sel.options).find(o => o.value.startsWith('loft_') || o.value === 'sanctuary_loft');
+      if (opt) {
+        sel.value = opt.value;
+        sel.dispatchEvent(new Event('change'));
+        return opt.value;
+      }
+      return 'sanctuary_loft';
+    });
     // Wait for WebSocket round-trip
     await page.waitForTimeout(1500);
 
@@ -264,7 +271,7 @@ async function run() {
         if (m.type === 'INIT_STATE') resolve();
       });
     });
-    ws2.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: 'sanctuary_loft' } }));
+    ws2.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: loftRoomId } }));
     const changed = await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(new Error('timeout')), 3000);
       ws2.on('message', (data) => {

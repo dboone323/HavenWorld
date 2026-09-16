@@ -3,7 +3,7 @@
 > **Target Environment**: Oracle Cloud Infrastructure (OCI) Ampere A1 (Ubuntu 22.04/24.04 ARM64 / `aarch64`)  
 > **SSH Target**: `oracle-cloud` (`ubuntu@147.224.164.228`)  
 > **Repository**: `https://github.com/dboone323/HavenWorld.git`  
-> **Working Directory**: `/home/ubuntu/HavenWorld`
+> **Working Directory**: `/home/ubuntu/Developer/HavenWorld`
 
 ---
 
@@ -43,7 +43,7 @@ npm -v
 ---
 
 ### Step 2: Repository Setup & Synchronization
-Clone or update the repository at `/home/ubuntu/HavenWorld`:
+Clone or update the repository at `/home/ubuntu/Developer/HavenWorld`:
 
 ```bash
 cd /home/ubuntu
@@ -52,7 +52,7 @@ if [ ! -d "HavenWorld" ]; then
   git clone https://github.com/dboone323/HavenWorld.git
 fi
 
-cd /home/ubuntu/HavenWorld
+cd /home/ubuntu/Developer/HavenWorld
 git checkout main
 git pull origin main
 ```
@@ -60,10 +60,10 @@ git pull origin main
 ---
 
 ### Step 3: Production Environment Configuration (`.env`)
-Create the production environment file at `/home/ubuntu/HavenWorld/.env`. Populate it with the verified production credentials:
+Create the production environment file at `/home/ubuntu/Developer/HavenWorld/.env`. Populate it with the verified production credentials:
 
 ```bash
-cat << 'EOF' > /home/ubuntu/HavenWorld/.env
+cat << 'EOF' > /home/ubuntu/Developer/HavenWorld/.env
 PORT=3000
 NODE_ENV=production
 SUPABASE_URL=https://ruphxzwfgwtrheprvpdq.supabase.co
@@ -73,14 +73,14 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ss7bYAmBNwMd_LUAlmpOPA_6NGF8
 # Add your SUPABASE_SERVICE_ROLE_KEY here once copied from Supabase Dashboard
 EOF
 
-chmod 600 /home/ubuntu/HavenWorld/.env
+chmod 600 /home/ubuntu/Developer/HavenWorld/.env
 ```
 
 ---
 
 ### Step 4: Install Dependencies & Build Web Client
 ```bash
-cd /home/ubuntu/HavenWorld
+cd /home/ubuntu/Developer/HavenWorld
 
 # Install clean production dependencies
 npm ci
@@ -99,10 +99,10 @@ Install PM2 globally and configure HavenWorld to run as a persistent system daem
 sudo npm install -g pm2
 
 # 2. Ensure log directory exists
-mkdir -p /home/ubuntu/HavenWorld/logs
+mkdir -p /home/ubuntu/Developer/HavenWorld/logs
 
 # 3. Start the application using the repo's ecosystem file
-cd /home/ubuntu/HavenWorld
+cd /home/ubuntu/Developer/HavenWorld
 pm2 start deploy/ecosystem.config.cjs
 
 # 4. Configure PM2 to launch on system boot (systemd)
@@ -129,7 +129,7 @@ cloudflared --version
 
 # 3. Start an ad-hoc quick tunnel in background or configure a persistent named tunnel:
 # For instant testing:
-# nohup cloudflared tunnel --url http://localhost:3000 > /home/ubuntu/HavenWorld/logs/tunnel.log 2>&1 &
+# nohup cloudflared tunnel --url http://localhost:3000 > /home/ubuntu/Developer/HavenWorld/logs/tunnel.log 2>&1 &
 
 # For production named tunnel (recommended if you have a Cloudflare domain):
 # cloudflared tunnel login
@@ -158,7 +158,7 @@ sudo ufw status verbose
 Whenever the macOS agent pushes new commits to `origin/main`, you can deploy the updates with a single command:
 
 ```bash
-cd /home/ubuntu/HavenWorld
+cd /home/ubuntu/Developer/HavenWorld
 ./deploy/deploy.sh
 ```
 

@@ -101,7 +101,7 @@ git commit -m "feat(room): implement multi-layer surface parenting grid"
 git push origin main
 
 # 3. (Optional) Trigger instantaneous deployment on Oracle Cloud via SSH shortcut:
-ssh oracle-cloud "cd ~/HavenWorld && ./deploy/deploy.sh"
+ssh oracle-cloud "cd ~/Developer/HavenWorld && ./deploy/deploy.sh"
 ```
 
 ---

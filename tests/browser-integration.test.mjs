@@ -9,9 +9,6 @@ import assert from 'node:assert/strict';
 
 const HTTP_PORT = process.env.PORT || process.env.VERIFY_HTTP_PORT || 3000;
 const LOCAL_URL = process.env.VERIFY_HTTP_URL || `http://localhost:${HTTP_PORT}`;
-const WS_BASE = process.env.VERIFY_WS_URL
-  || LOCAL_URL.replace(/^http/, 'ws');
-
 // Dynamically read the current tunnel URL from the log file
 // (the tunnel URL changes on each restart, so we must read the latest)
 import { readFileSync } from 'node:fs';
@@ -26,6 +23,7 @@ if (!TUNNEL_URL) {
   } catch { /* log file not available yet */ }
 }
 const TARGET_URL = TUNNEL_URL.startsWith('http') ? TUNNEL_URL : LOCAL_URL;
+const WS_BASE = process.env.VERIFY_WS_URL || TARGET_URL.replace(/^http/, 'ws');
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
