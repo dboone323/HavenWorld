@@ -91,7 +91,11 @@ export function serializePlayer(p: Player): PlayerInfo {
  * e.g. "usr_a1b2c3d4" -> "loft_a1b2c3d4"
  */
 export function getUserLoftRoomId(playerId: string): string {
-  return `loft_${playerId.replace(/^usr_/, '')}`;
+  // Derive a stable loft room ID from the player ID.
+  // For usr_ prefixed IDs: loft_<chars_after_usr_>
+  // For non-prefixed IDs (supabase UUIDs): loft_<first_12_chars>
+  const suffix = playerId.replace(/^usr_/, '').substring(0, 12);
+  return `loft_${suffix}`;
 }
 
 export class RoomManager {

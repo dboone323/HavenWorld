@@ -185,14 +185,17 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   }
 
   // Ensure the player has their own personal sanctuary loft.
-  // The room is created lazily in RoomManager.getUserLoft, and furniture
-  // is loaded from DB if it was previously saved there.
+  // 1. Create the DB room + starter furniture (if not already persisted)
+  const dbLoft = await db.getUserSanctuaryRoom(playerId, playerName);
+  // 2. Create the room in the RoomManager registry (lazily)
   const playerLoftId = getUserLoftRoomId(playerId);
   const loftRoom = await rooms.getUserLoft(playerId, playerName);
-  // Load furniture from DB for the player's personal loft
-  const dbLoftFurniture = await db.getLoftFurniture(loftRoom.id);
-  if (dbLoftFurniture && dbLoftFurniture.length > 0) {
-    rooms.setFurniture(loftRoom.id, dbLoftFurniture);
+  // 3. Load furniture from DB and set it in the room registry
+  if (dbLoft) {
+    const dbLoftFurniture = await db.getLoftFurniture(dbLoft.roomId);
+    if (dbLoftFurniture && dbLoftFurniture.length > 0) {
+      rooms.setFurniture(loftRoom.id, dbLoftFurniture);
+    }
   }
 
   // Assign to initial room

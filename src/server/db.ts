@@ -239,7 +239,7 @@ export async function signupAccount(username: string, password: string): Promise
       stmt.run(userId, cleanName, passwordHash);
       return { id: userId, name: cleanName };
     } catch (e: any) {
-      if (e.code === 'SQLITE_CONSTRAINT') {
+      if (e.code === 'SQLITE_CONSTRAINT' || e.code === 'SQLITE_CONSTRAINT_UNIQUE' || (e.message && (e.message.includes('UNIQUE') || e.message.includes('constraint')))) {
         return { error: 'Username already taken.' };
       }
       console.warn('SQLite signupAccount warning:', e.message);
@@ -293,7 +293,9 @@ export async function loginAccount(username: string, password: string): Promise<
  * Each user gets their own private loft so they can decorate independently.
  */
 export async function getUserSanctuaryRoom(userId: string, playerName: string): Promise<{ roomId: string; roomCode: string; name: string } | null> {
-  const roomId = `loft_${userId.substring(4, 12)}`; // e.g. loft_abcd1234
+  // Derive room ID consistently with getUserLoftRoomId in rooms.ts
+  const suffix = userId.replace(/^usr_/, '').substring(0, 12);
+  const roomId = `loft_${suffix}`;
   const roomName = `${playerName}'s Personal Sanctuary Loft`;
   const starterFurniture = [
     { id: 'f_sofa_' + crypto.randomBytes(4).toString('hex'), itemType: 'sofa', x: 3, y: 4 },

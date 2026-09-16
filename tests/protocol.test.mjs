@@ -292,7 +292,8 @@ test('BUY_ITEM deducts coins, adds inventory, sends updates', async () => {
   const rooms = new RoomManager();
   const { api, calls } = mockDb();
   const p = makePlayer('a', 'plaza'); p.coins = 1000; rooms.join('plaza', p);
-  await handleMessage({ type: 'BUY_ITEM', payload: { itemKey: 'sofa' } }, p, C(rooms, api, p));
+  handleMessage({ type: 'BUY_ITEM', payload: { itemKey: 'sofa' } }, p, C(rooms, api, p));
+  await new Promise(r => setTimeout(r, 80));
   assert.equal(p.coins, 500); // 1000 - 500
   assert.equal(calls.addCoins, 1);
   assert.equal(calls.addItem, 1);
@@ -317,7 +318,8 @@ test('SEND_FRIEND_REQUEST looks up by name via globalPlayers', async () => {
   const alice = makePlayer('a1'); alice.name = 'Alice'; rooms.join('plaza', alice);
   const bob = makePlayer('b1'); bob.name = 'Bob'; rooms.join('plaza', bob);
   const globalPlayers = new Map([['a1', alice], ['b1', bob]]);
-  await handleMessage({ type: 'SEND_FRIEND_REQUEST', payload: { targetName: 'Bob' } }, alice, C(rooms, api, alice, globalPlayers));
+  handleMessage({ type: 'SEND_FRIEND_REQUEST', payload: { targetName: 'Bob' } }, alice, C(rooms, api, alice, globalPlayers));
+  await new Promise(r => setTimeout(r, 80));
   const bobMsg = JSON.parse(bob.ws.sent[0]);
   assert.equal(bobMsg.type, 'FRIEND_REQUEST_RECEIVED');
   assert.equal(bobMsg.payload.fromPlayerName, 'Alice');
@@ -359,7 +361,8 @@ test('SEND_PRIVATE_MESSAGE sends PM to friend and echoes to sender', async () =>
   const alice = makePlayer('a1'); alice.name = 'Alice'; rooms.join('plaza', alice);
   const bob = makePlayer('b1'); bob.name = 'Bob'; rooms.join('plaza', bob);
   const globalPlayers = new Map([['a1', alice], ['b1', bob]]);
-  await handleMessage({ type: 'SEND_PRIVATE_MESSAGE', payload: { targetPlayerId: 'b1', text: 'Hello Bob!' } }, alice, C(rooms, api, alice, globalPlayers));
+  handleMessage({ type: 'SEND_PRIVATE_MESSAGE', payload: { targetPlayerId: 'b1', text: 'Hello Bob!' } }, alice, C(rooms, api, alice, globalPlayers));
+  await new Promise(r => setTimeout(r, 80));
   assert.equal(calls.saveMessage, 1);
   const bobMsg = JSON.parse(bob.ws.sent[0]);
   assert.equal(bobMsg.type, 'PRIVATE_MESSAGE_RECEIVED');
@@ -377,7 +380,8 @@ test('SEND_PRIVATE_MESSAGE blocks non-friends', async () => {
     areFriends: async () => areFriendsResult,
   };
   const alice = makePlayer('a1'); rooms.join('plaza', alice);
-  await handleMessage({ type: 'SEND_PRIVATE_MESSAGE', payload: { targetPlayerId: 'b1', text: 'Hi' } }, alice, C(rooms, api, alice, new Map()));
+  handleMessage({ type: 'SEND_PRIVATE_MESSAGE', payload: { targetPlayerId: 'b1', text: 'Hi' } }, alice, C(rooms, api, alice, new Map()));
+  await new Promise(r => setTimeout(r, 80));
   const msg = JSON.parse(alice.ws.sent[0]);
   assert.equal(msg.type, 'PRIVATE_MESSAGE_ERROR');
   assert.ok(msg.payload.message.includes('friends'));
