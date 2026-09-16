@@ -7,6 +7,8 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Clean reset of older schema tables if they were previously created with UUID types
+DROP TABLE IF EXISTS public.messages CASCADE;
+DROP TABLE IF EXISTS public.user_friends CASCADE;
 DROP TABLE IF EXISTS public.user_inventory CASCADE;
 DROP TABLE IF EXISTS public.placed_furniture CASCADE;
 DROP TABLE IF EXISTS public.rooms CASCADE;
@@ -66,6 +68,25 @@ CREATE TABLE public.user_inventory (
     item_type VARCHAR(48) NOT NULL,
     quantity INT DEFAULT 1 NOT NULL,
     acquired_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 7. USER FRIENDS (friend requests + accepted friends)
+CREATE TABLE public.user_friends (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    friend_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    responded_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 8. PRIVATE MESSAGES
+CREATE TABLE public.messages (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    sender_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    recipient_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    text TEXT NOT NULL,
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- Pre-populate Default Public Rooms
@@ -146,6 +167,8 @@ ALTER TABLE public.avatar_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.placed_furniture ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_friends ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 -- 1. Profiles Policies
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
@@ -187,3 +210,17 @@ CREATE POLICY "Furniture manageable"
 DROP POLICY IF EXISTS "Users can view own inventory" ON public.user_inventory;
 CREATE POLICY "Users can view own inventory" 
     ON public.user_inventory FOR SELECT USING (true);
+
+-- 6. Friends Policies
+DROP POLICY IF EXISTS "Users can manage own friend relationships" ON public.user_friends;
+CREATE POLICY "Users can manage own friend relationships" 
+    ON public.user_friends FOR ALL USING (true) WITH CHECK (true);
+
+-- 7. Messages Policies
+DROP POLICY IF EXISTS "Users can view own messages" ON public.messages;
+CREATE POLICY "Users can view own messages" 
+    ON public.messages FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can send messages" ON public.messages;
+CREATE POLICY "Users can send messages" 
+    ON public.messages FOR INSERT WITH CHECK (true);

@@ -68,6 +68,25 @@ export interface MinigameScorePayload {
   checksum: string;           // anti-cheat hash
 }
 
+/** GET_FRIENDS_LIST — request the player's friends list and pending requests */
+export interface FriendsListPayload {}
+
+/** SEND_FRIEND_REQUEST — request to add another player as a friend */
+export interface SendFriendRequestPayload {
+  targetName: string;         // look up by name
+}
+
+/** ACCEPT_FRIEND_REQUEST — accept an incoming friend request */
+export interface AcceptFriendRequestPayload {
+  requesterId: string;
+}
+
+/** SEND_PRIVATE_MESSAGE — send a whisper to a friend */
+export interface SendPrivateMessagePayload {
+  targetPlayerId: string;
+  text: string;
+}
+
 export type ClientMessage =
   | { type: 'JOIN_ROOM'; payload: JoinRoomPayload }
   | { type: 'MOVE_TO'; payload: MoveToPayload }
@@ -80,7 +99,12 @@ export type ClientMessage =
   | { type: 'CLAIM_DAILY_BONUS'; payload: null }
   | { type: 'UPDATE_AVATAR'; payload: { avatar?: Partial<Avatar>; name?: string } }
   | { type: 'SWITCH_ROOM'; payload: JoinRoomPayload }
-  | { type: 'CLEAR_ROOM'; payload: null };
+  | { type: 'CLEAR_ROOM'; payload: null }
+  | { type: 'GET_FRIENDS_LIST'; payload: null }
+  | { type: 'SEND_FRIEND_REQUEST'; payload: SendFriendRequestPayload }
+  | { type: 'ACCEPT_FRIEND_REQUEST'; payload: AcceptFriendRequestPayload }
+  | { type: 'SEND_PRIVATE_MESSAGE'; payload: SendPrivateMessagePayload }
+  | { type: 'GET_PRIVATE_MESSAGES'; payload: null };
 
 /* ── Outbound (Server → Client) ───────────────────────────────── */
 
@@ -92,6 +116,7 @@ export interface PlayerInfo {
   targetX: number;
   targetY: number;
   coins: number;
+  gems: number;
   avatar: Avatar;
   lastChat: ChatBubble | null;
 }
@@ -127,6 +152,60 @@ export interface RoomInfo {
   furniture: PlacedFurniture[];
 }
 
+/* ── Convenience types ── */
+
+export interface InventoryItem {
+  item_type: string;
+  quantity: number;
+}
+
+export interface ShopItem {
+  name: string;
+  price: number;
+  category: 'furniture' | 'clothing';
+  icon: string;
+}
+
+/* ── Friends & Private Messaging Payloads ── */
+
+export interface FriendEntry {
+  friendId: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface PendingRequest {
+  requesterId: string;
+  createdAt: string;
+}
+
+export interface FriendsListUpdatePayload {
+  friends: FriendEntry[];
+  pendingRequests: PendingRequest[];
+}
+
+export interface FriendRequestReceivedPayload {
+  fromPlayerId: string;
+  fromPlayerName: string;
+}
+
+export interface MessageRecord {
+  senderId: string;
+  text: string;
+  sentAt: string;
+}
+
+export interface PrivateMessageReceivedPayload {
+  fromPlayerId: string;
+  fromPlayerName: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface PrivateMessagesListPayload {
+  messages: MessageRecord[];
+}
+
 export type ServerMessage =
   | { type: 'ROOM_STATE'; payload: { room: RoomInfo; player: PlayerInfo; otherPlayers: PlayerInfo[] } }
   | { type: 'PLAYER_JOINED'; payload: { player: PlayerInfo } }
@@ -140,7 +219,16 @@ export type ServerMessage =
   | { type: 'COINS_UPDATED'; payload: { coins: number; earned: number; reason: string } }
   | { type: 'SYSTEM_ANNOUNCEMENT'; payload: { text: string } }
   | { type: 'PLAYER_PROFILE_UPDATED'; payload: { playerId: string; player: PlayerInfo } }
-  | { type: 'INIT_STATE'; payload: { playerId: string; player: PlayerInfo; room: RoomInfo; otherPlayers: PlayerInfo[] } };
+  | { type: 'INIT_STATE'; payload: { playerId: string; player: PlayerInfo; room: RoomInfo; otherPlayers: PlayerInfo[] } }
+  // Friends & Private Messaging
+  | { type: 'FRIENDS_LIST_UPDATE'; payload: FriendsListUpdatePayload }
+  | { type: 'FRIEND_REQUEST_SENT'; payload: { message: string; targetPlayerId?: string } }
+  | { type: 'FRIEND_REQUEST_RECEIVED'; payload: FriendRequestReceivedPayload }
+  | { type: 'FRIEND_REQUEST_ACCEPTED'; payload: { message: string; friendId?: string } }
+  | { type: 'FRIEND_REQUEST_ERROR'; payload: { message: string } }
+  | { type: 'PRIVATE_MESSAGE_RECEIVED'; payload: PrivateMessageReceivedPayload }
+  | { type: 'PRIVATE_MESSAGE_ERROR'; payload: { message: string } }
+  | { type: 'PRIVATE_MESSAGES_LIST'; payload: PrivateMessagesListPayload };
 
 /* ── Convenience: narrow a typed payload from a raw envelope ── */
 export type ClientMessageOf<T extends ClientMessage['type']> = Extract<ClientMessage, { type: T }>;

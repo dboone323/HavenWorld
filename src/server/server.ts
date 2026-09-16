@@ -24,6 +24,7 @@ export const server = http.createServer(app);
 export const wss = new WebSocketServer({ server });
 
 export const rooms = new RoomManager();
+export const globalPlayers = new Map<string, import('./rooms.ts').Player>();
 let nextPlayerNumber = 101;
 
 const PORT = process.env.PORT || 3000;
@@ -60,6 +61,7 @@ wss.on('connection', async (ws: WebSocket) => {
     targetX: 4.5,
     targetY: 7.5,
     coins: 1000,
+    gems: 50,
     lastDailyClaim: 0,
     ws,
     avatar: {
@@ -69,20 +71,36 @@ wss.on('connection', async (ws: WebSocket) => {
       shirtColor: '#2e86c1',
       pantsColor: '#34495e'
     },
-    lastChat: null
+    lastChat: null,
+    friends: [] as string[],
   };
 
   // Ensure profile is persisted
   await db.initPlayerProfile(playerId, defaultName);
 
+  // Try to load existing player profile from DB
+  const existingPlayer = await db.loadPlayerProfile(playerId);
+  if (existingPlayer) {
+    player.name = existingPlayer.name || defaultName;
+    player.coins = existingPlayer.coins || 1000;
+    player.gems = existingPlayer.gems || 50;
+    player.lastDailyClaim = existingPlayer.lastDailyClaim || 0;
+    if (existingPlayer.avatar) {
+      player.avatar = { ...player.avatar, ...existingPlayer.avatar };
+    }
+  }
+
   // Hydrate persisted room furniture (works in both sqlite & supabase modes)
-  const dbFurniture = await db.getRoomFurniture('sanctuary_loft');
-  if (dbFurniture && dbFurniture.length > 0) {
-    rooms.setFurniture('sanctuary_loft', dbFurniture);
+  for (const roomId of rooms.list()) {
+    const dbFurniture = await db.getRoomFurniture(roomId);
+    if (dbFurniture && dbFurniture.length > 0) {
+      rooms.setFurniture(roomId, dbFurniture);
+    }
   }
 
   // Assign to initial room
   rooms.join('plaza', player);
+  globalPlayers.set(playerId, player);
   const plaza = rooms.get('plaza');
 
   // Send welcome + initial state to the connecting client
@@ -106,12 +124,13 @@ wss.on('connection', async (ws: WebSocket) => {
     } catch {
       return;
     }
-    handleMessage(msg, player, { rooms, db, ws });
+    handleMessage(msg, player, { rooms, db, ws, globalPlayers });
   });
 
   ws.on('close', () => {
     rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } });
     rooms.leave(player);
+    globalPlayers.delete(playerId);
   });
 });
 

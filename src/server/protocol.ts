@@ -7,10 +7,30 @@ import { clampGrid } from '../shared/iso.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
 import { serializePlayer, RoomManager } from './rooms.ts';
 import type { Player } from './rooms.ts';
-import type { PlacedFurniture, Avatar } from '../shared/types.ts';
+import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
 
 const GRID_MAX = 11;
+
+// --- Shop Catalog (Phase 1 furniture + clothing items) ---
+const SHOP_ITEMS: Record<string, ShopItem> = {
+  // Furniture
+  'sofa':      { name: 'Cozy Velvet Sofa',   price: 500,  category: 'furniture', icon: '🛋️' },
+  'table':     { name: 'Oak Coffee Table',    price: 300,  category: 'furniture', icon: '🪵' },
+  'plant':     { name: 'Monstera Plant',      price: 150,  category: 'furniture', icon: '🪴' },
+  'tv':        { name: 'Retro CRT TV',        price: 400,  category: 'furniture', icon: '📺' },
+  'neon':      { name: 'Neon Wall Sign',      price: 600,  category: 'furniture', icon: '✨' },
+  'arcade':    { name: 'Arcade Cabinet',      price: 800,  category: 'furniture', icon: '🕹️' },
+  'bed':       { name: 'Cozy Bed',            price: 750,  category: 'furniture', icon: '🛏️' },
+  'bookshelf': { name: 'Wooden Bookshelf',    price: 450,  category: 'furniture', icon: '📚' },
+  // Clothing
+  'hair_pink':     { name: 'Pink Hair Dye',   price: 200, category: 'clothing', icon: '💗' },
+  'hair_blue':     { name: 'Blue Hair Dye',   price: 200, category: 'clothing', icon: '💙' },
+  'shirt_purple':  { name: 'Purple Hoodie',   price: 350, category: 'clothing', icon: '💜' },
+  'pants_black':   { name: 'Black Pants',     price: 250, category: 'clothing', icon: '🖤' },
+  'shoes_sneakers':{ name: 'Sneakers',        price: 300, category: 'clothing', icon: '👟' },
+};
+
 
 export interface DispatchContext {
   rooms: RoomManager;
@@ -23,8 +43,22 @@ export interface DispatchContext {
     addFurniture: (roomId: string, item: PlacedFurniture) => Promise<void>;
     removeFurniture: (furnitureId: string) => Promise<void>;
     close: () => void;
+    savePlayerName: (userId: string, name: string) => Promise<void>;
+    saveLastDailyClaim: (userId: string, timestamp: number) => Promise<void>;
+    getInventory: (userId: string) => Promise<InventoryItem[]>;
+    addItem: (userId: string, itemType: string, quantity?: number) => Promise<void>;
+    removeItem: (userId: string, itemType: string, quantity?: number) => Promise<void>;
+    getFriends: (userId: string) => Promise<FriendEntry[]>;
+    getPendingFriendRequests: (userId: string) => Promise<PendingRequest[]>;
+    sendFriendRequest: (userId: string, friendId: string) => Promise<{ success: boolean; message: string }>;
+    acceptFriendRequest: (userId: string, requesterId: string) => Promise<{ success: boolean; message: string }>;
+    areFriends: (userId: string, friendId: string) => Promise<boolean>;
+    saveMessage: (senderId: string, recipientId: string, text: string) => Promise<void>;
+    getMessages: (userId: string) => Promise<MessageRecord[]>;
   };
   ws: WebSocket;
+  /** All connected players, for friend lookups and PM routing */
+  globalPlayers?: Map<string, Player>;
 }
 
 /**
@@ -154,11 +188,193 @@ export function handleMessage(msg: { type: string; payload?: Record<string, unkn
       if (msg.payload && msg.payload.avatar) Object.assign(player.avatar, msg.payload.avatar);
       if (msg.payload && msg.payload.name) {
         player.name = String(msg.payload.name as string).trim().slice(0, 18) || player.name;
+        db.savePlayerName(player.id, player.name).catch(() => {});
       }
       db.saveAvatar(player.id, player.avatar).catch(() => {});
       rooms.broadcast(room, {
         type: 'PLAYER_PROFILE_UPDATED',
         payload: { playerId: player.id, player: serializePlayer(player) }
+      });
+      break;
+    }
+
+    // --- Shop & Inventory ---
+
+    case 'GET_SHOP_CATALOG': {
+      rooms.send(player.ws, {
+        type: 'SHOP_CATALOG',
+        payload: { items: SHOP_ITEMS }
+      });
+      break;
+    }
+
+    case 'GET_INVENTORY': {
+      db.getInventory(player.id).then((inventory) => {
+        rooms.send(player.ws, {
+          type: 'INVENTORY_UPDATE',
+          payload: { items: inventory }
+        });
+      });
+      break;
+    }
+
+    case 'BUY_ITEM': {
+      const itemKey = msg.payload!.itemKey as string;
+      const item = SHOP_ITEMS[itemKey as keyof typeof SHOP_ITEMS];
+      if (!item) {
+        rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Item not found in shop!' } });
+        return;
+      }
+      if (player.coins < item.price) {
+        rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Not enough HavenCoins!' } });
+        return;
+      }
+      player.coins -= item.price;
+      db.addCoins(player.id, -item.price).catch(() => {});
+      db.addItem(player.id, itemKey, 1).catch(() => {});
+      Promise.all([db.getInventory(player.id)]).then(([inventory]) => {
+        rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: 0, reason: `Bought ${item.name}` } });
+        rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: inventory } });
+      });
+      break;
+    }
+
+    case 'SELL_ITEM': {
+      const itemType = msg.payload!.itemType as string;
+      const sellQty = msg.payload!.quantity as number;
+      const item = SHOP_ITEMS[itemType as keyof typeof SHOP_ITEMS];
+      if (!item) {
+        rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Cannot sell this item!' } });
+        return;
+      }
+      db.getInventory(player.id).then(async (inventory) => {
+        const ownedItem = inventory.find((i: InventoryItem) => i.item_type === itemType);
+        if (!ownedItem || ownedItem.quantity < sellQty) {
+          rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Not enough items to sell!' } });
+          return;
+        }
+        const sellPrice = Math.floor(item.price * 0.5);
+        const totalEarnings = sellPrice * sellQty;
+        await db.removeItem(player.id, itemType, sellQty);
+        player.coins += totalEarnings;
+        await db.addCoins(player.id, totalEarnings);
+        const updatedInv = await db.getInventory(player.id);
+        rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: totalEarnings, reason: `Sold ${sellQty}x ${item.name}` } });
+        rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: updatedInv } });
+      });
+      break;
+    }
+
+    // --- Friends System ---
+
+    case 'GET_FRIENDS_LIST': {
+      Promise.all([db.getFriends(player.id), db.getPendingFriendRequests(player.id)]).then(([friends, pendingRequests]) => {
+        rooms.send(player.ws, {
+          type: 'FRIENDS_LIST_UPDATE',
+          payload: { friends, pendingRequests }
+        });
+      });
+      break;
+    }
+
+    case 'SEND_FRIEND_REQUEST': {
+      const targetName = msg.payload!.targetName as string;
+      if (!targetName) {
+        rooms.send(player.ws, { type: 'FRIEND_REQUEST_ERROR', payload: { message: 'Target player name is required.' } });
+        return;
+      }
+      // Look up target player by name across all connected players
+      let targetPlayer: Player | undefined;
+      if (ctx.globalPlayers) {
+        for (const p of ctx.globalPlayers.values()) {
+          if (p.name === targetName) { targetPlayer = p; break; }
+        }
+      }
+      if (!targetPlayer) {
+        rooms.send(player.ws, { type: 'FRIEND_REQUEST_ERROR', payload: { message: 'Player not found or offline.' } });
+        return;
+      }
+      if (targetPlayer.id === player.id) {
+        rooms.send(player.ws, { type: 'FRIEND_REQUEST_ERROR', payload: { message: 'You cannot add yourself as a friend.' } });
+        return;
+      }
+      db.areFriends(player.id, targetPlayer.id).then((alreadyFriends) => {
+        if (alreadyFriends) {
+          rooms.send(player.ws, { type: 'FRIEND_REQUEST_ERROR', payload: { message: 'You are already friends with this player.' } });
+          return;
+        }
+        db.sendFriendRequest(player.id, targetPlayer.id).then((result) => {
+          rooms.send(player.ws, { type: 'FRIEND_REQUEST_SENT', payload: { message: result.message, targetPlayerId: targetPlayer.id } });
+          if (targetPlayer.ws && targetPlayer.ws.readyState === 1) {
+            rooms.send(targetPlayer.ws, {
+              type: 'FRIEND_REQUEST_RECEIVED',
+              payload: { fromPlayerId: player.id, fromPlayerName: player.name }
+            });
+          }
+        });
+      });
+      break;
+    }
+
+    case 'ACCEPT_FRIEND_REQUEST': {
+      const requesterId = msg.payload!.requesterId as string;
+      db.acceptFriendRequest(player.id, requesterId).then((result) => {
+        rooms.send(player.ws, { type: 'FRIEND_REQUEST_ACCEPTED', payload: { message: result.message, friendId: requesterId } });
+        const requester = ctx.globalPlayers?.get(requesterId);
+        if (requester && requester.ws && requester.ws.readyState === 1) {
+          rooms.send(requester.ws, {
+            type: 'FRIEND_REQUEST_ACCEPTED',
+            payload: { message: `${player.name} accepted your friend request!`, friendId: player.id }
+          });
+        }
+      });
+      break;
+    }
+
+    // --- Private Messaging ---
+
+    case 'SEND_PRIVATE_MESSAGE': {
+      const targetPlayerId = msg.payload!.targetPlayerId as string;
+      const text = msg.payload!.text as string;
+      if (!targetPlayerId || !text) {
+        rooms.send(player.ws, { type: 'PRIVATE_MESSAGE_ERROR', payload: { message: 'Target player and message text are required.' } });
+        return;
+      }
+      db.areFriends(player.id, targetPlayerId).then((isFriend) => {
+        if (!isFriend) {
+          rooms.send(player.ws, { type: 'PRIVATE_MESSAGE_ERROR', payload: { message: 'You can only message friends.' } });
+          return;
+        }
+        const filteredText = text.trim().substring(0, 280);
+        if (!filteredText) {
+          rooms.send(player.ws, { type: 'PRIVATE_MESSAGE_ERROR', payload: { message: 'Message is empty.' } });
+          return;
+        }
+        db.saveMessage(player.id, targetPlayerId, filteredText).then(() => {
+          const messageData = {
+            type: 'PRIVATE_MESSAGE_RECEIVED',
+            payload: {
+              fromPlayerId: player.id,
+              fromPlayerName: player.name,
+              text: filteredText,
+              timestamp: Date.now()
+            }
+          };
+          // Send to recipient if online
+          const targetP = ctx.globalPlayers?.get(targetPlayerId);
+          if (targetP && targetP.ws && targetP.ws.readyState === 1) {
+            rooms.send(targetP.ws, messageData);
+          }
+          // Echo back to sender (so they see their own message in the PM window)
+          rooms.send(player.ws, messageData);
+        });
+      });
+      break;
+    }
+
+    case 'GET_PRIVATE_MESSAGES': {
+      db.getMessages(player.id).then((messages) => {
+        rooms.send(player.ws, { type: 'PRIVATE_MESSAGES_LIST', payload: { messages } });
       });
       break;
     }

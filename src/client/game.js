@@ -33,6 +33,20 @@ import { escapeHtml } from '../shared/chat.ts';
     furniture: []
   };
 
+  // Friends & Private Messaging State
+  let friendsData = { friends: [], pendingRequests: [] };
+  let pmTarget = null; // { id: string, name: string }
+
+  // DOM References (friends panel)
+  const friendsModal = document.getElementById('friends-modal');
+  const friendsBadge = document.getElementById('friends-badge');
+  const friendsListEl = document.getElementById('friends-list');
+  const pendingListEl = document.getElementById('pending-requests-list');
+  const pmHistory = document.getElementById('pm-history');
+  const friendNameInput = document.getElementById('friend-name-input');
+  const pmTargetInput = document.getElementById('pm-target');
+  const pmTextInput = document.getElementById('pm-text');
+
   let editMode = false;
   let selectedFurnitureType = 'sofa';
   let targetIndicator = null; // { x, y, alpha }
@@ -188,6 +202,66 @@ import { escapeHtml } from '../shared/chat.ts';
         if (p) {
           appendChatMessage('system', `${p.name} left the room.`);
           otherPlayers.delete(msg.payload.playerId);
+        }
+        break;
+      }
+
+      case 'FRIENDS_LIST_UPDATE': {
+        friendsData.friends = msg.payload.friends || [];
+        friendsData.pendingRequests = msg.payload.pendingRequests || [];
+        renderFriendsList();
+        appendChatMessage('system', `You have ${friendsData.friends.length} friends and ${friendsData.pendingRequests.length} pending request(s).`);
+        break;
+      }
+
+      case 'FRIEND_REQUEST_RECEIVED': {
+        const { fromPlayerId, fromPlayerName } = msg.payload;
+        friendsData.pendingRequests.push({ requesterId: fromPlayerId, createdAt: new Date().toISOString() });
+        renderFriendsList();
+        updateFriendRequestBadge();
+        appendChatMessage('system', `📬 ${fromPlayerName} sent you a friend request!`);
+        break;
+      }
+
+      case 'FRIEND_REQUEST_SENT': {
+        appendChatMessage('system', `Friend request sent: ${msg.payload.message}`);
+        break;
+      }
+
+      case 'FRIEND_REQUEST_ACCEPTED': {
+        appendChatMessage('system', `Friend request accepted: ${msg.payload.message}`);
+        friendNameInput.value = '';
+        renderFriendsList();
+        break;
+      }
+
+      case 'FRIEND_REQUEST_ERROR': {
+        appendChatMessage('system', `Error: ${msg.payload.message}`);
+        break;
+      }
+
+      case 'PRIVATE_MESSAGE_RECEIVED': {
+        const { fromPlayerId, fromPlayerName, text } = msg.payload;
+        const isSelf = fromPlayerId === selfPlayer.id;
+        if (!isSelf) {
+          friendNameInput.value = '';
+        }
+        appendPMMessage(fromPlayerName, text, isSelf);
+        renderFriendsList();
+        break;
+      }
+
+      case 'PRIVATE_MESSAGE_ERROR': {
+        appendChatMessage('system', `PM Error: ${msg.payload.message}`);
+        break;
+      }
+
+      case 'PRIVATE_MESSAGES_LIST': {
+        const messages = msg.payload.messages || [];
+        pmHistory.innerHTML = '<div class="empty-state">No messages</div>';
+        if (messages.length > 0) {
+          pmHistory.innerHTML = '';
+          messages.forEach(m => appendPMMessage(m.senderId, m.text, false));
         }
         break;
       }
@@ -868,6 +942,123 @@ import { escapeHtml } from '../shared/chat.ts';
     }
   }
 
-    // Start Client
+    function updateFriendRequestBadge() {
+    const count = friendsData.pendingRequests.length;
+    friendsBadge.textContent = String(count);
+    friendsBadge.classList.toggle('hidden', count === 0);
+  }
+
+  function renderFriendsList() {
+    updateFriendRequestBadge();
+
+    // Friends list
+    if (friendsData.friends.length === 0) {
+      friendsListEl.innerHTML = '<li class="empty-state">No friends yet</li>';
+    } else {
+      friendsListEl.innerHTML = friendsData.friends.map(f => `
+        <li class="friend-item" data-friendid="${f.friendId}">
+          <span class="friend-name">${f.friendId}</span>
+          <span class="friend-status ${f.status}">${f.status}</span>
+          <button class="pm-btn" title="Send private message">💬</button>
+        </li>
+      `).join('');
+    }
+
+    // Pending requests
+    if (friendsData.pendingRequests.length === 0) {
+      pendingListEl.innerHTML = '<li class="empty-state">No pending requests</li>';
+    } else {
+      pendingListEl.innerHTML = friendsData.pendingRequests.map(r => `
+        <li class="request-item" data-requester="${r.requesterId}">
+          <span class="request-name">${r.requesterId}</span>
+          <button class="accept-btn" title="Accept">✓</button>
+          <button class="decline-btn" title="Decline">✕</button>
+        </li>
+      `).join('');
+    }
+  }
+
+  function appendPMMessage(sender, text, isSelf) {
+    const existingEmpty = pmHistory.querySelector('.empty-state');
+    if (existingEmpty) pmHistory.innerHTML = '';
+    const msg = document.createElement('div');
+    msg.className = `pm-message ${isSelf ? 'sent' : 'received'}`;
+    msg.innerHTML = `<span class="pm-sender">${escapeHtml(sender)}</span>: <span class="pm-text">${escapeHtml(text)}</span>`;
+    pmHistory.appendChild(msg);
+    pmHistory.scrollTop = pmHistory.scrollHeight;
+  }
+
+  function sendWs(msg) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
+  }
+
+  // --- Friends Panel Event Handlers ---
+
+  document.getElementById('btn-friends').addEventListener('click', () => {
+    friendsModal.classList.remove('hidden');
+    sendWs({ type: 'GET_FRIENDS_LIST', payload: null });
+    sendWs({ type: 'GET_PRIVATE_MESSAGES', payload: null });
+  });
+
+  document.getElementById('btn-close-friends').addEventListener('click', () => {
+    friendsModal.classList.add('hidden');
+  });
+
+  // Close friends modal when clicking outside
+  friendsModal.addEventListener('click', (e) => {
+    if (e.target === friendsModal) {
+      friendsModal.classList.add('hidden');
+    }
+  });
+
+  // Add friend form
+  document.getElementById('add-friend-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = friendNameInput.value.trim();
+    if (!name) return;
+    sendWs({ type: 'SEND_FRIEND_REQUEST', payload: { targetName: name } });
+  });
+
+  // Pending request accept buttons (event delegation)
+  pendingListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.accept-btn');
+    if (btn) {
+      const li = btn.closest('.request-item');
+      const requesterId = li.getAttribute('data-requester');
+      sendWs({ type: 'ACCEPT_FRIEND_REQUEST', payload: { requesterId } });
+      li.remove();
+    }
+    const decBtn = e.target.closest('.decline-btn');
+    if (decBtn) {
+      const li = decBtn.closest('.request-item');
+      li.remove();
+    }
+  });
+
+  // Friend PM buttons (event delegation)
+  friendsListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pm-btn');
+    if (btn) {
+      const li = btn.closest('.friend-item');
+      const friendId = li.getAttribute('data-friendid');
+      pmTargetInput.value = friendId;
+      pmTarget = { id: friendId, name: friendId };
+    }
+  });
+
+  // Private message form
+  document.getElementById('pm-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const targetName = pmTargetInput.value.trim();
+    const text = pmTextInput.value.trim();
+    if (!targetName || !text) return;
+    const targetPlayerId = pmTarget ? pmTarget.id : targetName;
+    sendWs({ type: 'SEND_PRIVATE_MESSAGE', payload: { targetPlayerId, text } });
+    pmTextInput.value = '';
+  });
+
+  // --- Start Client ---
   initWebSocket();
   requestAnimationFrame(gameLoop);

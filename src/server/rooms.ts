@@ -17,10 +17,12 @@ export interface Player {
   targetX: number;
   targetY: number;
   coins: number;
+  gems: number;
   lastDailyClaim: number;
   ws: WebSocket;
   avatar: Avatar;
   lastChat: { text: string; timestamp: number } | null;
+  friends: string[];
 }
 
 export interface Room {
@@ -76,6 +78,7 @@ export function serializePlayer(p: Player): PlayerInfo {
     targetX: p.targetX,
     targetY: p.targetY,
     coins: p.coins,
+    gems: p.gems,
     avatar: p.avatar,
     lastChat: p.lastChat,
   };

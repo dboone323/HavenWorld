@@ -107,6 +107,209 @@ await test('CLAIM_DAILY_BONUS updates coins to 1250', async () => {
   await settle(100);
 });
 
+// --- Friends System Integration Tests ---
+
+await test('GET_FRIENDS_LIST returns empty initial list', async () => {
+  const a = await connect();
+  const before = a.msgs.length;
+  a.ws.send(JSON.stringify({ type: 'GET_FRIENDS_LIST', payload: null }));
+  await settle(50);
+  const upd = a.msgs.slice(before).find(m => m.type === 'FRIENDS_LIST_UPDATE');
+  assert.ok(upd, 'got FRIENDS_LIST_UPDATE');
+  assert.equal(upd.payload.friends.length, 0, 'no friends initially');
+  assert.equal(upd.payload.pendingRequests.length, 0, 'no pending requests initially');
+  a.ws.close();
+  await settle(100);
+});
+
+await test('SEND_FRIEND_REQUEST delivers request to recipient', async () => {
+  const alice = await connect();
+  const bob = await connect();
+  await settle(50);
+
+  // Get bob's name from INIT_STATE
+  const bobInit = bob.msgs.find(m => m.type === 'INIT_STATE');
+  const bobName = bobInit.payload.player.name;
+
+  // Wait a bit more for both to be fully registered
+  await settle(50);
+
+  // Alice sends friend request to bob
+  const beforeBob = bob.msgs.length;
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_FRIEND_REQUEST',
+    payload: { targetName: bobName }
+  }));
+  await settle(80);
+
+  // Bob should receive FRIEND_REQUEST_RECEIVED
+  const received = bob.msgs.slice(beforeBob).find(m => m.type === 'FRIEND_REQUEST_RECEIVED');
+  assert.ok(received, 'bob received FRIEND_REQUEST_RECEIVED');
+  const aliceName = alice.msgs.find(m => m.type === 'INIT_STATE').payload.player.name;
+  assert.equal(received.payload.fromPlayerName, aliceName, 'correct sender');
+
+  // Alice should receive FRIEND_REQUEST_SENT
+  const sent = alice.msgs.find(m => m.type === 'FRIEND_REQUEST_SENT');
+  assert.ok(sent, 'alice got FRIEND_REQUEST_SENT');
+  assert.ok(sent.payload.message.includes('sent'), 'success message');
+
+  alice.ws.close();
+  bob.ws.close();
+  await settle(100);
+});
+
+await test('ACCEPT_FRIEND_REQUEST makes players friends', async () => {
+  const alice = await connect();
+  const bob = await connect();
+  await settle(50);
+
+  const bobName = bob.msgs.find(m => m.type === 'INIT_STATE').payload.player.name;
+
+  // Alice sends friend request
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_FRIEND_REQUEST',
+    payload: { targetName: bobName }
+  }));
+  await settle(80);
+
+  // Bob gets the request
+  const req = bob.msgs.find(m => m.type === 'FRIEND_REQUEST_RECEIVED');
+  assert.ok(req, 'bob got friend request');
+
+  // Get bob's player ID from INIT_STATE
+  const bobId = bob.msgs.find(m => m.type === 'INIT_STATE').payload.selfId;
+
+  // Bob accepts
+  const beforeAlice = alice.msgs.length;
+  bob.ws.send(JSON.stringify({
+    type: 'ACCEPT_FRIEND_REQUEST',
+    payload: { requesterId: alice.msgs.find(m => m.type === 'INIT_STATE').payload.selfId }
+  }));
+  await settle(80);
+
+  // Alice should get FRIEND_REQUEST_ACCEPTED
+  const accepted = alice.msgs.slice(beforeAlice).find(m => m.type === 'FRIEND_REQUEST_ACCEPTED');
+  assert.ok(accepted, 'alice got FRIEND_REQUEST_ACCEPTED');
+
+  // Bob should also get FRIEND_REQUEST_ACCEPTED
+  const bobAccepted = bob.msgs.find(m => m.type === 'FRIEND_REQUEST_ACCEPTED');
+  assert.ok(bobAccepted, 'bob got FRIEND_REQUEST_ACCEPTED');
+
+  // Now GET_FRIENDS_LIST should show the friend on both sides
+  alice.ws.send(JSON.stringify({ type: 'GET_FRIENDS_LIST', payload: null }));
+  await settle(50);
+  const aliceFriends = alice.msgs.find(m => m.type === 'FRIENDS_LIST_UPDATE' && m.payload.friends);
+  // Get the latest FRIENDS_LIST_UPDATE
+  const aliceUpdates = alice.msgs.filter(m => m.type === 'FRIENDS_LIST_UPDATE');
+  const latestAlice = aliceUpdates[aliceUpdates.length - 1];
+  assert.ok(latestAlice.payload.friends.length >= 1, 'alice has at least 1 friend');
+
+  alice.ws.close();
+  bob.ws.close();
+  await settle(100);
+});
+
+await test('SEND_PRIVATE_MESSAGE delivers to friend and blocks non-friends', async () => {
+  const alice = await connect();
+  const bob = await connect();
+  const carol = await connect();
+  await settle(50);
+
+  const bobName = bob.msgs.find(m => m.type === 'INIT_STATE').payload.player.name;
+  const bobId = bob.msgs.find(m => m.type === 'INIT_STATE').payload.selfId;
+  const carolId = carol.msgs.find(m => m.type === 'INIT_STATE').payload.selfId;
+
+  // Alice sends friend request to bob
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_FRIEND_REQUEST',
+    payload: { targetName: bobName }
+  }));
+  await settle(80);
+
+  // Bob accepts
+  bob.ws.send(JSON.stringify({
+    type: 'ACCEPT_FRIEND_REQUEST',
+    payload: { requesterId: alice.msgs.find(m => m.type === 'INIT_STATE').payload.selfId }
+  }));
+  await settle(80);
+
+  // Alice sends PM to bob
+  const beforeBob = bob.msgs.length;
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_PRIVATE_MESSAGE',
+    payload: { targetPlayerId: bobId, text: 'Hello bob!' }
+  }));
+  await settle(50);
+
+  // Bob receives PRIVATE_MESSAGE_RECEIVED
+  const pm = bob.msgs.slice(beforeBob).find(m => m.type === 'PRIVATE_MESSAGE_RECEIVED');
+  assert.ok(pm, 'bob received PRIVATE_MESSAGE_RECEIVED');
+  assert.equal(pm.payload.text, 'Hello bob!');
+  const aliceName = alice.msgs.find(m => m.type === 'INIT_STATE').payload.player.name;
+  assert.equal(pm.payload.fromPlayerName, aliceName);
+
+  // Alice also gets an echo
+  const alicePM = alice.msgs.find(m => m.type === 'PRIVATE_MESSAGE_RECEIVED');
+  assert.ok(alicePM, 'alice got PM echo');
+
+  // Alice tries to PM carol (not a friend) — should get error
+  const beforeAlice = alice.msgs.length;
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_PRIVATE_MESSAGE',
+    payload: { targetPlayerId: carolId, text: 'Hello carol!' }
+  }));
+  await settle(50);
+
+  const pmError = alice.msgs.slice(beforeAlice).find(m => m.type === 'PRIVATE_MESSAGE_ERROR');
+  assert.ok(pmError, 'alice got PRIVATE_MESSAGE_ERROR for non-friend');
+
+  alice.ws.close();
+  bob.ws.close();
+  carol.ws.close();
+  await settle(100);
+});
+
+await test('GET_PRIVATE_MESSAGES returns message history', async () => {
+  const alice = await connect();
+  const bob = await connect();
+  await settle(50);
+
+  const bobId = bob.msgs.find(m => m.type === 'INIT_STATE').payload.selfId;
+
+  // Alice sends friend request and bob accepts
+  const bobName = bob.msgs.find(m => m.type === 'INIT_STATE').payload.player.name;
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_FRIEND_REQUEST',
+    payload: { targetName: bobName }
+  }));
+  await settle(80);
+  bob.ws.send(JSON.stringify({
+    type: 'ACCEPT_FRIEND_REQUEST',
+    payload: { requesterId: alice.msgs.find(m => m.type === 'INIT_STATE').payload.selfId }
+  }));
+  await settle(80);
+
+  // Alice sends a PM to bob
+  alice.ws.send(JSON.stringify({
+    type: 'SEND_PRIVATE_MESSAGE',
+    payload: { targetPlayerId: bobId, text: 'History test message' }
+  }));
+  await settle(50);
+
+  // Bob requests private message history
+  bob.ws.send(JSON.stringify({ type: 'GET_PRIVATE_MESSAGES', payload: null }));
+  await settle(50);
+
+  const msgList = bob.msgs.find(m => m.type === 'PRIVATE_MESSAGES_LIST');
+  assert.ok(msgList, 'bob got PRIVATE_MESSAGES_LIST');
+  assert.ok(msgList.payload.messages.length > 0, 'message history is non-empty');
+  assert.equal(msgList.payload.messages[0].text, 'History test message');
+
+  alice.ws.close();
+  bob.ws.close();
+  await settle(100);
+});
+
 // --- Cleanup ---
 
 for (const c of wss.clients || []) c.terminate();

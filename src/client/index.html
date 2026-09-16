@@ -50,6 +50,9 @@
         <button id="btn-avatar" class="action-btn avatar-btn" title="Customize Character">
           👤 Wardrobe
         </button>
+        <button id="btn-friends" class="action-btn friends-btn" title="Friends & Messages">
+          👥 Friends <span id="friends-badge" class="badge hidden">0</span>
+        </button>
       </div>
     </header>
 
@@ -199,6 +202,54 @@
       </div>
     </div>
   </div>
+
+    <!-- Friends & Private Messaging Panel -->
+    <div id="friends-modal" class="modal-overlay hidden">
+      <div class="modal-card friends-card">
+        <div class="modal-header">
+          <h3>👥 Friends</h3>
+          <button id="btn-close-friends" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body friends-body">
+          <!-- Pending Friend Requests -->
+          <div class="friends-section">
+            <h4>Pending Requests</h4>
+            <ul id="pending-requests-list" class="friend-list">
+              <li class="empty-state">No pending requests</li>
+            </ul>
+          </div>
+
+          <!-- Friends List -->
+          <div class="friends-section">
+            <h4>Your Friends</h4>
+            <ul id="friends-list" class="friend-list">
+              <li class="empty-state">No friends yet</li>
+            </ul>
+          </div>
+
+          <!-- Add Friend Form -->
+          <div class="friends-section">
+            <form id="add-friend-form" class="add-friend-form">
+              <input type="text" id="friend-name-input" placeholder="Enter player name..." maxlength="18" autocomplete="off">
+              <button type="submit" class="primary-btn">Add</button>
+            </form>
+          </div>
+
+          <!-- Private Messages -->
+          <div class="friends-section">
+            <h4>Recent Messages</h4>
+            <div id="pm-history" class="pm-history">
+              <div class="empty-state">No messages</div>
+            </div>
+            <form id="pm-form" class="pm-form">
+              <input type="text" id="pm-target" placeholder="Friend's name..." maxlength="18" autocomplete="off">
+              <input type="text" id="pm-text" placeholder="Type a message..." maxlength="280" autocomplete="off">
+              <button type="submit" class="primary-btn">Send</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="game.js"></script>
 </body>
