@@ -169,6 +169,6 @@ cd /home/ubuntu/HavenWorld
 Run these commands to confirm complete system health:
 
 - [ ] `pm2 status havenworld`: Status must be `online`, restarts low, CPU/memory stable.
-- [ ] `pm2 logs havenworld --lines 30`: Must display `🚀 HavenWorld / MiniWorld Multiplayer Server Online` and `Connected to Cloud Supabase PostgreSQL`.
+- [ ] `pm2 logs havenworld --lines 30`: Must display `🚀 HavenWorld Multiplayer Server Online` and `Connected to Cloud Supabase PostgreSQL`.
 - [ ] `curl -I http://127.0.0.1:3000`: Must return `HTTP/1.1 200 OK`.
 - [ ] `cloudflared`: Tunnel process active and reporting public tunnel URL in logs.
