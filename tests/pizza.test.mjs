@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from '../src/shared/pizza.mjs';
+import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from '../src/shared/pizza.ts';
 
 test('RECIPES ships three starter recipes', () => {
   assert.equal(RECIPES.length, 3);

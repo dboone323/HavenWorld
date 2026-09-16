@@ -89,6 +89,8 @@ export interface PlayerInfo {
   name: string;
   x: number;
   y: number;
+  targetX: number;
+  targetY: number;
   coins: number;
   avatar: Avatar;
   lastChat: ChatBubble | null;
@@ -114,8 +116,8 @@ export interface PlacedFurniture {
   type: string;
   x: number;
   y: number;
-  rotation: 0 | 90 | 180 | 270;
-  elevation: number;          // 0 = floor, >0 = raised
+  rotation: number;
+  elevation?: number;          // 0 = floor, >0 = raised (optional for backward compat)
   parentSurfaceId?: string | null;
 }
 

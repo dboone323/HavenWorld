@@ -1,9 +1,9 @@
 // HavenWorld — Game Engine & Multiplayer Client (HTML5 Canvas + WebSockets)
 // ES module: pure logic is imported from shared/ (unit-tested in Node).
-import { toScreen as isoToScreen, toGrid as isoToGrid } from '../shared/iso.mjs';
-import { stepToward, frameDt, fadeAlpha } from '../shared/movement.mjs';
-import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from '../shared/pizza.mjs';
-import { escapeHtml } from '../shared/chat.mjs';
+import { toScreen as isoToScreen, toGrid as isoToGrid } from '../shared/iso.ts';
+import { stepToward, frameDt, fadeAlpha } from '../shared/movement.ts';
+import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from '../shared/pizza.ts';
+import { escapeHtml } from '../shared/chat.ts';
 
   // State
   let ws = null;
@@ -619,7 +619,7 @@ import { escapeHtml } from '../shared/chat.mjs';
     box.scrollTop = box.scrollHeight;
   }
 
-    // escapeHtml is imported from shared/chat.mjs (XSS-safe, also used by the server).
+    // escapeHtml is imported from shared/chat.ts (XSS-safe, also used by the server).
 
   function updateCoinUI(coins) {
     document.getElementById('coin-amount').textContent = coins.toLocaleString();

@@ -2,14 +2,14 @@
   "name": "havenworld",
   "version": "0.1.0",
   "description": "Cozy social virtual world hybrid of MegaPlanet and YoWorld",
-  "main": "src/server/server.js",
+  "main": "src/server/server.ts",
   "type": "module",
   "scripts": {
-    "start": "node src/server/server.js",
+    "start": "node src/server/server.ts",
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "node --watch src/server/server.js",
+    "dev:server": "node --watch src/server/server.ts",
     "dev:web": "vite",
-    "lint": "node --check src/server/server.js && node --check src/server/db.js && node --check src/server/rooms.js && node --check src/server/moderation.js && node --check src/server/protocol.js",
+    "lint": "node --check src/server/server.ts && node --check src/server/db.ts && node --check src/server/rooms.ts && node --check src/server/moderation.ts && node --check src/server/protocol.ts",
     "tsc": "tsc --noEmit",
     "test": "node --test && node tests/integration-runner.mjs",
     "test:watch": "node --test --watch",
@@ -50,8 +50,10 @@
     "@capacitor/cli": "^7.0.0",
     "@capacitor/core": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
-    "concurrently": "^10.0.5",
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1",
     "c8": "^12.0.0",
+    "concurrently": "^10.0.5",
     "electron": "^32.0.0",
     "electron-builder": "^26.0.0",
     "electron-updater": "^6.8.9",
@@ -74,7 +76,7 @@
       "tsconfig.json"
     ],
     "extraMetadata": {
-      "main": "src/server/server.js"
+      "main": "src/server/server.ts"
     }
   }
 }

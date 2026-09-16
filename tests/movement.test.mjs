@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stepToward, frameDt, fadeAlpha, lerp } from '../src/shared/movement.mjs';
+import { stepToward, frameDt, fadeAlpha, lerp } from '../src/shared/movement.ts';
 
 test('stepToward moves toward target', () => {
   const p = { x: 0, y: 0, targetX: 10, targetY: 0, walkCycle: 0, isWalking: false };

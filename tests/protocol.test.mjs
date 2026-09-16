@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RoomManager } from '../src/server/rooms.js';
-import { handleMessage } from '../src/server/protocol.js';
+import { RoomManager } from '../src/server/rooms.ts';
+import { handleMessage } from '../src/server/protocol.ts';
 
 function makeSock() {
   const sent = [];

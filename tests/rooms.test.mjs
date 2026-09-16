@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RoomManager, serializePlayer, createDefaultRooms } from '../src/server/rooms.js';
+import { RoomManager, serializePlayer, createDefaultRooms } from '../src/server/rooms.ts';
 
 function makeSock() {
   const sent = [];

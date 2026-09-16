@@ -18,7 +18,7 @@ process.env.DB_FORCE_SQLITE = '1';
 process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'haven-int-')), 'int.db');
 process.env.PORT = '0';
 
-const { server, wss, rooms, db } = await import(new URL('../src/server/server.js', import.meta.url));
+const { server, wss, rooms, db } = await import(new URL('../src/server/server.ts', import.meta.url));
 
 let port;
 await new Promise(r => server.listen(0, () => {

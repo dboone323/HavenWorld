@@ -1,20 +1,36 @@
 /**
- * HavenWorld — WebSocket message dispatcher (ESM).
- * Maps a client message `{ type, payload }` to room-state mutations and
- * outbound events. `db` calls are self-noops in memory mode.
+ * HavenWorld — WebSocket message dispatcher (TypeScript).
+ * Maps a client message { type, payload } to room-state mutations and
+ * outbound events. db calls are self-noops in memory mode.
  */
-import { clampGrid } from '../shared/iso.mjs';
-import { parseCommand, moderateChat } from './moderation.js';
-import { serializePlayer } from './rooms.js';
+import { clampGrid } from '../shared/iso.ts';
+import { parseCommand, moderateChat } from './moderation.ts';
+import { serializePlayer, RoomManager } from './rooms.ts';
+import type { Player } from './rooms.ts';
+import type { PlacedFurniture, Avatar } from '../shared/types.ts';
+import type { WebSocket } from 'ws';
 
 const GRID_MAX = 11;
 
+export interface DispatchContext {
+  rooms: RoomManager;
+  db: {
+    getMode: () => string;
+    initPlayerProfile: (userId: string, username: string) => Promise<void>;
+    saveAvatar: (userId: string, avatar: Avatar) => Promise<void>;
+    addCoins: (userId: string, amount: number) => Promise<void>;
+    getRoomFurniture: (roomId: string) => Promise<PlacedFurniture[] | null>;
+    addFurniture: (roomId: string, item: PlacedFurniture) => Promise<void>;
+    removeFurniture: (furnitureId: string) => Promise<void>;
+    close: () => void;
+  };
+  ws: WebSocket;
+}
+
 /**
- * @param {{type:string,payload:any}} msg   parsed client message
- * @param {object} player                   mutable player state (has .ws)
- * @param {{rooms:object, db:object, ws:object}} ctx
+ * Dispatch a single client message to the appropriate room-state mutation.
  */
-export function handleMessage(msg, player, ctx) {
+export function handleMessage(msg: { type: string; payload?: Record<string, unknown> }, player: Player, ctx: DispatchContext): void {
   const { rooms, db } = ctx;
   const room = player.room;
   const currentRoom = rooms.get(room);
@@ -33,8 +49,8 @@ export function handleMessage(msg, player, ctx) {
     }
 
     case 'UPDATE_POSITION': {
-      player.x = msg.payload.x;
-      player.y = msg.payload.y;
+      player.x = msg.payload!.x as number;
+      player.y = msg.payload!.y as number;
       break;
     }
 
@@ -64,45 +80,24 @@ export function handleMessage(msg, player, ctx) {
       break;
     }
 
-    case 'UPDATE_AVATAR': {
-      if (msg.payload && msg.payload.avatar) Object.assign(player.avatar, msg.payload.avatar);
-      if (msg.payload && msg.payload.name) {
-        player.name = String(msg.payload.name).trim().slice(0, 18) || player.name;
-      }
-      db.saveAvatar(player.id, player.avatar).catch(() => {});
-      rooms.broadcast(room, {
-        type: 'PLAYER_PROFILE_UPDATED',
-        payload: { playerId: player.id, player: serializePlayer(player) }
-      });
-      break;
-    }
-
     case 'SWITCH_ROOM': {
-      const targetRoomId = msg.payload && msg.payload.roomId;
-      if (!rooms.has(targetRoomId) || targetRoomId === player.room) return;
+      const targetRoomId = (msg.payload && msg.payload.roomId) as string;
+      if (!targetRoomId || !rooms.get(targetRoomId) || targetRoomId === player.room) return;
       rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } }, player.ws);
       rooms.leave(player);
-      player.room = targetRoomId;
+      player.room = targetRoomId as string;
       player.x = 5; player.y = 8; player.targetX = 5; player.targetY = 8;
-      rooms.join(targetRoomId, player);
-      const target = rooms.get(targetRoomId);
+      rooms.join(targetRoomId as string, player);
+      const target = rooms.get(targetRoomId as string);
       rooms.send(player.ws, {
         type: 'ROOM_CHANGED',
         payload: {
-          room: { id: target.id, name: target.name, furniture: target.furniture },
+          room: { id: target!.id, name: target!.name, furniture: target!.furniture },
           player: serializePlayer(player),
-          otherPlayers: rooms.othersIn(targetRoomId, player.id)
+          otherPlayers: rooms.othersIn(targetRoomId as string, player.id)
         }
       });
-      rooms.broadcast(targetRoomId, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
-      break;
-    }
-
-    case 'CLEAR_ROOM': {
-      if (player.room !== 'sanctuary_loft') return;
-      const removed = rooms.clearFurniture(player.room);
-      for (const f of removed) db.removeFurniture(f.id).catch(() => {});
-      rooms.broadcast(player.room, { type: 'ROOM_CLEARED' });
+      rooms.broadcast(targetRoomId as string, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
       break;
     }
 
@@ -111,7 +106,7 @@ export function handleMessage(msg, player, ctx) {
       const { type, x, y } = msg.payload || {};
       const newItem = {
         id: 'f_' + Math.random().toString(36).substring(2, 9),
-        type: type || 'plant', x: Math.round(x), y: Math.round(y), rotation: 0
+        type: (type as string) || 'plant', x: Math.round(x as number), y: Math.round(y as number), rotation: 0
       };
       currentRoom.furniture.push(newItem);
       db.addFurniture(player.room, newItem).catch(() => {});
@@ -122,7 +117,7 @@ export function handleMessage(msg, player, ctx) {
     case 'REMOVE_FURNITURE': {
       if (player.room !== 'sanctuary_loft') return;
       const { id } = msg.payload || {};
-      const removed = rooms.removeFurnitureById(player.room, id);
+      const removed = rooms.removeFurnitureById(player.room, id as string);
       if (removed) {
         db.removeFurniture(removed.id).catch(() => {});
         rooms.broadcast(player.room, { type: 'FURNITURE_REMOVED', payload: { id: removed.id } });
@@ -141,7 +136,7 @@ export function handleMessage(msg, player, ctx) {
     }
 
     case 'MINIGAME_SCORE': {
-      const reward = Math.max(50, Math.min(500, Math.floor((msg.payload.score || 100) / 2)));
+      const reward = Math.max(50, Math.min(500, Math.floor((msg.payload!.score as number) / 2)));
       player.coins += reward;
       db.addCoins(player.id, reward).catch(() => {});
       rooms.send(player.ws, {
@@ -151,6 +146,19 @@ export function handleMessage(msg, player, ctx) {
       rooms.broadcast(room, {
         type: 'SYSTEM_ANNOUNCEMENT',
         payload: { text: `🍕 ${player.name} finished a shift at Pizza Chef and earned ${reward} HavenCoins!` }
+      });
+      break;
+    }
+
+    case 'UPDATE_AVATAR': {
+      if (msg.payload && msg.payload.avatar) Object.assign(player.avatar, msg.payload.avatar);
+      if (msg.payload && msg.payload.name) {
+        player.name = String(msg.payload.name as string).trim().slice(0, 18) || player.name;
+      }
+      db.saveAvatar(player.id, player.avatar).catch(() => {});
+      rooms.broadcast(room, {
+        type: 'PLAYER_PROFILE_UPDATED',
+        payload: { playerId: player.id, player: serializePlayer(player) }
       });
       break;
     }

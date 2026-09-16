@@ -17,7 +17,7 @@ const serverPort = Number(process.env.PORT || 3000);
 
 export default defineConfig({
   root: 'src/client',
-  publicDir: '../public',            // static assets (favicon, etc.)
+  publicDir: false,            // no separate public/ dir — assets live in src/client/
   base: '/',                         // needed for Capacitor (index.html at /)
   server: {
     port: 5173,

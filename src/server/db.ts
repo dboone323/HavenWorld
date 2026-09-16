@@ -1,21 +1,22 @@
 /**
- * HavenWorld — Database adapter (ESM).
+ * HavenWorld — Database adapter (TypeScript).
  * Dual-mode storage:
  *   1. Cloud Supabase — when SUPABASE_URL + SUPABASE_*_KEY env vars are set.
- *   2. Native local SQLite — zero-config file store via Node's built-in
- *      node:sqlite (default on your Mac; persists to havenworld.db).
- * Test mode: NODE_ENV=test or DB_FORCE_SQLITE=1 forces local SQLite
- * (optionally at DB_PATH=/path/to/file.db).
+ *   2. Native local SQLite — zero-config file store via Node's built-in node:sqlite.
+ *   3. Memory mode — fallback when neither is available.
+ *
+ * Test mode: NODE_ENV=test or DB_FORCE_SQLITE=1 forces local SQLite.
  */
 import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { PlacedFurniture } from '../shared/types.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-let supabase = null;
-let sqliteDb = null;
-let mode = 'memory';
+let supabase: any = null;
+let sqliteDb: { prepare: (s: string) => { run: (...args: unknown[]) => void; get: (...args: unknown[]) => Record<string, unknown> | undefined; all: (...args: unknown[]) => Record<string, unknown>[] }; exec: (s: string) => void; close: () => void } | null = null;
+let mode: 'memory' | 'sqlite' | 'supabase' = 'memory';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -29,7 +30,7 @@ if (!forceSqlite && supabaseUrl && supabaseKey && !supabaseUrl.includes('your-pr
     mode = 'supabase';
     console.log('✅ Connected to Cloud Supabase PostgreSQL.');
   } catch (err) {
-    console.warn('⚠️ Could not connect to Supabase. Falling back to local database.', err.message);
+    console.warn('⚠️  Could not connect to Supabase. Falling back to local database.', (err as Error).message);
   }
 }
 
@@ -38,7 +39,11 @@ if (mode !== 'supabase') {
   try {
     const { DatabaseSync } = await import('node:sqlite');
     const dbPath = process.env.DB_PATH || path.join(__dirname, '../../havenworld.db');
-    sqliteDb = new DatabaseSync(dbPath);
+    sqliteDb = new DatabaseSync(dbPath) as unknown as {
+      prepare: (s: string) => { run: (...args: unknown[]) => void; get: (...args: unknown[]) => Record<string, unknown> | undefined; all: (...args: unknown[]) => Record<string, unknown>[] };
+      exec: (s: string) => void;
+      close: () => void;
+    };
     mode = 'sqlite';
     sqliteDb.exec(`
       CREATE TABLE IF NOT EXISTS profiles (
@@ -65,39 +70,50 @@ if (mode !== 'supabase') {
         rotation INTEGER DEFAULT 0
       );
     `);
-    console.log(`🗄️ Native Local SQLite Database active: ${dbPath}`);
+    console.log(`🗄️  Native Local SQLite Database active: ${dbPath}`);
     console.log(`✨ All room furniture, avatars, and coins will automatically save to disk!`);
   } catch (e) {
-    console.warn('⚠️ SQLite fallback unavailable, running in RAM memory mode.', e.message);
+    console.warn('⚠️  SQLite fallback unavailable, running in RAM memory mode.', (e as Error).message);
     mode = 'memory';
   }
 }
+
 // --- Public API (named ESM exports) ---
 
-export const getMode = () => mode;
-export const isConfigured = () => mode === 'supabase';
+export const getMode = (): 'memory' | 'sqlite' | 'supabase' => mode;
+export const isConfigured = (): boolean => mode === 'supabase';
 
 // Release the SQLite connection so the process can exit (used by tests/teardown).
-export function close() {
+export function close(): void {
   if (sqliteDb) {
-    try { sqliteDb.close(); } catch (e) { /* ignore */ }
+    try { sqliteDb.close(); } catch { /* ignore */ }
   }
 }
 
-// Ensure a player profile row exists (no-op in memory mode)
-export async function initPlayerProfile(userId, username) {
+// --- Types ---
+
+export interface AvatarData {
+  skin: string;
+  hairStyle: string;
+  hairColor: string;
+  shirtColor: string;
+  pantsColor: string;
+}
+
+/** Ensure a player profile row exists (no-op in memory mode) */
+export async function initPlayerProfile(userId: string, username: string): Promise<void> {
   if (mode === 'supabase') {
     try {
-      const { error } = await supabase.from('profiles').upsert(
+      const { error } = await supabase!.from('profiles').upsert(
         { id: userId, username: username || userId, coins: 1000, gems: 50 },
         { onConflict: 'id', ignoreDuplicates: true }
       );
       if (error) throw error;
     } catch (err) {
-      console.warn('Supabase initPlayerProfile warning:', err.message);
+      console.warn('Supabase initPlayerProfile warning:', (err as Error).message);
     }
   } else if (mode === 'sqlite') {
-    const stmt = sqliteDb.prepare(`
+    const stmt = sqliteDb!.prepare(`
       INSERT INTO profiles (id, username, coins, gems)
       VALUES (?, ?, 1000, 50)
       ON CONFLICT(id) DO NOTHING
@@ -107,14 +123,14 @@ export async function initPlayerProfile(userId, username) {
 }
 
 // Persist (or merge) a player's avatar styling
-export async function saveAvatar(userId, avatar) {
+export async function saveAvatar(userId: string, avatar: AvatarData): Promise<void> {
   if (mode === 'supabase') {
     try {
-      await supabase.from('profiles').upsert(
+      await supabase!.from('profiles').upsert(
         { id: userId, username: userId, coins: 1000, gems: 50 },
         { onConflict: 'id', ignoreDuplicates: true }
       );
-      await supabase.from('avatar_profiles').upsert({
+      await supabase!.from('avatar_profiles').upsert({
         user_id: userId,
         skin: avatar.skin,
         hair_style: avatar.hairStyle || 'cozy_messy',
@@ -124,12 +140,12 @@ export async function saveAvatar(userId, avatar) {
         updated_at: new Date().toISOString()
       });
     } catch (err) {
-      console.warn('Supabase saveAvatar warning:', err.message);
+      console.warn('Supabase saveAvatar warning:', (err as Error).message);
     }
     return;
   }
   if (mode === 'sqlite') {
-    const stmt = sqliteDb.prepare(`
+    const stmt = sqliteDb!.prepare(`
       INSERT INTO avatar_profiles (user_id, skin, hair_style, hair_color, shirt_color, pants_color, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
@@ -148,30 +164,30 @@ export async function saveAvatar(userId, avatar) {
   }
 }
 
-// Adjust a player's coin balance by `amount`
-export async function addCoins(userId, amount) {
+// Adjust a player's coin balance by amount
+export async function addCoins(userId: string, amount: number): Promise<void> {
   if (mode === 'supabase') {
     try {
-      const { data: profile, error } = await supabase
+      const { data: profile, error } = await supabase!
         .from('profiles').select('coins').eq('id', userId).maybeSingle();
       if (error) throw error;
       const currentCoins = profile ? (profile.coins || 0) : 1000;
       const newCoins = Math.max(0, currentCoins + amount);
-      await supabase.from('profiles').upsert(
+      await supabase!.from('profiles').upsert(
         { id: userId, username: userId, coins: newCoins },
         { onConflict: 'id' }
       );
     } catch (err) {
-      console.warn('Supabase addCoins warning:', err.message);
+      console.warn('Supabase addCoins warning:', (err as Error).message);
     }
     return;
   }
   if (mode === 'sqlite') {
-    const selectStmt = sqliteDb.prepare('SELECT coins FROM profiles WHERE id = ?');
+    const selectStmt = sqliteDb!.prepare('SELECT coins FROM profiles WHERE id = ?');
     const row = selectStmt.get(userId);
-    const currentCoins = row ? row.coins : 1000;
+    const currentCoins = row ? (row.coins as number) : 1000;
     const newCoins = Math.max(0, currentCoins + amount);
-    const updateStmt = sqliteDb.prepare(`
+    const updateStmt = sqliteDb!.prepare(`
       INSERT INTO profiles (id, username, coins) VALUES (?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET coins = excluded.coins
     `);
@@ -180,28 +196,28 @@ export async function addCoins(userId, amount) {
 }
 
 // Load persisted furniture for a room (null when none stored)
-export async function getRoomFurniture(roomId) {
+export async function getRoomFurniture(roomId: string): Promise<PlacedFurniture[] | null> {
   if (mode === 'supabase') {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabase!
         .from('placed_furniture').select('*').eq('room_id', roomId);
       if (error) throw error;
       if (!data || data.length === 0) return null;
-      return data.map(f => ({
-        id: f.id, type: f.item_type, x: f.grid_x, y: f.grid_y, rotation: f.rotation
+      return data.map((f: Record<string, unknown>) => ({
+        id: f.id as string, type: f.item_type as string, x: f.grid_x as number, y: f.grid_y as number, rotation: f.rotation as number
       }));
     } catch (err) {
-      console.warn('Supabase getRoomFurniture warning:', err.message);
+      console.warn('Supabase getRoomFurniture warning:', (err as Error).message);
       return null;
     }
   }
   if (mode === 'sqlite') {
-    const stmt = sqliteDb.prepare(
+    const stmt = sqliteDb!.prepare(
       'SELECT id, item_type, grid_x, grid_y, rotation FROM placed_furniture WHERE room_id = ?'
     );
-    const rows = stmt.all(roomId);
+    const rows = stmt.all(roomId) as Array<{ id: string; item_type: string; grid_x: number; grid_y: number; rotation: number }>;
     if (rows && rows.length > 0) {
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id, type: r.item_type, x: r.grid_x, y: r.grid_y, rotation: r.rotation
       }));
     }
@@ -211,21 +227,21 @@ export async function getRoomFurniture(roomId) {
 }
 
 // Persist a placed furniture item
-export async function addFurniture(roomId, item) {
+export async function addFurniture(roomId: string, item: PlacedFurniture): Promise<void> {
   if (mode === 'supabase') {
     try {
-      const { error } = await supabase.from('placed_furniture').upsert({
+      const { error } = await supabase!.from('placed_furniture').upsert({
         id: item.id, room_id: roomId, item_type: item.type,
         grid_x: item.x, grid_y: item.y, rotation: item.rotation || 0
       });
       if (error) throw error;
     } catch (err) {
-      console.warn('Supabase addFurniture warning:', err.message);
+      console.warn('Supabase addFurniture warning:', (err as Error).message);
     }
     return;
   }
   if (mode === 'sqlite') {
-    const stmt = sqliteDb.prepare(`
+    const stmt = sqliteDb!.prepare(`
       INSERT OR REPLACE INTO placed_furniture
         (id, room_id, item_type, grid_x, grid_y, rotation)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -235,18 +251,18 @@ export async function addFurniture(roomId, item) {
 }
 
 // Remove a furniture item by id
-export async function removeFurniture(furnitureId) {
+export async function removeFurniture(furnitureId: string): Promise<void> {
   if (mode === 'supabase') {
     try {
-      const { error } = await supabase.from('placed_furniture').delete().eq('id', furnitureId);
+      const { error } = await supabase!.from('placed_furniture').delete().eq('id', furnitureId);
       if (error) throw error;
     } catch (err) {
-      console.warn('Supabase removeFurniture warning:', err.message);
+      console.warn('Supabase removeFurniture warning:', (err as Error).message);
     }
     return;
   }
   if (mode === 'sqlite') {
-    const stmt = sqliteDb.prepare('DELETE FROM placed_furniture WHERE id = ?');
+    const stmt = sqliteDb!.prepare('DELETE FROM placed_furniture WHERE id = ?');
     stmt.run(furnitureId);
   }
 }

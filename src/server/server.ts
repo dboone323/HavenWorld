@@ -1,21 +1,21 @@
 /**
- * HavenWorld — Multiplayer server entry (ESM).
+ * HavenWorld — Multiplayer server entry (TypeScript).
  * Thin Express + HTTP + WebSocket bootstrap. Game logic lives in:
- *   - rooms.js      : room registry + broadcast helpers (RoomManager)
- *   - protocol.js   : WebSocket message dispatcher (handleMessage)
- *   - db.js         : dual-mode persistence (Supabase / local SQLite)
- *   - moderation.js : chat moderation pipeline
+ *   - rooms.ts      : room registry + broadcast helpers (RoomManager)
+ *   - protocol.ts   : WebSocket message dispatcher (handleMessage)
+ *   - db.ts         : dual-mode persistence (Supabase / local SQLite)
+ *   - moderation.ts : chat moderation pipeline
  *
- * Run: npm start
+ * Run: node src/server/server.ts (Node 26+ supports native TypeScript)
  */
 import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer } from 'ws';
-import { RoomManager, serializePlayer } from './rooms.js';
-import { handleMessage } from './protocol.js';
-import * as db from './db.js';
+import { WebSocketServer, WebSocket } from 'ws';
+import { RoomManager, serializePlayer } from './rooms.ts';
+import { handleMessage } from './protocol.ts';
+import * as db from './db.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,18 +28,26 @@ let nextPlayerNumber = 101;
 
 const PORT = process.env.PORT || 3000;
 
-// Client assets
-app.use(express.static(path.join(__dirname, '../client')));
+// Client assets (Vite dist/ in prod, src/client/ in dev)
+const clientDir = path.join(__dirname, '../../dist');
+app.use(express.static(clientDir, {
+  // Fallback to source for dev mode when dist/ doesn't exist
+  fallthrough: true,
+}));
+// In dev (no dist/), serve from src/client/
+const fallbackClientDir = path.join(__dirname, '../client');
+app.use(express.static(fallbackClientDir));
+
 // Shared isomorphic modules served to the browser as ESM (game.js imports them)
 app.use('/shared', express.static(path.join(__dirname, '../shared'), {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
+  setHeaders: (res: http.ServerResponse, filePath: string) => {
+    if (filePath.endsWith('.ts') || filePath.endsWith('.js')) {
       res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
     }
   }
 }));
 
-wss.on('connection', async (ws) => {
+wss.on('connection', async (ws: WebSocket) => {
   const playerId = 'usr_' + Math.random().toString(36).substring(2, 9);
   const defaultName = 'Traveler #' + (nextPlayerNumber++);
 
@@ -82,7 +90,7 @@ wss.on('connection', async (ws) => {
     type: 'INIT_STATE',
     payload: {
       selfId: playerId,
-      room: { id: plaza.id, name: plaza.name, furniture: plaza.furniture },
+      room: { id: plaza!.id, name: plaza!.name, furniture: plaza!.furniture },
       player: serializePlayer(player),
       otherPlayers: rooms.othersIn('plaza', playerId)
     }
@@ -91,10 +99,10 @@ wss.on('connection', async (ws) => {
   // Notify others that the new player has arrived
   rooms.broadcast('plaza', { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, ws);
 
-  ws.on('message', (raw) => {
+  ws.on('message', (raw: Buffer) => {
     let msg;
     try {
-      msg = JSON.parse(raw);
+      msg = JSON.parse(raw.toString());
     } catch {
       return;
     }
@@ -108,6 +116,7 @@ wss.on('connection', async (ws) => {
 });
 
 export { db };
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   server.listen(PORT, () => {
@@ -116,9 +125,9 @@ if (isMain) {
     console.log(`📡 Local Web Client: http://localhost:${PORT}`);
     console.log(`🌐 Real-Time WebSockets active on port ${PORT}`);
     if (db.isConfigured()) {
-      console.log(`🗄️ Database: Connected to Supabase PostgreSQL`);
+      console.log(`🗄️  Database: Connected to Supabase PostgreSQL`);
     } else {
-      console.log(`💾 Database: ${db.getMode()} mode (add .env keys to enable Supabase)`);
+      console.log(`💾  Database: ${db.getMode()} mode (add .env keys to enable Supabase)`);
     }
     console.log(`====================================================`);
   });

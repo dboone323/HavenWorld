@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moderateChat, containsProfanity, redactPII, createRateLimiter, parseCommand } from '../src/server/moderation.js';
+import { moderateChat, containsProfanity, redactPII, createRateLimiter, parseCommand } from '../src/server/moderation.ts';
 
 test('moderateChat trims and flags clean text as not-flagged', () => {
   const r = moderateChat('  hello  ');

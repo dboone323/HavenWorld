@@ -8,16 +8,16 @@ export default {
   appId: 'com.havenworld.game',
   appName: 'HavenWorld',
   webDir: 'dist',
-  server: {
-    // Dev: proxy to Vite dev server for HMR. Prod: serve from dist/.
-    ...(process.env.NODE_ENV === 'development'
-      ? { url: 'http://localhost:5173', clearContext: true }
-      : { url: 'http://localhost:3000' }),
-  },
+  // In development, load from Vite dev server for HMR.
+  // In production, load from the bundled local assets (no server URL).
+  ...(process.env.NODE_ENV === 'development' && {
+    server: {
+      url: 'http://localhost:5173',
+      clearContext: true,
+    },
+  }),
   ios: {
-    // WKWebView full-screen (no URL bar, no overscroll)
     backgroundColor: '#000000',
-    // URL scheme for App Store compliance (no "miniworld" naming)
     scheme: 'haveworld',
   },
   android: {

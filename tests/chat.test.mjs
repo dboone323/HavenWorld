@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml, sanitizeChat, isCommand, parseCommand, DEFAULT_MAX_LEN } from '../src/shared/chat.mjs';
+import { escapeHtml, sanitizeChat, isCommand, parseCommand, DEFAULT_MAX_LEN } from '../src/shared/chat.ts';
 
 test('escapeHtml neutralises specials', () => {
   assert.equal(escapeHtml('<b>"hi"</b>'), '&lt;b&gt;&quot;hi&quot;&lt;/b&gt;');

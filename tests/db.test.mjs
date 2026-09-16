@@ -7,7 +7,7 @@ import { join } from 'node:path';
 process.env.DB_FORCE_SQLITE = '1';
 process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'haven-db-')), 'test.db');
 
-const db = await import(new URL('../src/server/db.js', import.meta.url));
+const db = await import(new URL('../src/server/db.ts', import.meta.url));
 
 test('db boots in sqlite test mode', () => {
   assert.equal(db.getMode(), 'sqlite');

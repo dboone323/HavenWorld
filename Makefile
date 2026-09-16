@@ -16,10 +16,10 @@ install: ## Install dependencies
 	$(NPM) install
 
 start: ## Run the multiplayer server (localhost:3000)
-	$(NODE) src/server/server.js
+	$(NODE) src/server/server.ts
 
 dev: ## Run server in watch mode
-	$(NODE) --watch src/server/server.js
+	$(NODE) --watch src/server/server.ts
 
 test: ## Run the test suite
 	$(NPM) test

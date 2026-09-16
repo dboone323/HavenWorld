@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toScreen, toGrid, clampGrid, isInGrid, DEFAULT_TILE_WIDTH, DEFAULT_TILE_HEIGHT } from '../src/shared/iso.mjs';
+import { toScreen, toGrid, clampGrid, isInGrid, DEFAULT_TILE_WIDTH, DEFAULT_TILE_HEIGHT } from '../src/shared/iso.ts';
 
 test('toScreen places origin at pivot for grid (0,0)', () => {
   assert.deepEqual(toScreen(0, 0, 400, 200), { x: 400, y: 200 });
