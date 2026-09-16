@@ -7,20 +7,25 @@ import { chromium } from 'playwright';
 import { WebSocket } from 'ws';
 import assert from 'node:assert/strict';
 
-const LOCAL_URL = 'http://localhost:3999';
+const HTTP_PORT = process.env.PORT || process.env.VERIFY_HTTP_PORT || 3000;
+const LOCAL_URL = process.env.VERIFY_HTTP_URL || `http://localhost:${HTTP_PORT}`;
+const WS_BASE = process.env.VERIFY_WS_URL
+  || LOCAL_URL.replace(/^http/, 'ws');
 
 // Dynamically read the current tunnel URL from the log file
 // (the tunnel URL changes on each restart, so we must read the latest)
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 let TUNNEL_URL = process.argv[2] || '';
 if (!TUNNEL_URL) {
   try {
-    const log = readFileSync('/home/ubuntu/havenworld-tunnel.log', 'utf-8');
-    const matches = [...log.matchAll(/https:\/\/[a-z-]+\.trycloudflare\.com/g)];
+    const log = readFileSync(join(homedir(), 'havenworld-tunnel.log'), 'utf-8');
+    const matches = [...log.matchAll(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g)];
     if (matches.length > 0) TUNNEL_URL = matches[matches.length - 1][0];
   } catch { /* log file not available yet */ }
 }
-if (!TUNNEL_URL) TUNNEL_URL = 'http://localhost:3999'; // fallback to local only
+const TARGET_URL = TUNNEL_URL.startsWith('http') ? TUNNEL_URL : LOCAL_URL;
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -42,7 +47,7 @@ async function run() {
 
   // Test 1: Game page loads
   await test('Game page loads and shows title', async () => {
-    await page.goto(LOCAL_URL, { waitUntil: 'networkidle' });
+    await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
     const title = await page.title();
     assert.ok(title.includes('HavenWorld'), `title is "${title}"`);
   });
@@ -83,7 +88,7 @@ async function run() {
 
   // Test 5: WebSocket INIT_STATE
   await test('WebSocket INIT_STATE received', async () => {
-    const ws = new WebSocket(`ws://localhost:3999`);
+    const ws = new WebSocket(WS_BASE);
     const initMsg = await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(new Error('timeout waiting for INIT_STATE')), 5000);
       ws.on('message', (data) => {
@@ -104,8 +109,8 @@ async function run() {
 
   // Test 6: Chat sends and receives
   await test('Chat sends and receives between two clients', async () => {
-    const ws1 = new WebSocket(`ws://localhost:3999`);
-    const ws2 = new WebSocket(`ws://localhost:3999`);
+    const ws1 = new WebSocket(WS_BASE);
+    const ws2 = new WebSocket(WS_BASE);
     await Promise.all([
       new Promise(r => ws1.on('open', r)),
       new Promise(r => ws2.on('open', r)),
@@ -134,7 +139,7 @@ async function run() {
 
   // Test 7: Click-to-walk
   await test('MOVE sends PLAYER_MOVED with target coords', async () => {
-    const ws = new WebSocket(`ws://localhost:3999`);
+    const ws = new WebSocket(WS_BASE);
     await new Promise(r => ws.on('open', r));
     await new Promise((resolve) => {
       ws.on('message', (d) => {
@@ -160,7 +165,7 @@ async function run() {
 
   // Test 8: Room switch works
   await test('SWITCH_ROOM delivers ROOM_CHANGED', async () => {
-    const ws = new WebSocket(`ws://localhost:3999`);
+    const ws = new WebSocket(WS_BASE);
     await new Promise(r => ws.on('open', r));
     await new Promise((resolve) => {
       ws.on('message', (d) => {
@@ -183,8 +188,11 @@ async function run() {
     ws.close();
   });
 
-  // Test 9: Tunnel public accessibility
+  // Test 9: Tunnel public accessibility (skipped when no tunnel URL configured)
   const tunnelUrl = TUNNEL_URL;
+  if (!tunnelUrl.startsWith('http')) {
+    console.log('  - Tunnel URL check skipped (no tunnel configured)');
+  } else {
   await test(`Tunnel URL is publicly reachable`, async () => {
     const tunnelPage = await browser.newPage();
     await tunnelPage.goto(tunnelUrl, { waitUntil: 'networkidle', timeout: 15000 });
@@ -214,6 +222,7 @@ async function run() {
     assert.ok(initMsg.payload.selfId.startsWith('usr_'), 'wss selfId');
     ws.close();
   });
+  } // end tunnel-gated tests
 
   await browser.close();
   console.log(`\n  ${passed} passed, ${failed} failed`);

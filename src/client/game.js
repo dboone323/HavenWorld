@@ -8,6 +8,7 @@ import { escapeHtml } from './shared/chat.js';
   // State
   let ws = null;
   let selfId = null;
+  let authToken = null; // WS auth token (persisted account player ID, if logged in)
   let authPlayerId = null; // Persisted account player ID (if logged in)
   let selfPlayer = {
     id: null,

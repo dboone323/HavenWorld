@@ -6,7 +6,10 @@ import { chromium } from 'playwright';
 import { WebSocket } from 'ws';
 import assert from 'node:assert/strict';
 
-const LOCAL_URL = 'http://localhost:3999';
+const HTTP_PORT = process.env.PORT || process.env.VERIFY_HTTP_PORT || 3000;
+const LOCAL_URL = process.env.VERIFY_HTTP_URL || `http://localhost:${HTTP_PORT}`;
+// WS endpoints derive from the requested HTTP(S) URL unless explicitly overridden.
+const WS_BASE = process.env.VERIFY_WS_URL || LOCAL_URL.replace(/^http/, 'ws');
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -71,7 +74,7 @@ async function run() {
   // Test 4: Daily bonus button triggers coin update
   await test('Daily bonus button sends CLAIM_DAILY_BONUS', async () => {
     // The client sends this via WebSocket — verify via WS directly
-    const ws = new WebSocket(`ws://localhost:3999`);
+    const ws = new WebSocket(WS_BASE);
     await new Promise(r => ws.on('open', r));
     await new Promise((resolve) => {
       ws.on('message', (d) => {
@@ -154,7 +157,7 @@ async function run() {
 
   // Test 12: Room selector works
   await test('Room selector switches rooms', async () => {
-    const ws = new WebSocket(`ws://localhost:3999`);
+    const ws = new WebSocket(WS_BASE);
     await new Promise(r => ws.on('open', r));
     await new Promise((resolve) => {
       ws.on('message', (d) => {
@@ -253,7 +256,7 @@ async function run() {
     await page.waitForTimeout(300);
 
     // Verify via WebSocket that elevated furniture exists
-    const ws2 = new WebSocket(`ws://localhost:3999`);
+    const ws2 = new WebSocket(WS_BASE);
     await new Promise(r => ws2.on('open', r));
     await new Promise((resolve) => {
       ws2.on('message', (d) => {

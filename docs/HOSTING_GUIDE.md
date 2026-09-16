@@ -78,31 +78,64 @@ traffic and reaches the server over the tunnel's outbound connection.
    - Free, no account. URL changes on every restart (read it from the log).
    - No uptime guarantee under Cloudflare's terms of service.
 2. **Named tunnel** (recommended for production) — needs a Cloudflare account/domain:
-   ```bash
-   cloudflared tunnel login
-   cloudflared tunnel create havenworld-prod
-   cloudflared tunnel route dns havenworld-prod play.havenworld.game
-   sudo cloudflared service install <TUNNEL_TOKEN>
-   ```
+    ```bash
+    cloudflared tunnel login
+    cloudflared tunnel create havenworld-prod
+    cloudflared tunnel route dns havenworld-prod play.havenworld.game
+    sudo cloudflared service install <TUNNEL_TOKEN>
+    ```
+    Until then, treat the quick-tunnel URL as ephemeral: `deploy/ecosystem.config.cjs`
+    logs it to `/home/ubuntu/havenworld-tunnel.log`, `scripts/verify-server.mjs`
+    accepts it as an argument for public-edge checks, and the browser E2E tests
+    auto-discover it (tunnel-gated assertions skip when no tunnel is configured).
 
 ## 7. Known issues / outstanding work
 
-- **Client is broken upstream:** `src/client/game.js` assigns `authToken`
-  (lines ~109, 1012, 1045) without declaring it, so the ES module throws
-  `ReferenceError: authToken is not defined` at load and the render loop never
-  starts (blank canvas). One-line fix belongs with the app code owner:
-  declare `let authToken = null;` alongside the other state variables.
-- **Supabase schema drift:** the live project is missing `profiles.password_hash`,
-  `placed_furniture.elevation`, and the `user_friends` + `messages` tables, so
-  account auth, loft furniture load, friends and private messaging fail in
-  Supabase mode. Apply `supabase/migrations/20260916_add_missing_schema.sql`
-  (Supabase Dashboard → SQL Editor). **Do not re-run `supabase/schema.sql`** — it
-  opens with `DROP TABLE … CASCADE` and would destroy player data.
-- **`SUPABASE_SERVICE_ROLE_KEY` is not set**, so the server authenticates with the
-  publishable/anon key. That works only because the RLS policies are currently
-  permissive (`USING (true)`); tighten them once the service-role key is in place.
+- **Client is broken upstream [FIXED on macOS 2026-09-16, pending deploy]:**
+  `src/client/game.js` assigned `authToken` (lines ~109, 1012, 1045) without
+  declaring it, so the ES module threw `ReferenceError: authToken is not
+  defined` at load and the render loop never started (blank canvas). Fixed by
+  declaring `let authToken = null;` alongside the other state variables
+  (commit in this push). Takes effect on the server after `./deploy/deploy.sh`
+  rebuilds `dist/`.
+- **Supabase schema drift (BLOCKED — needs Dashboard action):** the live
+  project is missing `profiles.password_hash`, `placed_furniture.elevation`,
+  and the `user_friends` + `messages` tables, so account auth, loft furniture
+  load, friends and private messaging fail in Supabase mode. Verified from
+  this Mac on 2026-09-16 via the JS client (PostgREST schema-cache probes):
+  all four objects still report missing. They **cannot be fixed from code or
+  from the server host** — the anon/publishable + service_role keys authorize
+  PostgREST data access only; there is no `exec_sql` RPC and no psql/
+  direct-Postgres path available, so DDL is impossible without the database
+  password. Apply `supabase/migrations/20260916_add_missing_schema.sql` via
+  Supabase Dashboard → SQL Editor (query is idempotent/additive-only).
+  **Do not re-run `supabase/schema.sql`** — it opens with `DROP TABLE …
+  CASCADE` and would destroy player data. Until applied, the Mac workstation
+  can reproduce Supabase-mode behavior only against the drifted schema, and
+  the browser E2E `test:browser` specs pin the local-SQLite contract.
+- **`SUPABASE_SERVICE_ROLE_KEY` is now present on the macOS workstation `.env`**
+  (verified 2026-09-16: `scripts/migrate-supabase.mjs` reports
+  `service_role (Secret Admin Key)` and connects). It is **not yet in the
+  Linux `~/.env`** — `docs/PLAN_LINUX_SERVER_AGENT.md` Step 3 still only
+  writes the anon/publishable keys. Add the same
+  `SUPABASE_SERVICE_ROLE_KEY=…` line to `/home/ubuntu/.../.env`
+  (`chmod 600`) and `pm2 restart havenworld`, then tighten the permissive
+  `USING (true)` RLS policies. The key authorizes PostgREST data access only
+  — it does **not** enable DDL, so it does not unblock the schema-drift item
+  above.
 - `pm2`/`cloudflared` are user-scoped (`ubuntu`); the systemd app-user matters if
   you switch to a service account.
+- **Vulnerabilities — triaged 2026-09-16, no action taken (all require
+  breaking `--force` upgrades):** `npm audit` on the Mac reports 4 vulns
+  (3 high, 1 moderate) confined to **dev-only desktop/build tooling** —
+  `electron` 32.3.3 (fix = 44.4.1 breaking), `esbuild` → `vite` 5.4.21
+  (fix = vite 8.3.0 breaking), `extract-zip` via electron (same breaking
+  bump). None touch the production server path (`express`, `ws`,
+  `@supabase/supabase-js`, `dotenv`). The "38 vulnerabilities (10 high)"
+  figure is the GitHub Dependabot count against the default branch (it
+  scans lockfile + actions and counts transitives differently); do not
+  `npm audit fix --force` blindly — schedule the electron 32→44 and vite
+  5→8 major bumps as their own tested upgrades.
 
 ## 8. Legacy configuration (retired)
 

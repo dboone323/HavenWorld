@@ -4,8 +4,12 @@
  */
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
-const LOCAL_URL = 'http://localhost:3999';
+const PORT = process.env.PORT || process.env.VERIFY_HTTP_PORT || 3000;
+const LOCAL_URL = process.env.VERIFY_HTTP_URL || `http://localhost:${PORT}`;
+const SCREENSHOT_PATH = join(dirname(fileURLToPath(import.meta.url)), 'visual-check.png');
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -22,7 +26,7 @@ async function run() {
 
   // Screenshot the canvas area
   const screenshot = await page.screenshot({
-    path: '/home/ubuntu/Developer/HavenWorld/tests/visual-check.png',
+    path: SCREENSHOT_PATH,
     fullPage: false,
   });
 

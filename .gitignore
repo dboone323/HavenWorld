@@ -47,3 +47,6 @@ coverage/
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Test snapshots / artifacts (regenerated on demand)
+tests/visual-check.png
