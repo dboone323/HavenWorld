@@ -133,13 +133,20 @@ export class RoomManager {
     const roomId = getUserLoftRoomId(playerId);
     if (this.rooms[roomId]) return this.rooms[roomId];
 
-    // Create an empty room — furniture will be populated from DB by the caller
+    // Create loft with default starter furnishings (can be overridden by caller from DB)
+    const starterFurn = [
+      { id: 'f_sofa_' + Math.random().toString(36).substring(2, 9), type: 'sofa', x: 3, y: 4, rotation: 0, elevation: 0, parentSurfaceId: null },
+      { id: 'f_table_' + Math.random().toString(36).substring(2, 9), type: 'table', x: 5, y: 4, rotation: 0, elevation: 0, parentSurfaceId: null },
+      { id: 'f_tv_' + Math.random().toString(36).substring(2, 9), type: 'tv', x: 5, y: 2, rotation: 0, elevation: 0, parentSurfaceId: null },
+      { id: 'f_plant_' + Math.random().toString(36).substring(2, 9), type: 'plant', x: 2, y: 2, rotation: 0, elevation: 0, parentSurfaceId: null },
+      { id: 'f_neon_' + Math.random().toString(36).substring(2, 9), type: 'neon', x: 7, y: 1, rotation: 0, elevation: 0, parentSurfaceId: null },
+    ];
     this.rooms[roomId] = {
       id: roomId,
       name: `${playerName}'s Personal Sanctuary Loft`,
       isPublic: false,
       players: new Map(),
-      furniture: [],
+      furniture: starterFurn,
       ownerId: playerId,
       flooring: 'parquet',
       wallpaper: 'cozy_wood',

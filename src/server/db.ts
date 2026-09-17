@@ -312,27 +312,55 @@ export async function getUserSanctuaryRoom(userId: string, playerName: string): 
   if (mode === 'supabase') {
     try {
       // Try to fetch existing room
-      const { data: room, error: roomErr } = await supabase!
-        .from('rooms').select('id, room_code, name, flooring, wallpaper').eq('room_code', roomId).maybeSingle();
-      if (roomErr) throw roomErr;
-      if (room) return { roomId: room.id, roomCode: room.room_code, name: room.name, flooring: room.flooring || 'parquet', wallpaper: room.wallpaper || 'cozy_wood' };
+      let room: any = null;
+      try {
+        const { data, error: roomErr } = await supabase!
+          .from('rooms').select('id, room_code, name, flooring, wallpaper').eq('room_code', roomId).maybeSingle();
+        if (!roomErr && data) room = data;
+      } catch {}
+
+      if (!room) {
+        const { data, error: roomErr2 } = await supabase!
+          .from('rooms').select('id, room_code, name').eq('room_code', roomId).maybeSingle();
+        if (!roomErr2 && data) room = data;
+      }
+
+      if (room) {
+        return {
+          roomId: room.id,
+          roomCode: room.room_code,
+          name: room.name,
+          flooring: room.flooring || 'parquet',
+          wallpaper: room.wallpaper || 'cozy_wood'
+        };
+      }
 
       // Create the room
+      let createSuccess = false;
       const { error: createErr } = await supabase!.from('rooms').insert({
         id: roomId, owner_id: userId, room_code: roomId, name: roomName, is_public: false,
         flooring: 'parquet', wallpaper: 'cozy_wood'
       });
-      if (createErr) throw createErr;
+      if (!createErr) {
+        createSuccess = true;
+      } else {
+        // Retry insert without flooring/wallpaper if table has not migrated columns yet
+        const { error: retryErr } = await supabase!.from('rooms').insert({
+          id: roomId, owner_id: userId, room_code: roomId, name: roomName, is_public: false
+        });
+        if (!retryErr) createSuccess = true;
+      }
 
-      // Insert starter furniture
-      const furnitureRows = starterFurniture.map(f => ({
-        id: f.id, room_id: roomId, item_type: f.itemType,
-        grid_x: f.x, grid_y: f.y, rotation: 0, elevation: 0, parent_furniture_id: null
-      }));
-      const { error: furnErr } = await supabase!.from('placed_furniture').insert(furnitureRows);
-      if (furnErr) throw furnErr;
-
-      return { roomId, roomCode: roomId, name: roomName, flooring: 'parquet', wallpaper: 'cozy_wood' };
+      if (createSuccess) {
+        // Insert starter furniture
+        const furnitureRows = starterFurniture.map(f => ({
+          id: f.id, room_id: roomId, item_type: f.itemType,
+          grid_x: f.x, grid_y: f.y, rotation: 0, elevation: 0, parent_furniture_id: null
+        }));
+        await supabase!.from('placed_furniture').insert(furnitureRows).catch(() => {});
+        return { roomId, roomCode: roomId, name: roomName, flooring: 'parquet', wallpaper: 'cozy_wood' };
+      }
+      return null;
     } catch (err) {
       console.warn('Supabase getUserSanctuaryRoom warning:', (err as Error).message);
       return null;
@@ -815,9 +843,9 @@ export async function getFriends(userId: string): Promise<FriendEntry[]> {
 export async function getPendingFriendRequests(userId: string): Promise<PendingRequest[]> {
   if (mode === 'supabase') {
     try {
-      const { data, error } = await supabase!.from('user_friends').select('user_id as requesterId, created_at as createdAt').eq('friend_id', userId).eq('status', 'pending');
+      const { data, error } = await supabase!.from('user_friends').select('user_id, created_at').eq('friend_id', userId).eq('status', 'pending');
       if (error) console.warn('Supabase getPendingFriendRequests warning:', error.message);
-      return (data || []) as unknown as PendingRequest[];
+      return (data || []).map((r: any) => ({ requesterId: r.user_id, createdAt: r.created_at })) as unknown as PendingRequest[];
     } catch (err) {
       return [];
     }
