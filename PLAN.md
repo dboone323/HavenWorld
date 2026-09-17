@@ -34,15 +34,15 @@
 Focuses on authoritative game loops, reliable network synchronization, spatial optimizations, and responsive client delivery.
 
 ### 1.1 Server-Side Authority
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Move all player state, movement validation, and physics to an authoritative server (Node.js engine) to eliminate client-side speed hacks, teleporting, or location spoofing.
-- **Current State**: Server validates room boundaries, wall collisions, and furniture placement; movement step limits are checked per frame tick.
+- **Current State**: Shared `src/shared/authority.ts` provides `validateMoveRequest` (grid clamp + non-finite rejection via `MOVE_REJECTED`), `tickPlayers` and the facing codec. `src/server/tick.ts` runs a 20Hz (50ms) `AuthorityTicker` advancing all movers with real `stepToward` at `PLAYER_SPEED = 3.8`, started lazily by `ensureAuthorityTick()` in `src/server/server.ts` (opt-out `HAVEN_NO_TICK=1`). `MOVE_REQUEST`/`MOVE_TO`/legacy `MOVE` all set server-owned targets; `UPDATE_POSITION` never mutates server truth and drift beyond `epsilon = 0.5` triggers `RECONCILE_POSITION` snap-back.
 - **Target Architecture**:
-  - Authoritative tick loop (`50ms` / 20 Hz) in `src/server/server.ts`.
-  - Player inputs (`MOVE_REQUEST { targetX, targetY }`) validated against server-side path length and elapsed `dt`.
+  - Authoritative tick loop (`50ms` / 20 Hz) in `src/server/tick.ts`, wired in `src/server/server.ts`.
+  - Player inputs (`MOVE_REQUEST { targetX, targetY }`) validated and simulated server-side; speed/teleport hacks neutralized by the sim + `RECONCILE_POSITION`.
   - Desync correction: Server sends `RECONCILE_POSITION` if client coordinates drift beyond threshold `\epsilon > 0.5` tiles.
-- **Components**: `src/server/server.ts`, `src/server/protocol.ts`, `src/shared/movement.ts`.
-- **Validation**: Functional WebSocket tests verifying client position snapping when speed limits are exceeded.
+- **Components**: `src/server/server.ts`, `src/server/tick.ts`, `src/server/protocol.ts`, `src/shared/authority.ts`, `src/shared/movement.ts`.
+- **Validation**: 14 real-functional tests in `tests/authority.test.mjs` (teleport claims corrected, tick sim, non-finite rejection) plus integration runner coverage.
 
 ### 1.2 A* Pathfinding Algorithm
 - **Status**: `[x]` Completed & Verified
@@ -51,9 +51,9 @@ Focuses on authoritative game loops, reliable network synchronization, spatial o
 - **Validation**: Real functional unit tests in `tests/pathfinding.test.mjs` (4 tests passing).
 
 ### 1.3 Z-Index Sorting
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Dynamic depth-sorting layer for isometric graphics so avatars accurately pass behind tall objects (trees, walls) and walk in front of short objects (rugs, stools).
-- **Current State**: Grid sorting by `(x + y)` composite key with custom priority categories (floor < rugs < seating < avatars < tall walls/canopies).
+- **Current State**: Shared `src/shared/zsort.ts` (browser mirror `src/client/shared/zsort.js`) implements deterministic depth keys — `(x+y)*100 + heightPriority + subTileBias`, multi-tile furniture anchored on its far corner `(x+w-1 + y+h-1)` to kill z-fighting. Priority buckets: floor(0) < rug(10) < low/seating(20) < avatar(30) < tall walls/canopy/arcade/trees(40); `heightClass` override supported. `sortEntities()` replaces the naive inline sort in `renderScene()` (`src/client/game.js`).
 - **Target Expansion**: Sub-tile topological depth-sorting graph for multi-tile furniture (e.g., 2x3 sofas, arcade cabinets, trees) preventing visual z-fighting.
 - **Components**: `src/client/game.js` (`renderScene()` depth sorter).
 - **Validation**: Canvas snapshot pixel checks validating avatar occlusion behind tall obstacles.
@@ -65,8 +65,9 @@ Focuses on authoritative game loops, reliable network synchronization, spatial o
 - **Validation**: Unit tests in `tests/protocol.test.mjs` and `tests/pathfinding.test.mjs`.
 
 ### 1.5 State Interpolation & Delta Sync
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Send only changed states (deltas) over WebSockets rather than full room arrays to reduce bandwidth and smooth out avatar movement.
+- **Current State**: `AuthorityTicker` emits compact `PLAYER_DELTA: [id, x, y, facingInt, stateMask]` frames (2-decimal coords, bitmask sitting/walking) only for dirty players per tick, with `deltasSent`/`bytesSent` counters exposed via the ticker stats. Client (`src/client/game.js`) decodes via `decodePlayerDelta` and smooths with `interpolatePosition` (shared `lerp`) over a 100ms render buffer; `RECONCILE_POSITION` snaps the local avatar back to server truth.
 - **Target Architecture**:
   - Implement JSON-patch or compact binary delta frames (`PLAYER_DELTA: [id, x, y, facing, stateMask]`).
   - Hermite or cubic spline client-side interpolation over 100ms render buffer to eliminate stutter during packet jitter.

@@ -55,6 +55,7 @@ test('MOVE clamps to grid and broadcasts PLAYER_MOVED', () => {
   const rooms = new RoomManager();
   const { api } = mockDb();
   const p = makePlayer('a'); rooms.join('plaza', p);
+  p.lastMoveAt = Date.now() - 60000; // generous budget: clamp accepted
   handleMessage({ type: 'MOVE', payload: { x: 99, y: -5 } }, p, C(rooms, api, p));
   assert.equal(p.targetX, 11);
   assert.equal(p.targetY, 0);
@@ -520,6 +521,7 @@ test('INTERACT_FURNITURE handles seating and light toggling', async () => {
   assert.equal(moveEvent.payload.targetY, 3);
 
   // 2. Alice moves, resetting sitting
+  alice.lastMoveAt = Date.now() - 60000; // generous budget for the walk
   await handleMessage({
     type: 'MOVE',
     payload: { x: 4, y: 5 }

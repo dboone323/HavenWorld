@@ -107,6 +107,7 @@ export interface InteractFurniturePayload {
 export type ClientMessage =
   | { type: 'JOIN_ROOM'; payload: JoinRoomPayload }
   | { type: 'MOVE_TO'; payload: MoveToPayload }
+  | { type: 'MOVE_REQUEST'; payload: MoveToPayload }
   | { type: 'UPDATE_POSITION'; payload: { x: number; y: number } }
   | { type: 'SEND_CHAT'; payload: SendChatPayload }
   | { type: 'PLACE_ITEM'; payload: PlaceItemPayload }
@@ -174,6 +175,9 @@ export interface PlacedFurniture {
   rotation: number;
   elevation?: number;          // 0 = floor, >0 = raised (optional for backward compat)
   parentSurfaceId?: string | null;
+  w?: number;                 // multi-tile footprint width (default 1)
+  h?: number;                 // multi-tile footprint height (default 1)
+  heightClass?: 'floor' | 'rug' | 'low' | 'avatar' | 'tall';
   state?: {
     isOn?: boolean;
     [key: string]: unknown;
@@ -247,6 +251,9 @@ export type ServerMessage =
   | { type: 'PLAYER_JOINED'; payload: { player: PlayerInfo } }
   | { type: 'PLAYER_LEFT'; payload: { playerId: string } }
   | { type: 'PLAYER_MOVED'; payload: { playerId: string; startX: number; startY: number; targetX: number; targetY: number; speed?: number; isSitting?: boolean; facing?: 'NE' | 'SE' | 'SW' | 'NW' } }
+  | { type: 'PLAYER_DELTA'; payload: { deltas: [id: string, x: number, y: number, facing: number, stateMask: number][]; tick: number } }
+  | { type: 'RECONCILE_POSITION'; payload: { x: number; y: number; targetX: number; targetY: number } }
+  | { type: 'MOVE_REJECTED'; payload: { reason: string; targetX: number; targetY: number } }
   | { type: 'CHAT_MESSAGE'; payload: { playerId: string; sender: string; text: string; channel?: string; timestamp: number; } }
   | { type: 'ROOM_CHANGED'; payload: { room: RoomInfo; player: PlayerInfo; otherPlayers: PlayerInfo[] } }
   | { type: 'FURNITURE_ADDED'; payload: { item: PlacedFurniture } }

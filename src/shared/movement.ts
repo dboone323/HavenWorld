@@ -20,9 +20,11 @@ export interface PlayerMovement {
   isSitting?: boolean;
 }
 
-/** Calculate 4-way isometric facing direction from grid motion vector. */
-export function calculateFacing(dx: number, dy: number): FacingDirection | null {
-  if (Math.hypot(dx, dy) < 0.01) return null;
+/** Calculate 4-way isometric facing direction from grid motion vector.
+ * Optional `fallback` is returned when the vector is near-zero (instead of null)
+ * so callers can preserve the previous facing without extra branching. */
+export function calculateFacing(dx: number, dy: number, fallback?: FacingDirection): FacingDirection | null {
+  if (Math.hypot(dx, dy) < 0.01) return fallback ?? null;
   // Isometric projection screen delta:
   const screenDx = dx - dy;
   const screenDy = dx + dy;

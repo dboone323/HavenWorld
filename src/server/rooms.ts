@@ -18,6 +18,11 @@ export interface Player {
   targetY: number;
   facing?: 'NE' | 'SE' | 'SW' | 'NW';
   isSitting?: boolean;
+  isWalking?: boolean;
+  walkCycle?: number;
+  lastMoveAt?: number;
+  lastTickX?: number;
+  lastTickY?: number;
   coins: number;
   gems: number;
   lastDailyClaim: number;

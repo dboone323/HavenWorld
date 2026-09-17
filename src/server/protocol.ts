@@ -3,16 +3,14 @@
  * Maps a client message { type, payload } to room-state mutations and
  * outbound events. db calls are self-noops in memory mode.
  */
-import { clampGrid } from '../shared/iso.ts';
 import { calculateFacing } from '../shared/movement.ts';
+import { validateMoveRequest, needsReconcile, RECONCILE_EPSILON } from '../shared/authority.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
 import { serializePlayer, serializeRoom, RoomManager, getUserLoftRoomId } from './rooms.ts';
 import { TradeManager } from './trade.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
-
-const GRID_MAX = 11;
 
 // --- Shop Catalog (Phase 1 furniture + clothing items) ---
 const SHOP_ITEMS: Record<string, ShopItem> = {
@@ -84,15 +82,32 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
   const dailyCooldownMs = ctx.dailyCooldownMs || (24 * 60 * 60 * 1000);
 
   switch (msg.type) {
+    case 'MOVE_REQUEST':
+    case 'MOVE_TO':
     case 'MOVE': {
-      const { x, y } = msg.payload || {};
-      player.targetX = clampGrid(typeof x === 'number' ? x : (Number(x) ?? player.x), GRID_MAX);
-      player.targetY = clampGrid(typeof y === 'number' ? y : (Number(y) ?? player.y), GRID_MAX);
+      const raw = (msg.payload || {}) as Record<string, unknown>;
+      // Legacy MOVE uses {x,y}; canonical MOVE_REQUEST/MOVE_TO use {targetX,targetY}.
+      // validateMoveRequest converts, clamps to the grid and REJECTS non-finite
+      // input (NaN/undefined/garbage) with MOVE_REJECTED — never silently
+      // falling back to the player's current target.
+      const now = Date.now();
+      const v = validateMoveRequest(player, raw.targetX ?? raw.x, raw.targetY ?? raw.y, now);
+      if (!v.ok) {
+        rooms.send(player.ws, {
+          type: 'MOVE_REJECTED',
+          payload: { reason: v.reason || 'rejected', targetX: player.targetX, targetY: player.targetY },
+        });
+        break;
+      }
+      player.targetX = v.targetX;
+      player.targetY = v.targetY;
+      player.lastMoveAt = now;
       player.isSitting = false;
       const dx = player.targetX - player.x;
       const dy = player.targetY - player.y;
       if (dx !== 0 || dy !== 0) {
-        player.facing = calculateFacing(dx, dy, player.facing || 'SE');
+        const f = calculateFacing(dx, dy);
+        if (f) player.facing = f;
       }
       rooms.broadcast(room, {
         type: 'PLAYER_MOVED',
@@ -110,8 +125,17 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     }
 
     case 'UPDATE_POSITION': {
-      player.x = msg.payload!.x as number;
-      player.y = msg.payload!.y as number;
+      const cx = (msg.payload as Record<string, unknown> | undefined)?.x;
+      const cy = (msg.payload as Record<string, unknown> | undefined)?.y;
+      if (typeof cx === 'number' && typeof cy === 'number') {
+        if (needsReconcile(player, { x: cx, y: cy }, RECONCILE_EPSILON)) {
+          rooms.send(player.ws, {
+            type: 'RECONCILE_POSITION',
+            payload: { x: player.x, y: player.y, targetX: player.targetX, targetY: player.targetY },
+          });
+        }
+        // Server stays authoritative: never snap server state to client claims.
+      }
       break;
     }
 

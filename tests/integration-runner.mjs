@@ -99,10 +99,15 @@ await test('MOVE is broadcast to the other occupant', async () => {
   const a = await connect(); const b = await connect();
   await settle(40);
   const before = b.msgs.length;
-  a.ws.send(JSON.stringify({ type: 'MOVE', payload: { x: 5, y: 3 } }));
+  // Spawn is (4.5,7.5); (5,7) is one step away — inside the speed budget.
+  a.ws.send(JSON.stringify({ type: 'MOVE', payload: { x: 5, y: 7 } }));
   await settle(40);
   const moved = b.msgs.slice(before).find(m => m.type === 'PLAYER_MOVED');
   assert.ok(moved, 'b received PLAYER_MOVED');
+  // Authority tick (20Hz) must also emit compact PLAYER_DELTA frames.
+  await settle(120);
+  const delta = b.msgs.slice(before).find(m => m.type === 'PLAYER_DELTA');
+  assert.ok(delta, 'b received PLAYER_DELTA');
   a.ws.close(); b.ws.close();
   await settle(100);
 });

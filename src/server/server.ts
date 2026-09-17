@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { RoomManager, serializePlayer, serializeRoom, getUserLoftRoomId } from './rooms.ts';
 import { handleMessage } from './protocol.ts';
+import { AuthorityTicker, AUTHORITY_TICK_MS } from './tick.ts';
 import { TradeManager } from './trade.ts';
 import * as db from './db.ts';
 
@@ -27,6 +28,17 @@ export const wss = new WebSocketServer({ server });
 export const rooms = new RoomManager();
 export const globalPlayers = new Map<string, import('./rooms.ts').Player>();
 export const tradeManager = new TradeManager();
+// Authoritative 20Hz simulation: advances players server-side and emits
+// compact PLAYER_DELTA frames. Started lazily on first listen (and exported
+// for tests). Guarded so repeated imports / hot-reloads don't double-tick.
+export const authorityTicker = new AuthorityTicker(rooms);
+export function ensureAuthorityTick(): void {
+  if (typeof process !== 'undefined' && process.env.HAVEN_NO_TICK === '1') return;
+  if (!authorityTicker.running) authorityTicker.start();
+}
+// Auto-start on import so integration tests (which import without isMain)
+// still exercise the live tick; HAVEN_NO_TICK=1 opts out.
+ensureAuthorityTick();
 let nextPlayerNumber = 101;
 
 const PORT = process.env.PORT || 3000;
@@ -71,6 +83,9 @@ app.get('/api/status', (req, res) => {
     onlinePlayers: globalPlayers.size,
     rooms: rooms.list().length,
     dbMode: db.getMode(),
+    tickHz: Math.round(1000 / AUTHORITY_TICK_MS),
+    tick: authorityTicker.tickCount,
+    deltaBytesOut: authorityTicker.bytesOut,
     timestamp: Date.now()
   });
 });

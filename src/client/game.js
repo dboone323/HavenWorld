@@ -7,6 +7,8 @@ import { escapeHtml } from './shared/chat.js';
 import { initAudio, playFootstep, playFurniPop, playCoinChime, playChatPing, playDoorwayWhoosh, playSitSound, playSwitchClick, toggleMuted, getMuted } from './shared/audio.js';
 import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPassportProgress } from './shared/passport.js';
 import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowScale } from './shared/emotes.js';
+import { furnitureDepthKey, avatarDepthKey } from './shared/zsort.js';
+import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/authority.js';
 
   // State
   let ws = null;
@@ -246,6 +248,11 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
           if (facing) selfPlayer.facing = facing;
         } else if (otherPlayers.has(playerId)) {
           const p = otherPlayers.get(playerId);
+          // Seed the interpolation buffer from the authoritative snapshot.
+          p.renderX = (typeof startX === 'number') ? startX : p.x;
+          p.renderY = (typeof startY === 'number') ? startY : p.y;
+          p.interpFrom = { x: p.renderX, y: p.renderY, t: performance.now() };
+          p.interpTo = { x: targetX, y: targetY, t: performance.now() + 100 };
           p.x = startX;
           p.y = startY;
           p.targetX = targetX;
@@ -253,6 +260,42 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
           if (typeof isSitting === 'boolean') p.isSitting = isSitting;
           if (facing) p.facing = facing;
         }
+        break;
+      }
+
+      case 'PLAYER_DELTA': {
+        const deltas = msg.payload?.deltas || [];
+        for (const d of deltas) {
+          const s = decodePlayerDelta(d);
+          if (s.id === selfId) continue; // self is predicted locally; reconcile handles drift
+          const p = otherPlayers.get(s.id);
+          if (!p) continue;
+          const now = performance.now();
+          const from = { x: (typeof p.renderX === 'number') ? p.renderX : p.x, y: (typeof p.renderY === 'number') ? p.renderY : p.y };
+          p.interpFrom = { ...from, t: now };
+          p.interpTo = { x: s.x, y: s.y, t: now + 100 };
+          p.x = s.x;
+          p.y = s.y;
+          p.targetX = s.x;
+          p.targetY = s.y;
+          p.facing = s.facing;
+          p.isSitting = s.isSitting;
+          p.isWalking = s.isWalking;
+        }
+        break;
+      }
+
+      case 'RECONCILE_POSITION': {
+        selfPlayer.x = msg.payload.x;
+        selfPlayer.y = msg.payload.y;
+        selfPlayer.targetX = msg.payload.targetX;
+        selfPlayer.targetY = msg.payload.targetY;
+        break;
+      }
+
+      case 'MOVE_REJECTED': {
+        selfPlayer.targetX = msg.payload.targetX;
+        selfPlayer.targetY = msg.payload.targetY;
         break;
       }
 
@@ -613,13 +656,27 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
   }
 
   function update(dt) {
-    // Move self
+    // Move self (local prediction; server reconciles drift)
     updatePlayerMovement(selfPlayer, dt);
 
-    // Move others
+    // Move others: authoritative deltas drive interp buffer; stepToward
+    // advances the sim toward the latest target between delta frames.
+    const nowMs = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     for (const [_, p] of otherPlayers) {
       updatePlayerMovement(p, dt);
+      if (p.interpFrom && p.interpTo) {
+        const span = Math.max(1, p.interpTo.t - p.interpFrom.t);
+        const alpha = Math.max(0, Math.min(1, (nowMs - p.interpFrom.t) / span));
+        const ip = interpolatePosition(p.interpFrom, p.interpTo, alpha);
+        p.renderX = ip.x;
+        p.renderY = ip.y;
+      } else {
+        p.renderX = p.x;
+        p.renderY = p.y;
+      }
     }
+    selfPlayer.renderX = selfPlayer.x;
+    selfPlayer.renderY = selfPlayer.y;
 
     // Target indicator fade
     if (targetIndicator) {
@@ -675,16 +732,16 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
     }
 
     // Collect all renderable entities for Z-sorting
+    // Deterministic depth key: (x + y) + priority (floor < rug < low < avatar < tall)
+    // + sub-tile bias; multi-tile furniture anchors on its far corner.
     const entities = [];
 
     // Furniture
     currentRoom.furniture.forEach(f => {
-      // Sort by (x + y) + elevation so elevated furniture renders above floor-level
-      // but still respects depth ordering within the same elevation tier
       entities.push({
         type: 'furniture',
         item: f,
-        sortY: f.x + f.y + ((f.elevation || 0) * 2)
+        sortY: furnitureDepthKey(f)
       });
     });
 
@@ -693,7 +750,7 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
       type: 'player',
       player: selfPlayer,
       isSelf: true,
-      sortY: selfPlayer.x + selfPlayer.y
+      sortY: avatarDepthKey(selfPlayer)
     });
 
     for (const [_, p] of otherPlayers) {
@@ -701,11 +758,11 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
         type: 'player',
         player: p,
         isSelf: false,
-        sortY: p.x + p.y
+        sortY: avatarDepthKey(p)
       });
     }
 
-    // Depth sort: lower (x + y) renders behind higher (x + y)
+    // Depth sort: lower key renders behind higher key
     entities.sort((a, b) => a.sortY - b.sortY);
 
     // Render sorted entities
@@ -1347,7 +1404,11 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
   }
 
   function drawAvatar(p, isSelf) {
-    const pt = toScreen(p.x, p.y);
+    // Render from the interpolated position when available (smooths 20Hz deltas
+    // into 60fps motion); sim position is the fallback.
+    const rx = (typeof p.renderX === 'number') ? p.renderX : p.x;
+    const ry = (typeof p.renderY === 'number') ? p.renderY : p.y;
+    const pt = toScreen(rx, ry);
     const cx = pt.x;
     const cy = pt.y + TILE_HEIGHT / 2;
 
@@ -1704,8 +1765,8 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
-          type: 'MOVE',
-          payload: { x: targetX, y: targetY }
+          type: 'MOVE_REQUEST',
+          payload: { targetX, targetY }
         }));
       }
     }
