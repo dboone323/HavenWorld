@@ -117,6 +117,9 @@ export type ClientMessage =
   | { type: 'CLAIM_DAILY_BONUS'; payload: null }
   | { type: 'GET_DAILY_COOLDOWN'; payload: null }
   | { type: 'CLEAR_ROOM'; payload: null }
+  | { type: 'UPDATE_IDENTITY'; payload: { title?: string; statusMessage?: string; pinnedBadges?: string[] } }
+  | { type: 'SAVE_PRESET'; payload: { slot: number; avatar?: Partial<Avatar> } }
+  | { type: 'APPLY_PRESET'; payload: { slot: number } }
   | { type: 'UPDATE_AVATAR'; payload: { avatar?: Partial<Avatar>; name?: string } }
   | { type: 'SWITCH_ROOM'; payload: JoinRoomPayload }
   | { type: 'GET_FRIENDS_LIST'; payload: null }
@@ -138,6 +141,11 @@ export type ClientMessage =
 /* ── Outbound (Server → Client) ───────────────────────────────── */
 
 export interface PlayerInfo {
+  title?: string;
+  statusMessage?: string;
+  pinnedBadges?: string[];
+  registeredAt?: string | null;
+  isRegistered?: boolean;
   id: string;
   name: string;
   x: number;
@@ -152,7 +160,28 @@ export interface PlayerInfo {
   facing?: 'NE' | 'SE' | 'SW' | 'NW';
 }
 
+export interface IdentityState {
+  title: string;
+  statusMessage: string;
+  pinnedBadges: string[];
+  presets: (Avatar | null)[];
+  outfit: Avatar | null;
+  passport: {
+    playerId: string; playerName: string; joinedAt: number;
+    visitedRooms: string[]; unlockedStamps: Record<string, number>;
+    stats: { stepsTaken: number; pizzasBaked: number; furniPlaced: number; emotesSent: number };
+  };
+}
+
 export interface Avatar {
+  shoesColor?: string;
+  eyeColor?: string;
+  eyeStyle?: string;
+  hat?: string;
+  shirtStyle?: string;
+  pantsStyle?: string;
+  shoesStyle?: string;
+  aura?: string;
   skin: string;
   hairStyle: string;
   hairColor: string;
@@ -262,6 +291,8 @@ export type ServerMessage =
   | { type: 'ROOM_CLEARED'; payload: null }
   | { type: 'COINS_UPDATED'; payload: { coins: number; earned: number; reason: string } }
   | { type: 'SYSTEM_ANNOUNCEMENT'; payload: { text: string } }
+  | { type: 'IDENTITY_UPDATED'; payload: IdentityState }
+  | { type: 'IDENTITY_ERROR'; payload: { message: string } }
   | { type: 'PLAYER_PROFILE_UPDATED'; payload: { playerId: string; player: PlayerInfo } }
   | { type: 'INIT_STATE'; payload: { playerId: string; player: PlayerInfo; room: RoomInfo; otherPlayers: PlayerInfo[]; playerLoftRoomId?: string; playerLoftName?: string } }
   // Friends & Private Messaging

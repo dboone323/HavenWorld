@@ -1,3 +1,8 @@
+import { mountWardrobe, renderIdentityControls } from './shared/wardrobe.js';
+
+import { formatResidency, createIdentity, normalizeAvatar, AVATAR_OPTIONS, COLOR_KEYS, TITLES, AURAS, canEquip } from './shared/identity-model.js';
+import { drawModularAvatar, drawAura } from './shared/avatar.js';
+
 // HavenWorld — Game Engine & Multiplayer Client (HTML5 Canvas + WebSockets)
 // ES module: pure logic is imported from shared/ (unit-tested in Node).
 import { toScreen as isoToScreen, toGrid as isoToGrid } from './shared/iso.js';
@@ -18,6 +23,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
 
   const initialSavedName = (typeof localStorage !== 'undefined' && localStorage.getItem('haven_player_name')) || '';
 
+  let identityState = createIdentity();
   let selfPlayer = {
     id: null,
     name: initialSavedName || 'Traveler',
@@ -202,6 +208,8 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
         const storedName = localStorage.getItem('haven_player_name');
         const resolvedName = (serverName && !serverName.startsWith('usr_')) ? serverName : (storedName || serverName || 'Traveler');
         selfPlayer = { ...selfPlayer, ...msg.payload.player, id: selfId, name: resolvedName };
+        identityState = msg.payload.identity || createIdentity(selfId, selfPlayer.name);
+        localPassport = identityState.passport;
         if (storedName && (!serverName || serverName.startsWith('usr_') || serverName.startsWith('Traveler #'))) {
           // Sync server state with player's customized name
           sendWs({ type: 'CHAT', payload: { text: `/name ${storedName}` } });
@@ -302,6 +310,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       case 'PLAYER_PROFILE_UPDATED': {
         const { playerId, player } = msg.payload;
         if (playerId === selfId) {
+          Object.assign(selfPlayer, { title: player.title, statusMessage: player.statusMessage, pinnedBadges: player.pinnedBadges });
           selfPlayer.name = player.name;
           selfPlayer.avatar = player.avatar;
           if (player.name && !player.name.startsWith('usr_')) {
@@ -318,6 +327,23 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
         break;
       }
 
+      case 'IDENTITY_UPDATED': {
+        const previous = identityState.passport.unlockedStamps;
+        const outfitChanged = JSON.stringify(identityState.outfit) !== JSON.stringify(msg.payload.outfit);
+        identityState = msg.payload;
+        localPassport = identityState.passport;
+        if (outfitChanged && identityState.outfit) selfPlayer.avatar = normalizeAvatar(identityState.outfit);
+        for (const id of Object.keys(localPassport.unlockedStamps)) {
+          if (!previous[id] && PASSPORT_STAMPS[id]) showToast(`Achievement Unlocked: ${PASSPORT_STAMPS[id].title}`, PASSPORT_STAMPS[id].icon);
+        }
+        if (!avatarModal.classList.contains('hidden')) renderAvatarPreview();
+        if (!passportModal.classList.contains('hidden')) renderPassportUI();
+        break;
+      }
+      case 'IDENTITY_ERROR': {
+        showToast(msg.payload.message, '⚠️');
+        break;
+      }
       case 'SYSTEM_MESSAGE': {
         appendChatMessage('system', msg.payload.text, msg.payload.type || 'system');
         break;
@@ -1449,97 +1475,17 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
 
     ctx.save();
 
-    // Floor Shadow (scales down when jumping)
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, (isSitting ? 16 : 14) * shadowScale, (isSitting ? 8 : 7) * shadowScale, 0, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(0, 0, 0, ${0.35 * shadowScale})`;
-    ctx.fill();
-
-    if (isSitting) {
-      // Seated Legs: Folded forward horizontally
-      ctx.fillStyle = av.pantsColor || '#34495e';
-      ctx.beginPath();
-      ctx.roundRect(charX - 9, baseY - 6, 18, 6, 3);
-      ctx.fill();
-
-      // Torso / Shirt (slightly more compact)
-      ctx.fillStyle = av.shirtColor || '#2e86c1';
-      ctx.beginPath();
-      ctx.roundRect(charX - 9, baseY - 22, 18, 16, 5);
-      ctx.fill();
-    } else {
-      // Standing Legs / Pants
-      ctx.fillStyle = av.pantsColor || '#34495e';
-      ctx.fillRect(charX - 7, baseY - 12, 5, 14);
-      ctx.fillRect(charX + 2, baseY - 12, 5, 14);
-
-      // Torso / Shirt
-      ctx.fillStyle = av.shirtColor || '#2e86c1';
-      ctx.beginPath();
-      ctx.roundRect(charX - 10, baseY - 28, 20, 18, 6);
-      ctx.fill();
-    }
-
-    // Waving Arm Animation
-    if (Math.abs(waveAngle) > 0.01) {
-      ctx.save();
-      ctx.translate(charX + 11, baseY - 22);
-      ctx.rotate(-0.8 + waveAngle);
-      ctx.fillStyle = av.shirtColor || '#2e86c1';
-      ctx.beginPath();
-      ctx.roundRect(-2, -14, 5, 14, 2.5);
-      ctx.fill();
-      ctx.fillStyle = av.skin || '#f5cba7';
-      ctx.beginPath();
-      ctx.arc(0.5, -16, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    const headY = isSitting ? baseY - 28 : baseY - 36;
-
-    // Head Base (Skin)
-    ctx.fillStyle = av.skin || '#f5cba7';
-    ctx.beginPath();
-    ctx.arc(charX, headY, 11, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Facial features or Back Hair depending on 4-way facing:
-    const isFacingBack = (facing === 'NW' || facing === 'NE');
-
-    if (isFacingBack) {
-      // Back of head — full hair coverage
-      ctx.fillStyle = av.hairColor || '#4a235a';
-      ctx.beginPath();
-      ctx.arc(charX, headY - 1, 11.5, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      const eyeShift = facing === 'SW' ? -2 : 2;
-
-      // Eyes
-      ctx.fillStyle = '#1e293b';
-      ctx.beginPath();
-      ctx.arc(charX - 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
-      ctx.arc(charX + 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Smile
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(charX + eyeShift / 2, headY + 2, 4, 0.2, Math.PI - 0.2);
-      ctx.stroke();
-
-      // Front Hair style / bangs
-      ctx.fillStyle = av.hairColor || '#4a235a';
-      ctx.beginPath();
-      ctx.arc(charX, headY - 5, 12, Math.PI * 0.8, Math.PI * 2.2);
-      ctx.fill();
-    }
+    const pose = p.pose || (isSitting ? 'sit' : p.activeEmote?.type === 'dance' ? 'dance' : p.isWalking ? 'walk' : 'idle');
+    drawModularAvatar(ctx, av, charX, baseY, { pose, facing, time: performance.now(), wave: waveAngle });
+    p.auraState ||= {};
+    const auraNow = performance.now();
+    drawAura(ctx, p.auraState, av.aura || 'none', charX, baseY, (auraNow - (p.auraAt || auraNow)) / 1000);
+    p.auraAt = auraNow;
 
     // Name Tag — Persistently synchronized
     ctx.font = 'bold 11px Quicksand, sans-serif';
-    const tagText = (isSelf ? selfPlayer.name : p.name) || 'Traveler';
+    const titleLabel = TITLES[p.title]?.label;
+    const tagText = `${titleLabel ? `[${titleLabel}] ` : ''}${(isSelf ? selfPlayer.name : p.name) || 'Traveler'}`;
     const textWidth = ctx.measureText(tagText).width;
 
     ctx.fillStyle = isSelf ? 'rgba(139, 92, 246, 0.88)' : 'rgba(15, 23, 42, 0.78)';
@@ -2170,6 +2116,13 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   const avatarModal = document.getElementById('avatar-modal');
   const previewCanvas = document.getElementById('avatar-preview');
   const pctx = previewCanvas.getContext('2d');
+  const syncWardrobe = mountWardrobe(previewCanvas.parentElement, () => selfPlayer.avatar,
+    avatar => { selfPlayer.avatar = avatar; }, () => identityState, sendWs, renderAvatarPreview);
+  function animateWardrobe() {
+    if (!avatarModal.classList.contains('hidden')) renderAvatarPreview();
+    requestAnimationFrame(animateWardrobe);
+  }
+  requestAnimationFrame(animateWardrobe);
 
   document.getElementById('btn-avatar').addEventListener('click', () => {
     avatarModal.classList.remove('hidden');
@@ -2187,42 +2140,11 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     const cy = 120;
     const av = selfPlayer.avatar;
 
-    // Head
-    pctx.fillStyle = av.skin;
-    pctx.beginPath();
-    pctx.arc(cx, cy - 40, 20, 0, Math.PI * 2);
-    pctx.fill();
-
-    // Eyes
-    pctx.fillStyle = '#1e293b';
-    pctx.beginPath();
-    pctx.arc(cx - 7, cy - 40, 2.5, 0, Math.PI * 2);
-    pctx.arc(cx + 7, cy - 40, 2.5, 0, Math.PI * 2);
-    pctx.fill();
-
-    // Smile
-    pctx.strokeStyle = '#1e293b';
-    pctx.lineWidth = 2;
-    pctx.beginPath();
-    pctx.arc(cx, cy - 36, 7, 0.2, Math.PI - 0.2);
-    pctx.stroke();
-
-    // Hair
-    pctx.fillStyle = av.hairColor;
-    pctx.beginPath();
-    pctx.arc(cx, cy - 46, 22, Math.PI * 0.8, Math.PI * 2.2);
-    pctx.fill();
-
-    // Torso
-    pctx.fillStyle = av.shirtColor;
-    pctx.beginPath();
-    pctx.roundRect(cx - 18, cy - 18, 36, 32, 8);
-    pctx.fill();
-
-    // Legs
-    pctx.fillStyle = av.pantsColor;
-    pctx.fillRect(cx - 14, cy + 14, 10, 24);
-    pctx.fillRect(cx + 4, cy + 14, 10, 24);
+    syncWardrobe();
+    pctx.save();
+    pctx.translate(cx, 130); pctx.scale(2, 2);
+    drawModularAvatar(pctx, av, 0, 0, { pose: document.getElementById('wardrobe-pose').value, time: performance.now() });
+    pctx.restore();
   }
 
   // Swatch Selectors
@@ -2613,33 +2535,32 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   let localPassport = null;
 
   function loadPassport() {
-    try {
-      const saved = localStorage.getItem('haven_passport');
-      if (saved) {
-        localPassport = JSON.parse(saved);
-      }
-    } catch {}
-    if (!localPassport) {
-      localPassport = createDefaultPassport(selfId || 'guest', selfPlayer.name || 'Traveler');
-    }
+    localPassport = identityState.passport;
   }
 
-  function triggerPassportAction(actionType, metadata = {}) {
-    if (!localPassport) loadPassport();
-    localPassport.playerName = selfPlayer.name || 'Traveler';
-    const newStamps = recordPassportAction(localPassport, actionType, metadata);
-    try {
-      localStorage.setItem('haven_passport', JSON.stringify(localPassport));
-    } catch {}
-    for (const s of newStamps) {
-      showToast(`Achievement Unlocked: ${s.icon} ${s.title}!`, s.icon);
-      playCoinChime();
-    }
+  // Unlocks now come exclusively from accepted server actions.
+  function triggerPassportAction() {
+    loadPassport();
   }
 
   function renderPassportUI() {
     if (!localPassport) loadPassport();
-    document.getElementById('passport-player-name').textContent = selfPlayer.name || 'Traveler';
+    const nameEl = document.getElementById('passport-player-name');
+    nameEl.textContent = selfPlayer.name || 'Traveler';
+    let residency = document.getElementById('passport-residency');
+    if (!residency) {
+      residency = document.createElement('p');
+      residency.id = 'passport-residency';
+      nameEl.after(residency);
+    }
+    residency.textContent = selfPlayer.isRegistered ? formatResidency(selfPlayer.registeredAt) : 'Guest — register to establish your residency';
+    let identityControls = document.getElementById('passport-identity-controls');
+    if (!identityControls) {
+      identityControls = document.createElement('section');
+      identityControls.id = 'passport-identity-controls';
+      residency.after(identityControls);
+    }
+    renderIdentityControls(identityControls, identityState, sendWs);
     const prog = getPassportProgress(localPassport);
     document.getElementById('passport-progress-fill').style.width = `${prog.percent}%`;
     document.getElementById('passport-progress-label').textContent = `${prog.unlockedCount} / ${prog.totalStamps} Stamps Unlocked (${prog.percent}%)`;
@@ -2656,6 +2577,17 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
         <div class="stamp-desc">${escapeHtml(s.description)}</div>
         ${unlocked ? '<div style="font-size:10px; color:#34d399; font-weight:700;">✓ Unlocked</div>' : '<div style="font-size:10px; color:var(--text-muted);">🔒 Locked</div>'}
       `;
+      if (unlocked) {
+        const pin = document.createElement('button');
+        const pinned = identityState.pinnedBadges.includes(id);
+        pin.type = 'button'; pin.textContent = pinned ? 'Unpin' : 'Pin badge';
+        pin.setAttribute('aria-pressed', String(pinned));
+        pin.disabled = !pinned && identityState.pinnedBadges.length >= 3;
+        pin.addEventListener('click', () => sendWs({ type: 'UPDATE_IDENTITY', payload: {
+          pinnedBadges: pinned ? identityState.pinnedBadges.filter(b => b !== id) : [...identityState.pinnedBadges, id]
+        } }));
+        card.append(pin);
+      }
       grid.appendChild(card);
     }
   }

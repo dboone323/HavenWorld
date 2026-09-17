@@ -13,7 +13,7 @@ function makeSock() {
 }
 function makePlayer(id, room = 'plaza') {
   return { id, name: 'P' + id, room, x: 0, y: 0, targetX: 0, targetY: 0,
-    coins: 1000, avatar: { skin: '#fff' }, lastChat: null, ws: makeSock(), lastDailyClaim: 0, friends: [], authUserId: null };
+    coins: 1000, avatar: { skin: '#fff' }, lastChat: null, ws: makeSock(), lastDailyClaim: 0, friends: [], authUserId: id };
 }
 function mockDb() {
   const calls = {
@@ -87,13 +87,31 @@ test('CHAT /name renames the player', () => {
   assert.equal(JSON.parse(p.ws.sent[1]).type, 'SYSTEM_MESSAGE');
 });
 
-test('UPDATE_AVATAR persists and broadcasts', () => {
+test('UPDATE_AVATAR persists and broadcasts', async () => {
   const rooms = new RoomManager(); const { api, calls } = mockDb();
   const p = makePlayer('a'); rooms.join('plaza', p);
-  handleMessage({ type: 'UPDATE_AVATAR', payload: { avatar: { shirtColor: '#ff0000' } } }, p, C(rooms, api, p));
+  let saved;
+  api.saveIdentity = async (_id, identity) => { saved = structuredClone(identity); };
+  await handleMessage({ type: 'UPDATE_AVATAR', payload: { avatar: { shirtColor: '#ff0000' } } }, p, C(rooms, api, p));
   assert.equal(p.avatar.shirtColor, '#ff0000');
-  assert.equal(calls.saveAvatar, 1);
-  assert.equal(JSON.parse(p.ws.sent[0]).type, 'PLAYER_PROFILE_UPDATED');
+  assert.equal(saved.outfit.shirtColor, '#ff0000');
+  assert.ok(p.ws.sent.some(raw => JSON.parse(raw).type === 'PLAYER_PROFILE_UPDATED'));
+});
+
+test('UPDATE_IDENTITY calls saveIdentity once with sanitized state before acknowledging', async () => {
+  const rooms = new RoomManager(); const { api } = mockDb();
+  const p = makePlayer('identity-save'); rooms.join('plaza', p);
+  const saves = [];
+  api.saveIdentity = async (id, identity) => {
+    assert.equal(p.ws.sent.length, 0, 'no acknowledgement before persistence');
+    saves.push({ id, identity: structuredClone(identity) });
+  };
+  await handleMessage({ type: 'UPDATE_IDENTITY', payload: { statusMessage: '<b>Building</b> a home' } }, p, C(rooms, api, p));
+  assert.equal(saves.length, 1);
+  assert.equal(saves[0].id, p.id);
+  assert.equal(saves[0].identity.statusMessage, 'Building a home');
+  const acknowledgement = p.ws.sent.map(JSON.parse).find(msg => msg.type === 'IDENTITY_UPDATED');
+  assert.deepEqual(acknowledgement.payload, saves[0].identity);
 });
 
 test('SWITCH_ROOM relocates the player and notifies others', async () => {

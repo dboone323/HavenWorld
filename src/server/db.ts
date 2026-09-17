@@ -1,3 +1,6 @@
+import { createIdentity } from '../client/shared/identity-model.js';
+import type { IdentityState } from '../shared/types.ts';
+
 /**
  * HavenWorld — Database adapter (TypeScript).
  * Dual-mode storage:
@@ -111,6 +114,14 @@ if (mode !== 'supabase') {
     `);
     try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN flooring TEXT DEFAULT 'parquet'"); } catch {}
     try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN wallpaper TEXT DEFAULT 'cozy_wood'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN identity_json TEXT DEFAULT '{}'"); } catch {}
+    try { sqliteDb.exec('ALTER TABLE profiles ADD COLUMN registered_at TEXT'); } catch {}
+    sqliteDb.exec(`
+      CREATE TRIGGER IF NOT EXISTS profiles_registered_at_immutable
+      BEFORE UPDATE OF registered_at ON profiles
+      WHEN OLD.registered_at IS NOT NULL AND NEW.registered_at IS NOT OLD.registered_at
+      BEGIN SELECT RAISE(ABORT, 'registration date is immutable'); END;
+    `);
     console.log(`🗄️  Native Local SQLite Database active: ${dbPath}`);
     console.log(`✨ All room furniture, avatars, and coins will automatically save to disk!`);
   } catch (e) {
@@ -201,6 +212,54 @@ export async function initPlayerProfile(userId: string, username: string): Promi
   }
 }
 
+const memoryIdentity = new Map<string, IdentityState>();
+
+export async function loadIdentity(userId: string): Promise<IdentityState> {
+  let stored: Partial<IdentityState> = {};
+  if (mode === 'sqlite') {
+    const row = sqliteDb!.prepare('SELECT identity_json FROM profiles WHERE id = ?').get(userId);
+    stored = JSON.parse(String(row?.identity_json || '{}'));
+  } else if (mode === 'supabase') {
+    try {
+      const { data, error } = await supabase.from('profiles').select('identity_json').eq('id', userId).maybeSingle();
+      if (error) { console.warn('Supabase loadIdentity warning:', error.message); stored = {}; }
+      else stored = data && data.identity_json ? (typeof data.identity_json === 'string' ? JSON.parse(data.identity_json) : data.identity_json) : {};
+    } catch (err) { console.warn('Supabase loadIdentity warning:', (err as Error).message); stored = {}; }
+  } else {
+    stored = memoryIdentity.get(userId) || {};
+  }
+  return { ...createIdentity(userId), ...stored } as IdentityState;
+}
+
+export async function saveIdentity(userId: string, identity: IdentityState): Promise<void> {
+  if (mode === 'sqlite') {
+    sqliteDb!.prepare('UPDATE profiles SET identity_json = ? WHERE id = ?').run(JSON.stringify(identity), userId);
+  } else if (mode === 'supabase') {
+    try {
+      const { error } = await supabase.from('profiles').update({ identity_json: JSON.stringify(identity) }).eq('id', userId);
+      if (error) console.warn('Supabase saveIdentity warning:', error.message);
+    } catch (err) { console.warn('Supabase saveIdentity warning:', (err as Error).message); }
+  } else {
+    memoryIdentity.set(userId, structuredClone(identity));
+  }
+}
+
+/** Null for guests and legacy accounts whose registration date is unknown. */
+export async function getRegistrationDate(userId: string): Promise<string | null> {
+  if (mode === 'sqlite') {
+    const row = sqliteDb!.prepare('SELECT registered_at FROM profiles WHERE id = ?').get(userId);
+    return typeof row?.registered_at === 'string' ? row.registered_at : null;
+  }
+  if (mode === 'supabase') {
+    try {
+      const { data, error } = await supabase.from('profiles').select('registered_at').eq('id', userId).maybeSingle();
+      if (error) { console.warn('Supabase getRegistrationDate warning:', error.message); return null; }
+      return data?.registered_at || null;
+    } catch (err) { console.warn('Supabase getRegistrationDate warning:', (err as Error).message); return null; }
+  }
+  return null;
+}
+
 // --- Account / Auth Persistence ---
 
 /**
@@ -228,7 +287,7 @@ export async function signupAccount(username: string, password: string): Promise
 
       const { error } = await supabase!.from('profiles').insert({
         id: userId, username: cleanName, password_hash: passwordHash,
-        coins: 1000, gems: 50, auth_user_id: null
+        coins: 1000, gems: 50, auth_user_id: null, registered_at: new Date().toISOString()
       });
       if (error) {
         if (error.message?.includes('unique') || error.message?.includes('duplicate')) {
@@ -244,10 +303,10 @@ export async function signupAccount(username: string, password: string): Promise
   } else if (mode === 'sqlite') {
     try {
       const stmt = sqliteDb!.prepare(`
-        INSERT INTO profiles (id, username, password_hash, coins, gems, auth_user_id)
-        VALUES (?, ?, ?, 1000, 50, NULL)
+        INSERT INTO profiles (id, username, password_hash, coins, gems, auth_user_id, registered_at)
+        VALUES (?, ?, ?, 1000, 50, NULL, ?)
       `);
-      stmt.run(userId, cleanName, passwordHash);
+      stmt.run(userId, cleanName, passwordHash, new Date().toISOString());
       return { id: userId, name: cleanName };
     } catch (e: any) {
       if (e.code === 'SQLITE_CONSTRAINT' || e.code === 'SQLITE_CONSTRAINT_UNIQUE' || (e.message && (e.message.includes('UNIQUE') || e.message.includes('constraint')))) {
@@ -359,12 +418,18 @@ export async function getUserSanctuaryRoom(userId: string, playerName: string): 
       }
 
       if (createSuccess) {
-        // Insert starter furniture
+        // Insert starter furniture. Supabase v2 PostgrestBuilder is thenable
+        // but has NO .catch() method — chaining .catch() throws a TypeError that
+        // silently nullifies getUserSanctuaryRoom, cascading into FK violations
+        // on later furniture placement (parent_furniture_id references dead rows).
+        // Use await + try/catch instead.
         const furnitureRows = starterFurniture.map(f => ({
           id: f.id, room_id: roomId, item_type: f.itemType,
           grid_x: f.x, grid_y: f.y, rotation: 0, elevation: 0, parent_furniture_id: null
         }));
-        await supabase!.from('placed_furniture').insert(furnitureRows).catch(() => {});
+        try {
+          await supabase!.from('placed_furniture').insert(furnitureRows);
+        } catch { /* ignore duplicate-key / re-insert on reconnect */ }
         return { roomId, roomCode: roomId, name: roomName, flooring: 'parquet', wallpaper: 'cozy_wood' };
       }
       return null;

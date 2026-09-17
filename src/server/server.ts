@@ -17,6 +17,7 @@ import { RoomManager, serializePlayer, serializeRoom, getUserLoftRoomId } from '
 import { handleMessage } from './protocol.ts';
 import { AuthorityTicker, AUTHORITY_TICK_MS } from './tick.ts';
 import { TradeManager } from './trade.ts';
+import { normalizeAvatar } from '../client/shared/identity-model.js';
 import * as db from './db.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,6 +150,13 @@ app.get('/api/auth/player/:playerId', async (req, res) => {
 // --- WebSocket Connection Handler ---
 
 wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
+  try { await handleConnection(ws, req); }
+  catch (e) { console.error('WebSocket connection error:', e instanceof Error ? e.message : e); }
+});
+
+// --- WebSocket Connection Handler ---
+
+async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promise<void> {
   // Buffer any messages arriving while async DB queries and room setup execute
   const earlyMessageQueue: Buffer[] = [];
   let isReady = false;
@@ -211,7 +219,10 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     await db.initPlayerProfile(playerId, playerName);
   }
 
+  const identity = await db.loadIdentity(playerId);
+  playerAvatar = normalizeAvatar(identity?.outfit || playerAvatar);
   const player = {
+    identity: identity || undefined,
     id: playerId,
     name: playerName,
     room: 'plaza',
@@ -226,6 +237,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     avatar: playerAvatar,
     lastChat: null,
     friends: [] as string[],
+    registeredAt: authUserId ? await db.getRegistrationDate(playerId) : null,
     authUserId,
   };
 
@@ -265,6 +277,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     payload: {
       selfId: playerId,
       playerId: playerId,
+      identity: player.identity,
       player: serializePlayer(player),
       room: serializeRoom(plaza!),
       otherPlayers: rooms.othersIn('plaza', playerId),
@@ -294,7 +307,12 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     });
   };
 
-  ws.on('message', processMessage);
+  let dispatchQueue = Promise.resolve();
+  ws.on('message', (raw) => {
+    dispatchQueue = dispatchQueue.then(() => processMessage(raw as Buffer)).catch((error) => {
+      console.error('Message dispatch failed:', error);
+    });
+  });
 
   for (const raw of earlyMessageQueue) {
     await processMessage(raw);
@@ -306,7 +324,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     rooms.leave(player);
     globalPlayers.delete(playerId);
   });
-});
+}
 
 export { db };
 

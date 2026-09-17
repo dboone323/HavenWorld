@@ -1,3 +1,5 @@
+import type { IdentityState } from '../shared/types.ts';
+
 /**
  * HavenWorld — Room registry + broadcast helpers (server-side, TypeScript).
  * Extracted from the original monolithic server.js so room state and
@@ -9,6 +11,7 @@ import type { PlayerInfo, PlacedFurniture, RoomInfo, Avatar } from '../shared/ty
 const WS_OPEN = WebSocket.OPEN;
 
 export interface Player {
+  identity?: IdentityState;
   id: string;
   name: string;
   room: string;
@@ -30,6 +33,7 @@ export interface Player {
   avatar: Avatar;
   lastChat: { text: string; timestamp: number } | null;
   friends: string[];
+  registeredAt?: string | null;
   authUserId: string | null; // Supabase auth user ID (if logged in via account)
 }
 
@@ -107,6 +111,11 @@ export function serializePlayer(p: Player): PlayerInfo {
     gems: p.gems,
     avatar: p.avatar,
     lastChat: p.lastChat,
+    registeredAt: p.registeredAt ?? null,
+    isRegistered: !!p.authUserId,
+    title: p.identity?.title || '',
+    statusMessage: p.identity?.statusMessage || '',
+    pinnedBadges: p.identity?.pinnedBadges || [],
   };
 }
 

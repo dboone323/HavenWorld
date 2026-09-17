@@ -1,3 +1,6 @@
+import { handleIdentity, awardIdentity } from './identity.ts';
+import type { IdentityState } from '../shared/types.ts';
+
 /**
  * HavenWorld — WebSocket message dispatcher (TypeScript).
  * Maps a client message { type, payload } to room-state mutations and
@@ -35,6 +38,8 @@ const SHOP_ITEMS: Record<string, ShopItem> = {
 export interface DispatchContext {
   rooms: RoomManager;
   db: {
+    loadIdentity?: (userId: string) => Promise<IdentityState>;
+    saveIdentity?: (userId: string, identity: IdentityState) => Promise<void>;
     getMode: () => string;
     initPlayerProfile: (userId: string, username: string) => Promise<void>;
     saveAvatar: (userId: string, avatar: Avatar) => Promise<void>;
@@ -79,6 +84,14 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
   const currentRoom = rooms.get(room);
   if (!currentRoom) return;
 
+  if (['UPDATE_IDENTITY', 'SAVE_PRESET', 'APPLY_PRESET', 'UPDATE_AVATAR'].includes(msg.type)) {
+    await handleIdentity(msg.type, msg.payload || {}, player, ctx);
+    return;
+  }
+  if (msg.type.startsWith('TRADE_') && !player.authUserId) {
+    rooms.send(player.ws, { type: 'TRADE_ERROR', payload: { message: 'Register or log in to trade.' } });
+    return;
+  }
   const dailyCooldownMs = ctx.dailyCooldownMs || (24 * 60 * 60 * 1000);
 
   switch (msg.type) {
@@ -121,6 +134,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
           facing: player.facing,
         }
       });
+      if (dx !== 0 || dy !== 0) await awardIdentity(player, ctx, 'STEP');
       break;
     }
 
@@ -147,6 +161,10 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       // In-game commands: /name <n>, /jump, /wave, /dance, /hug
       if (text.startsWith('/')) {
         const cmd = parseCommand(text);
+        if (cmd?.command === 'status') {
+          await handleIdentity('UPDATE_IDENTITY', { statusMessage: cmd.args || '' }, player, ctx);
+          return;
+        }
         if (cmd && cmd.command === 'name' && cmd.args) {
           player.name = cmd.args.slice(0, 18).trim();
           if (ctx.globalPlayers) {
@@ -247,6 +265,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
             otherPlayers: rooms.othersIn(targetRoomId, player.id)
           }
         });
+        await awardIdentity(player, ctx, 'ENTER_ROOM', { roomId: targetRoomId });
         rooms.broadcast(targetRoomId, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
         break;
       }
@@ -268,6 +287,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
         }
       });
       rooms.broadcast(targetRoomId, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
+      await awardIdentity(player, ctx, 'ENTER_ROOM', { roomId: targetRoomId });
       break;
     }
 
@@ -294,6 +314,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       currentRoom.furniture.push(newItem);
       db.addFurniture(player.room, newItem).catch(() => {});
       rooms.broadcast(player.room, { type: 'FURNITURE_ADDED', payload: { item: newItem } });
+      await awardIdentity(player, ctx, 'PLACE_FURNITURE');
       break;
     }
 
@@ -409,7 +430,10 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     }
 
     case 'MINIGAME_SCORE': {
-      const reward = Math.max(50, Math.min(500, Math.floor((msg.payload!.score as number) / 2)));
+      const score = msg.payload?.score;
+      if (typeof score !== 'number' || !Number.isFinite(score) || score < 0) return;
+      const reward = Math.max(50, Math.min(500, Math.floor(score / 2)));
+      await awardIdentity(player, ctx, 'MINIGAME_SCORE', { score: reward });
       player.coins += reward;
       db.addCoins(player.id, reward).catch(() => {});
       rooms.send(player.ws, {
@@ -507,12 +531,13 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     // --- Friends System ---
 
     case 'GET_FRIENDS_LIST': {
-      Promise.all([db.getFriends(player.id), db.getPendingFriendRequests(player.id)]).then(([friends, pendingRequests]) => {
-        rooms.send(player.ws, {
-          type: 'FRIENDS_LIST_UPDATE',
-          payload: { friends, pendingRequests }
-        });
-      });
+      const [friends, pendingRequests] = await Promise.all([db.getFriends(player.id), db.getPendingFriendRequests(player.id)]);
+      const profiles = await Promise.all(friends.map(async friend => {
+        const online = ctx.globalPlayers?.get(friend.friendId);
+        const identity = online?.identity || await db.loadIdentity?.(friend.friendId);
+        return { ...friend, name: online?.name || friend.friendId, statusMessage: identity?.statusMessage || '' };
+      }));
+      rooms.send(player.ws, { type: 'FRIENDS_LIST_UPDATE', payload: { friends: profiles, pendingRequests } });
       break;
     }
 
@@ -624,6 +649,8 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const targetPlayerId = (msg.payload && msg.payload.targetPlayerId as string) || undefined;
       const targetP = targetPlayerId ? (currentRoom.players.get(targetPlayerId) || ctx.globalPlayers?.get(targetPlayerId)) : undefined;
 
+      if (!['hug', 'wave', 'heart', 'dance', 'jump', 'run', 'lie'].includes(emote)) return;
+      await awardIdentity(player, ctx, 'EMOTE');
       let emoteText = '';
       if (emote === 'hug') {
         emoteText = targetP ? `*hugs ${targetP.name} warmly! 🫂*` : `*offers a warm hug! 🫂*`;
@@ -675,6 +702,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       if (db.saveRoomStyle) {
         await db.saveRoomStyle(room, flooring, wallpaper);
       }
+      await awardIdentity(player, ctx, 'UPDATE_STYLE');
       rooms.broadcast(room, {
         type: 'ROOM_STYLE_UPDATED',
         payload: {
@@ -716,6 +744,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
         player.targetX = furni.x;
         player.targetY = furni.y;
         player.isSitting = true;
+        await awardIdentity(player, ctx, 'SIT');
         rooms.broadcast(room, {
           type: 'PLAYER_MOVED',
           payload: {
@@ -729,6 +758,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
           }
         });
       } else if (action === 'toggle' || (!action && lightTypes.includes(furni.type))) {
+        await awardIdentity(player, ctx, 'TOGGLE_LIGHT');
         const currentState = furni.state || { isOn: false };
         furni.state = {
           ...currentState,
@@ -747,7 +777,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const publicRooms = [
         { id: 'plaza', name: '🏢 Central Plaza & Lounge', description: 'The bustling town center and social hub.', count: rooms.get('plaza')?.players.size || 0 }
       ];
-      const personalLofts: { id: string; ownerId: string; ownerName: string; name: string; count: number }[] = [];
+      const personalLofts: { id: string; ownerId: string; ownerName: string; statusMessage: string; name: string; count: number }[] = [];
       if (ctx.globalPlayers) {
         for (const [_, p] of ctx.globalPlayers) {
           const loftId = getUserLoftRoomId(p.id);
@@ -757,6 +787,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
               id: loftId,
               ownerId: p.id,
               ownerName: p.name,
+              statusMessage: p.identity?.statusMessage || '',
               name: loft.name || `${p.name}'s Cozy Loft`,
               count: loft.players.size
             });
@@ -780,6 +811,10 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const targetP = ctx.globalPlayers?.get(targetPlayerId);
       if (!targetP) {
         rooms.send(player.ws, { type: 'TRADE_ERROR', payload: { message: 'Player is no longer online.' } });
+        return;
+      }
+      if (!targetP.authUserId) {
+        rooms.send(player.ws, { type: 'TRADE_ERROR', payload: { message: 'Both players must be registered to trade.' } });
         return;
       }
       const tradeManager = ctx.tradeManager || defaultTradeManager;
