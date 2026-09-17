@@ -111,6 +111,16 @@ app.get('/api/auth/player/:playerId', async (req, res) => {
 // --- WebSocket Connection Handler ---
 
 wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
+  // Buffer any messages arriving while async DB queries and room setup execute
+  const earlyMessageQueue: Buffer[] = [];
+  let isReady = false;
+  const onEarlyMessage = (data: Buffer) => {
+    if (!isReady) {
+      earlyMessageQueue.push(data);
+    }
+  };
+  ws.on('message', onEarlyMessage);
+
   // Check for authentication token in the query string or headers.
   // Authenticated players use their persistent account ID;
   // unauthenticated players get a temporary guest ID (backward compatibility).
@@ -215,6 +225,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     type: 'INIT_STATE',
     payload: {
       selfId: playerId,
+      playerId: playerId,
       player: serializePlayer(player),
       room: serializeRoom(plaza!),
       otherPlayers: rooms.othersIn('plaza', playerId),
@@ -227,7 +238,11 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   // Notify others that the new player has arrived
   rooms.broadcast('plaza', { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, ws);
 
-  ws.on('message', async (raw: Buffer) => {
+  // Switch to active message dispatcher and drain any queued early messages
+  isReady = true;
+  ws.off('message', onEarlyMessage);
+
+  const processMessage = async (raw: Buffer) => {
     let msg;
     try {
       msg = JSON.parse(raw.toString());
@@ -238,7 +253,13 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
       rooms, db, ws, globalPlayers,
       dailyCooldownMs: 24 * 60 * 60 * 1000,
     });
-  });
+  };
+
+  ws.on('message', processMessage);
+
+  for (const raw of earlyMessageQueue) {
+    await processMessage(raw);
+  }
 
   ws.on('close', () => {
     rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } });

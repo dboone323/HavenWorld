@@ -162,22 +162,22 @@ import { escapeHtml } from './shared/chat.js';
   function handleServerMessage(msg) {
     switch (msg.type) {
       case 'INIT_STATE': {
-        selfId = msg.payload.selfId;
-        selfPlayer = { ...selfPlayer, ...msg.payload.player };
+        selfId = msg.payload.selfId || msg.payload.playerId || msg.payload.player?.id;
+        selfPlayer = { ...selfPlayer, ...msg.payload.player, id: selfId };
         currentRoom = msg.payload.room;
         otherPlayers.clear();
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
         updateCoinUI(selfPlayer.coins);
-        document.getElementById('room-select').value = currentRoom.id;
 
         // If the server sent us a personal loft room ID, add it to the dropdown
         if (msg.payload.playerLoftRoomId) {
           addLoftToRoomSelector(msg.payload.playerLoftRoomId, msg.payload.playerLoftName);
-          // Default room-select to the loft if we were in it
-          const roomSelect = document.getElementById('room-select');
-          if (currentRoom.id.startsWith('loft_')) {
-            roomSelect.value = currentRoom.id;
-          }
+        }
+
+        // Accurately synchronize the room-select dropdown to the player's active room
+        const roomSelect = document.getElementById('room-select');
+        if (roomSelect) {
+          roomSelect.value = currentRoom.id;
         }
         break;
       }
@@ -410,8 +410,6 @@ import { escapeHtml } from './shared/chat.js';
       opt.textContent = `🏡 ${roomName}`;
       roomSelect.add(opt);
     }
-    // Select it
-    roomSelect.value = roomId;
   }
 
   function showDailyBonusPopup(message, nextClaimAvailable) {
@@ -1079,7 +1077,11 @@ import { escapeHtml } from './shared/chat.js';
     }
 
     const grid = toGrid(sx, sy);
-    if (grid.x < 0 || grid.x > GRID_SIZE || grid.y < 0 || grid.y > GRID_SIZE) return;
+    if (grid.x < -0.5 || grid.x > GRID_SIZE + 0.5 || grid.y < -0.5 || grid.y > GRID_SIZE + 0.5) return;
+
+    // Gentle clamp within the playable grid
+    const targetX = Math.max(0.5, Math.min(GRID_SIZE - 0.5, grid.x));
+    const targetY = Math.max(0.5, Math.min(GRID_SIZE - 0.5, grid.y));
 
     const isPersonalLoft = currentRoom.id.startsWith('loft_');
 
@@ -1099,7 +1101,7 @@ import { escapeHtml } from './shared/chat.js';
       if (clickedFurniture && !parentSurfaceId) {
         // Select this furniture as a parent surface
         parentSurfaceId = clickedFurniture.id;
-        targetIndicator = { x: grid.x, y: grid.y, alpha: 1.0, parentSurface: clickedFurniture.id };
+        targetIndicator = { x: targetX, y: targetY, alpha: 1.0, parentSurface: clickedFurniture.id };
         return; // Don't place yet — now in "place on surface" mode
       }
 
@@ -1109,8 +1111,8 @@ import { escapeHtml } from './shared/chat.js';
           type: 'PLACE_FURNITURE',
           payload: {
             type: selectedFurnitureType,
-            x: grid.x,
-            y: grid.y,
+            x: targetX,
+            y: targetY,
             elevation: parentSurfaceId ? 1 : 0,
             parentSurfaceId: parentSurfaceId || null
           }
@@ -1119,12 +1121,15 @@ import { escapeHtml } from './shared/chat.js';
       // Clear parent surface selection after placing
       if (parentSurfaceId) parentSurfaceId = null;
     } else {
-      // Walk to position
-      targetIndicator = { x: grid.x, y: grid.y, alpha: 1.0 };
+      // Walk to position with responsive optimistic movement and network sync
+      targetIndicator = { x: targetX, y: targetY, alpha: 1.0 };
+      selfPlayer.targetX = targetX;
+      selfPlayer.targetY = targetY;
+
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'MOVE',
-          payload: { x: grid.x, y: grid.y }
+          payload: { x: targetX, y: targetY }
         }));
       }
     }
@@ -1834,19 +1839,25 @@ import { escapeHtml } from './shared/chat.js';
   });
 
   // --- Start Client ---
-  // Check for persisted account token or guest ID from localStorage
+  // Auto-connect immediately: use saved account or persistent guest session
   const storedToken = localStorage.getItem('haven_token');
-  const storedGuestId = localStorage.getItem('haven_guest_id');
+  let storedGuestId = localStorage.getItem('haven_guest_id');
+
+  if (!storedToken && !storedGuestId) {
+    storedGuestId = 'usr_' + Math.random().toString(36).substring(2, 9);
+    localStorage.setItem('haven_guest_id', storedGuestId);
+  }
+
+  // Ensure welcome overlay stays hidden so pointer events are never blocked
+  welcomeOverlay.classList.add('hidden');
 
   if (storedToken) {
     authPlayerId = storedToken;
     selfId = storedToken;
     initWebSocket(storedToken, null);
-  } else if (storedGuestId) {
-    initWebSocket(null, storedGuestId);
   } else {
-    // Show Welcome / Auth Gate overlay
-    welcomeOverlay.classList.remove('hidden');
+    selfId = storedGuestId;
+    initWebSocket(null, storedGuestId);
   }
 
   requestAnimationFrame(gameLoop);

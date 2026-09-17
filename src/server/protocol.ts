@@ -81,8 +81,8 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
   switch (msg.type) {
     case 'MOVE': {
       const { x, y } = msg.payload || {};
-      player.targetX = clampGrid(Number(x) || player.x, GRID_MAX);
-      player.targetY = clampGrid(Number(y) || player.y, GRID_MAX);
+      player.targetX = clampGrid(typeof x === 'number' ? x : (Number(x) ?? player.x), GRID_MAX);
+      player.targetY = clampGrid(typeof y === 'number' ? y : (Number(y) ?? player.y), GRID_MAX);
       rooms.broadcast(room, {
         type: 'PLAYER_MOVED',
         payload: { playerId: player.id, startX: player.x, startY: player.y, targetX: player.targetX, targetY: player.targetY }
