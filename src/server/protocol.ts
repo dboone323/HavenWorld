@@ -13,31 +13,14 @@ import { ShardManager } from './sharding.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
 import { serializePlayer, serializeRoom, RoomManager, getUserLoftRoomId } from './rooms.ts';
 import { TradeManager } from './trade.ts';
+import { CATALOG_ITEMS, getRotatingFeaturedStock, getTimeUntilNextRotation } from '../shared/catalog.ts';
+import { calculateSalvageYield, canCraftRecipe, deductCraftingMaterials } from '../shared/crafting.ts';
+import { petInteract } from '../shared/pet.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
 
 export const shardManager = new ShardManager();
-
-// --- Shop Catalog (Phase 1 furniture + clothing items) ---
-const SHOP_ITEMS: Record<string, ShopItem> = {
-  // Furniture
-  'sofa':      { name: 'Cozy Velvet Sofa',   price: 500,  category: 'furniture', icon: '🛋️' },
-  'table':     { name: 'Oak Coffee Table',    price: 300,  category: 'furniture', icon: '🪵' },
-  'plant':     { name: 'Monstera Plant',      price: 150,  category: 'furniture', icon: '🪴' },
-  'tv':        { name: 'Retro CRT TV',        price: 400,  category: 'furniture', icon: '📺' },
-  'neon':      { name: 'Neon Wall Sign',      price: 600,  category: 'furniture', icon: '✨' },
-  'arcade':    { name: 'Arcade Cabinet',      price: 800,  category: 'furniture', icon: '🕹️' },
-  'bed':       { name: 'Cozy Bed',            price: 750,  category: 'furniture', icon: '🛏️' },
-  'bookshelf': { name: 'Wooden Bookshelf',    price: 450,  category: 'furniture', icon: '📚' },
-  // Clothing
-  'hair_pink':     { name: 'Pink Hair Dye',   price: 200, category: 'clothing', icon: '💗' },
-  'hair_blue':     { name: 'Blue Hair Dye',   price: 200, category: 'clothing', icon: '💙' },
-  'shirt_purple':  { name: 'Purple Hoodie',   price: 350, category: 'clothing', icon: '💜' },
-  'pants_black':   { name: 'Black Pants',     price: 250, category: 'clothing', icon: '🖤' },
-  'shoes_sneakers':{ name: 'Sneakers',        price: 300, category: 'clothing', icon: '👟' },
-};
-
 
 export interface DispatchContext {
   rooms: RoomManager;
@@ -48,6 +31,7 @@ export interface DispatchContext {
     initPlayerProfile: (userId: string, username: string) => Promise<void>;
     saveAvatar: (userId: string, avatar: Avatar) => Promise<void>;
     addCoins: (userId: string, amount: number) => Promise<void>;
+    addGems?: (userId: string, amount: number) => Promise<number>;
     getRoomFurniture: (roomId: string) => Promise<PlacedFurniture[] | null>;
     getLoftFurniture: (roomId: string) => Promise<PlacedFurniture[] | null>;
     addFurniture: (roomId: string, item: PlacedFurniture) => Promise<void>;
@@ -69,6 +53,23 @@ export interface DispatchContext {
     getUserSanctuaryRoom: (userId: string, playerName: string) => Promise<{ roomId: string; roomCode: string; name: string; flooring?: string; wallpaper?: string } | null>;
     saveRoomStyle?: (roomId: string, flooring?: string, wallpaper?: string) => Promise<void>;
     getRoomStyle?: (roomId: string) => Promise<{ flooring: string; wallpaper: string } | null>;
+    saveRoomExpansion?: (roomId: string, width: number, height: number) => Promise<void>;
+    getRoomExpansion?: (roomId: string) => Promise<{ width: number; height: number }>;
+    saveRoomPermissions?: (roomId: string, accessMode: string, passwordHash?: string) => Promise<void>;
+    getRoomPermissions?: (roomId: string) => Promise<{ accessMode: string; passwordHash: string | null }>;
+    saveRoomMood?: (roomId: string, mood: string) => Promise<void>;
+    getRoomMood?: (roomId: string) => Promise<string>;
+    addRoomDecorator?: (roomId: string, userId: string) => Promise<void>;
+    removeRoomDecorator?: (roomId: string, userId: string) => Promise<void>;
+    getRoomDecorators?: (roomId: string) => Promise<string[]>;
+    getPlayerMaterials?: (userId: string) => Promise<{ scrap_metal: number; timber: number }>;
+    savePlayerMaterials?: (userId: string, mats: { scrap_metal: number; timber: number }) => Promise<void>;
+    setVipMembership?: (userId: string, durationDays: number) => Promise<{ isVip: boolean; expiresAt: string }>;
+    getVipStatus?: (userId: string) => Promise<{ isVip: boolean; expiresAt: string | null }>;
+    createMarketplaceListing?: (sellerId: string, sellerName: string, itemType: string, priceCoins: number, priceGems?: number) => Promise<any>;
+    getMarketplaceListings?: (query?: string) => Promise<any[]>;
+    buyMarketplaceListing?: (listingId: string, buyerId: string, buyerCoins: number) => Promise<any>;
+    cancelMarketplaceListing?: (listingId: string, sellerId: string) => Promise<any>;
   };
   ws: WebSocket;
   globalPlayers?: Map<string, Player>;
@@ -241,6 +242,25 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const targetRoomId = (msg.payload && msg.payload.roomId) as string;
       if (!targetRoomId || targetRoomId === player.room) return;
 
+      // Access permissions check for target room
+      const targetExisting = rooms.get(targetRoomId);
+      const isOwner = targetExisting ? targetExisting.ownerId === player.id : (targetRoomId === getUserLoftRoomId(player.id));
+      if (targetExisting && !isOwner) {
+        const areFriends = targetExisting.ownerId ? await db.areFriends(targetExisting.ownerId, player.id) : false;
+        const access = rooms.canAccess(targetRoomId, player.id, msg.payload?.password as string | undefined, areFriends);
+        if (!access.allowed) {
+          rooms.send(player.ws, {
+            type: 'ROOM_ACCESS_DENIED',
+            payload: {
+              roomId: targetRoomId,
+              reason: access.reason || 'locked',
+              ownerName: access.ownerName || targetExisting.name,
+            }
+          });
+          return;
+        }
+      }
+
       // Handle personal loft switch — create room lazily if needed
       if (rooms.isUserLoft(targetRoomId)) {
         let loftRoom = rooms.get(targetRoomId);
@@ -251,7 +271,6 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
             loftRoom = await rooms.getUserLoft(player.id, player.name);
           } else {
             // Player is visiting another player's loft (e.g. friend)
-            // Create the room shell with a friendly default name
             loftRoom = {
               id: targetRoomId,
               name: `Loft (${targetRoomId})`,
@@ -261,10 +280,18 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
               ownerId: null,
               flooring: 'parquet',
               wallpaper: 'cozy_wood',
+              gridWidth: 10,
+              gridHeight: 10,
+              accessMode: 'public',
+              decorators: new Set(),
+              ambientMood: 'day',
+              doorbellGrants: new Set(),
+              pets: new Map(),
             };
             rooms.rooms[targetRoomId] = loftRoom;
           }
         }
+        if (!loftRoom) return;
         // Load furniture and style from DB if empty
         if (loftRoom.furniture.length === 0) {
           const dbFurn = await db.getLoftFurniture(loftRoom.id);
@@ -277,6 +304,28 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
           if (style) {
             rooms.setRoomStyle(loftRoom.id, style.flooring, style.wallpaper);
           }
+        }
+        if (db.getRoomExpansion) {
+          const exp = await db.getRoomExpansion(loftRoom.id);
+          if (exp) {
+            loftRoom.gridWidth = exp.width;
+            loftRoom.gridHeight = exp.height;
+          }
+        }
+        if (db.getRoomPermissions) {
+          const perm = await db.getRoomPermissions(loftRoom.id);
+          if (perm) {
+            loftRoom.accessMode = perm.accessMode as any;
+            if (perm.passwordHash) loftRoom.passwordHash = perm.passwordHash;
+          }
+        }
+        if (db.getRoomMood) {
+          const mood = await db.getRoomMood(loftRoom.id);
+          if (mood) loftRoom.ambientMood = mood as any;
+        }
+        if (db.getRoomDecorators) {
+          const decs = await db.getRoomDecorators(loftRoom.id);
+          if (decs) loftRoom.decorators = new Set(decs);
         }
         rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } }, player.ws);
         rooms.leave(player);
@@ -321,24 +370,23 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     }
 
     case 'PLACE_FURNITURE': {
-      // Only allow placing furniture in the player's OWN personal sanctuary loft
-      const playerLoftId = getUserLoftRoomId(player.id);
-      if (player.room !== playerLoftId) {
+      if (!rooms.canDecorate(player.room, player.id)) {
         rooms.send(player.ws, {
           type: 'FURNITURE_ERROR',
-          payload: { message: 'Furniture can only be placed in your own Personal Sanctuary Loft!' }
+          payload: { message: 'You do not have building permissions in this room.' }
         });
         return;
       }
-      const { type, x, y, elevation, parentSurfaceId } = msg.payload || {};
-      const newItem = {
+      const { type, x, y, rotation, elevation, parentSurfaceId, teleportTarget } = msg.payload || {};
+      const newItem: PlacedFurniture = {
         id: 'f_' + Math.random().toString(36).substring(2, 9),
         type: (type as string) || 'plant',
         x: Math.round(x as number),
         y: Math.round(y as number),
-        rotation: 0,
+        rotation: (Number(rotation) as 0 | 90 | 180 | 270) || 0,
         elevation: (elevation as number) || 0,
         parentSurfaceId: (parentSurfaceId as string) || null,
+        teleportTarget: (teleportTarget as string) || undefined,
       };
       currentRoom.furniture.push(newItem);
       db.addFurniture(player.room, newItem).catch(() => {});
@@ -348,12 +396,10 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     }
 
     case 'REMOVE_FURNITURE': {
-      // Only allow removing furniture from the player's OWN personal sanctuary loft
-      const playerLoftId = getUserLoftRoomId(player.id);
-      if (player.room !== playerLoftId) {
+      if (!rooms.canDecorate(player.room, player.id)) {
         rooms.send(player.ws, {
           type: 'FURNITURE_ERROR',
-          payload: { message: 'Furniture can only be removed from your own Personal Sanctuary Loft!' }
+          payload: { message: 'You do not have building permissions in this room.' }
         });
         return;
       }
@@ -367,14 +413,163 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     }
 
     case 'CLEAR_ROOM': {
-      // Only allow clearing the player's OWN personal sanctuary loft
-      const playerLoftId = getUserLoftRoomId(player.id);
-      if (player.room !== playerLoftId) return;
+      if (!rooms.canDecorate(player.room, player.id)) return;
       const removed = rooms.clearFurniture(player.room);
       for (const f of removed) {
         db.removeFurniture(f.id).catch(() => {});
       }
       rooms.broadcast(player.room, { type: 'ROOM_CLEARED', payload: null });
+      break;
+    }
+
+    case 'ROTATE_ITEM': {
+      if (!rooms.canDecorate(player.room, player.id)) return;
+      const { placedItemId, rotation } = msg.payload || {};
+      const item = currentRoom.furniture.find(f => f.id === placedItemId);
+      if (item) {
+        item.rotation = (Number(rotation) as 0 | 90 | 180 | 270) || 0;
+        rooms.broadcast(player.room, { type: 'FURNITURE_STATE_UPDATED', payload: { furnitureId: item.id, state: { rotation: item.rotation } } });
+      }
+      break;
+    }
+
+    case 'EXPAND_ROOM': {
+      const { roomId, targetSize } = msg.payload || {};
+      const targetRoom = rooms.get(roomId as string) || currentRoom;
+      if (!targetRoom || targetRoom.ownerId !== player.id) {
+        rooms.send(player.ws, { type: 'FURNITURE_ERROR', payload: { message: 'Only the room owner can expand this loft!' } });
+        return;
+      }
+      const validCosts: Record<number, number> = { 14: 500, 18: 1500, 20: 3000 };
+      const cost = validCosts[Number(targetSize)];
+      if (!cost) {
+        rooms.send(player.ws, { type: 'FURNITURE_ERROR', payload: { message: 'Invalid target expansion size!' } });
+        return;
+      }
+      if (player.coins < cost) {
+        rooms.send(player.ws, { type: 'FURNITURE_ERROR', payload: { message: `Expansion requires ${cost} HavenCoins!` } });
+        return;
+      }
+      player.coins -= cost;
+      await db.addCoins(player.id, -cost);
+      rooms.expandRoom(targetRoom.id, Number(targetSize));
+      if (db.saveRoomExpansion) {
+        await db.saveRoomExpansion(targetRoom.id, Number(targetSize), Number(targetSize));
+      }
+      rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: -cost, reason: 'Room expansion' } });
+      rooms.broadcast(targetRoom.id, { type: 'ROOM_EXPANDED', payload: { roomId: targetRoom.id, gridWidth: Number(targetSize), gridHeight: Number(targetSize) } });
+      break;
+    }
+
+    case 'SET_ROOM_PERMISSIONS': {
+      const { roomId, accessMode, password } = msg.payload || {};
+      const targetRoom = rooms.get(roomId as string) || currentRoom;
+      if (!targetRoom || targetRoom.ownerId !== player.id) return;
+      rooms.setAccessMode(targetRoom.id, accessMode as any, password as string | undefined);
+      if (db.saveRoomPermissions) {
+        await db.saveRoomPermissions(targetRoom.id, accessMode as string, password as string | undefined);
+      }
+      rooms.send(player.ws, { type: 'ROOM_PERMISSIONS_UPDATED', payload: { roomId: targetRoom.id, accessMode: accessMode as string } });
+      break;
+    }
+
+    case 'GRANT_DECORATOR': {
+      const { roomId, targetPlayerId } = msg.payload || {};
+      const targetRoom = rooms.get(roomId as string) || currentRoom;
+      if (!targetRoom || targetRoom.ownerId !== player.id) return;
+      rooms.grantDecorator(targetRoom.id, targetPlayerId as string);
+      if (db.addRoomDecorator) {
+        await db.addRoomDecorator(targetRoom.id, targetPlayerId as string);
+      }
+      rooms.send(player.ws, { type: 'DECORATORS_UPDATED', payload: { roomId: targetRoom.id, decorators: Array.from(targetRoom.decorators) } });
+      break;
+    }
+
+    case 'REVOKE_DECORATOR': {
+      const { roomId, targetPlayerId } = msg.payload || {};
+      const targetRoom = rooms.get(roomId as string) || currentRoom;
+      if (!targetRoom || targetRoom.ownerId !== player.id) return;
+      rooms.revokeDecorator(targetRoom.id, targetPlayerId as string);
+      if (db.removeRoomDecorator) {
+        await db.removeRoomDecorator(targetRoom.id, targetPlayerId as string);
+      }
+      rooms.send(player.ws, { type: 'DECORATORS_UPDATED', payload: { roomId: targetRoom.id, decorators: Array.from(targetRoom.decorators) } });
+      break;
+    }
+
+    case 'RING_DOORBELL': {
+      const { roomId } = msg.payload || {};
+      const targetRoom = rooms.get(roomId as string);
+      if (!targetRoom || !targetRoom.ownerId) return;
+      const owner = targetRoom.players.get(targetRoom.ownerId) || ctx.globalPlayers?.get(targetRoom.ownerId);
+      if (owner) {
+        rooms.send(owner.ws, { type: 'DOORBELL_RING', payload: { visitorId: player.id, visitorName: player.name } });
+      } else {
+        rooms.send(player.ws, { type: 'DOORBELL_RESULT', payload: { granted: false, roomId: roomId as string, message: 'Host is away.' } });
+      }
+      break;
+    }
+
+    case 'DOORBELL_DECISION': {
+      const { visitorId, allow } = msg.payload || {};
+      const targetRoom = currentRoom;
+      if (!targetRoom || targetRoom.ownerId !== player.id) return;
+      if (allow) {
+        rooms.grantDoorbell(targetRoom.id, visitorId as string);
+        const visitor = ctx.globalPlayers?.get(visitorId as string);
+        if (visitor) {
+          rooms.send(visitor.ws, { type: 'DOORBELL_RESULT', payload: { granted: true, roomId: targetRoom.id, message: 'Host granted entry!' } });
+        }
+      }
+      break;
+    }
+
+    case 'SET_ROOM_MOOD': {
+      const { roomId, mood } = msg.payload || {};
+      const targetRoom = rooms.get(roomId as string) || currentRoom;
+      if (!targetRoom || (targetRoom.ownerId && targetRoom.ownerId !== player.id)) return;
+      rooms.setRoomMood(targetRoom.id, mood as any);
+      if (db.saveRoomMood) {
+        await db.saveRoomMood(targetRoom.id, mood as string);
+      }
+      rooms.broadcast(targetRoom.id, { type: 'ROOM_MOOD_UPDATED', payload: { roomId: targetRoom.id, mood: mood as string } });
+      break;
+    }
+
+    case 'TELEPORT_TRIGGER': {
+      const { teleporterId } = msg.payload || {};
+      const furni = currentRoom.furniture.find(f => f.id === teleporterId);
+      if (furni && (furni.type === 'teleporter_pad' || furni.type === 'portal_door')) {
+        const targetRoom = furni.teleportTarget || 'plaza';
+        handleMessage({ type: 'SWITCH_ROOM', payload: { roomId: targetRoom } }, player, ctx);
+      }
+      break;
+    }
+
+    case 'WHITEBOARD_STROKE': {
+      const { roomId, stroke } = msg.payload || {};
+      if (roomId === player.room && stroke) {
+        rooms.broadcast(roomId as string, { type: 'WHITEBOARD_STROKE', payload: { stroke } }, player.ws);
+      }
+      break;
+    }
+
+    case 'WHITEBOARD_CLEAR': {
+      const { roomId } = msg.payload || {};
+      if (roomId === player.room) {
+        rooms.broadcast(roomId as string, { type: 'WHITEBOARD_CLEARED', payload: null });
+      }
+      break;
+    }
+
+    case 'PET_INTERACT': {
+      const { petId, action } = msg.payload || {};
+      const pet = currentRoom.pets?.get(petId as string);
+      if (pet) {
+        const updated = petInteract(pet, (action as any) || 'pet');
+        currentRoom.pets.set(petId as string, updated);
+        rooms.broadcast(player.room, { type: 'PETS_UPDATED', payload: { pets: Array.from(currentRoom.pets.values()) } });
+      }
       break;
     }
 
@@ -495,7 +690,11 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     case 'GET_SHOP_CATALOG': {
       rooms.send(player.ws, {
         type: 'SHOP_CATALOG',
-        payload: { items: SHOP_ITEMS }
+        payload: {
+          items: CATALOG_ITEMS,
+          rotatingStock: getRotatingFeaturedStock(),
+          nextRotationMs: getTimeUntilNextRotation(),
+        }
       });
       break;
     }
@@ -512,29 +711,42 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
 
     case 'BUY_ITEM': {
       const itemKey = msg.payload!.itemKey as string;
-      const item = SHOP_ITEMS[itemKey as keyof typeof SHOP_ITEMS];
+      const rotating = getRotatingFeaturedStock();
+      const item = CATALOG_ITEMS[itemKey] || rotating.find(i => i.id === itemKey);
       if (!item) {
         rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Item not found in shop!' } });
         return;
       }
-      if (player.coins < item.price) {
-        rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Not enough HavenCoins!' } });
-        return;
-      }
-      player.coins -= item.price;
-      db.addCoins(player.id, -item.price).catch(() => {});
-      db.addItem(player.id, itemKey, 1).catch(() => {});
-      Promise.all([db.getInventory(player.id)]).then(([inventory]) => {
-        rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: 0, reason: `Bought ${item.name}` } });
+      if (item.currency === 'gems') {
+        if (player.gems < item.price) {
+          rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Not enough HavenGems!' } });
+          return;
+        }
+        player.gems -= item.price;
+        if (db.addGems) await db.addGems(player.id, -item.price);
+        await db.addItem(player.id, itemKey, 1);
+        const inventory = await db.getInventory(player.id);
+        rooms.send(player.ws, { type: 'GEMS_UPDATED', payload: { gems: player.gems, earned: -item.price, reason: `Bought ${item.name}` } });
         rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: inventory } });
-      });
+      } else {
+        if (player.coins < item.price) {
+          rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Not enough HavenCoins!' } });
+          return;
+        }
+        player.coins -= item.price;
+        await db.addCoins(player.id, -item.price);
+        await db.addItem(player.id, itemKey, 1);
+        const inventory = await db.getInventory(player.id);
+        rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: -item.price, reason: `Bought ${item.name}` } });
+        rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: inventory } });
+      }
       break;
     }
 
     case 'SELL_ITEM': {
       const itemType = msg.payload!.itemType as string;
       const sellQty = msg.payload!.quantity as number;
-      const item = SHOP_ITEMS[itemType as keyof typeof SHOP_ITEMS];
+      const item = CATALOG_ITEMS[itemType as keyof typeof CATALOG_ITEMS];
       if (!item) {
         rooms.send(player.ws, { type: 'SHOP_ERROR', payload: { message: 'Cannot sell this item!' } });
         return;
@@ -554,6 +766,144 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
         rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: totalEarnings, reason: `Sold ${sellQty}x ${item.name}` } });
         rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: updatedInv } });
       });
+      break;
+    }
+
+    // --- Player Marketplace ---
+
+    case 'LIST_MARKETPLACE_ITEM': {
+      const { itemType, priceCoins, priceGems } = msg.payload || {};
+      if (!db.createMarketplaceListing) return;
+      const result = await db.createMarketplaceListing(
+        player.id,
+        player.name,
+        itemType as string,
+        Number(priceCoins) || 0,
+        Number(priceGems) || 0
+      );
+      if (result.success) {
+        rooms.send(player.ws, { type: 'MARKETPLACE_SUCCESS', payload: { message: 'Item listed successfully!', listingId: result.listingId } });
+        const listings = await db.getMarketplaceListings!();
+        rooms.send(player.ws, { type: 'MARKETPLACE_LISTINGS', payload: { listings } });
+        const inventory = await db.getInventory(player.id);
+        rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: inventory } });
+      } else {
+        rooms.send(player.ws, { type: 'MARKETPLACE_ERROR', payload: { message: result.message || 'Failed to list item' } });
+      }
+      break;
+    }
+
+    case 'BROWSE_MARKETPLACE': {
+      const { query } = msg.payload || {};
+      if (db.getMarketplaceListings) {
+        const listings = await db.getMarketplaceListings(query as string | undefined);
+        rooms.send(player.ws, { type: 'MARKETPLACE_LISTINGS', payload: { listings } });
+      }
+      break;
+    }
+
+    case 'BUY_MARKETPLACE_ITEM': {
+      const { listingId } = msg.payload || {};
+      if (!db.buyMarketplaceListing) return;
+      const result = await db.buyMarketplaceListing(listingId as string, player.id, player.coins);
+      if (result.success) {
+        player.coins -= result.netPaid!;
+        rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: -result.netPaid!, reason: 'Marketplace purchase' } });
+        rooms.send(player.ws, { type: 'MARKETPLACE_SUCCESS', payload: { message: `Purchased ${result.itemType}!` } });
+        const listings = await db.getMarketplaceListings!();
+        rooms.send(player.ws, { type: 'MARKETPLACE_LISTINGS', payload: { listings } });
+        const inventory = await db.getInventory(player.id);
+        rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: inventory } });
+      } else {
+        rooms.send(player.ws, { type: 'MARKETPLACE_ERROR', payload: { message: result.message || 'Purchase failed' } });
+      }
+      break;
+    }
+
+    case 'CANCEL_MARKETPLACE_LISTING': {
+      const { listingId } = msg.payload || {};
+      if (!db.cancelMarketplaceListing) return;
+      const result = await db.cancelMarketplaceListing(listingId as string, player.id);
+      if (result.success) {
+        rooms.send(player.ws, { type: 'MARKETPLACE_SUCCESS', payload: { message: 'Listing cancelled, item returned to inventory.' } });
+        const listings = await db.getMarketplaceListings!();
+        rooms.send(player.ws, { type: 'MARKETPLACE_LISTINGS', payload: { listings } });
+        const inventory = await db.getInventory(player.id);
+        rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: inventory } });
+      } else {
+        rooms.send(player.ws, { type: 'MARKETPLACE_ERROR', payload: { message: result.message || 'Failed to cancel listing' } });
+      }
+      break;
+    }
+
+    // --- Furniture Recycling & Crafting ---
+
+    case 'RECYCLE_ITEM': {
+      const { itemType } = msg.payload || {};
+      const inv = await db.getInventory(player.id);
+      const userItem = inv.find((i: InventoryItem) => i.item_type === itemType && i.quantity > 0);
+      if (!userItem) {
+        rooms.send(player.ws, { type: 'CRAFTING_ERROR', payload: { message: 'Item not in inventory to recycle' } });
+        return;
+      }
+      await db.removeItem(player.id, itemType as string, 1);
+      const salvage = calculateSalvageYield(itemType as string);
+      const currentMats = db.getPlayerMaterials ? await db.getPlayerMaterials(player.id) : { scrap_metal: 0, timber: 0 };
+      const updatedMats = {
+        scrap_metal: currentMats.scrap_metal + salvage.scrap_metal,
+        timber: currentMats.timber + salvage.timber,
+      };
+      if (db.savePlayerMaterials) {
+        await db.savePlayerMaterials(player.id, updatedMats);
+      }
+      player.materials = updatedMats;
+      const updatedInv = await db.getInventory(player.id);
+      rooms.send(player.ws, {
+        type: 'RECYCLE_SUCCESS',
+        payload: { itemType: itemType as string, gained: salvage, materials: updatedMats }
+      });
+      rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: updatedInv } });
+      break;
+    }
+
+    case 'CRAFT_ITEM': {
+      const { recipeId } = msg.payload || {};
+      const currentMats = db.getPlayerMaterials ? await db.getPlayerMaterials(player.id) : { scrap_metal: 0, timber: 0 };
+      if (!canCraftRecipe(recipeId as string, currentMats)) {
+        rooms.send(player.ws, { type: 'CRAFTING_ERROR', payload: { message: 'Insufficient materials to craft this recipe' } });
+        return;
+      }
+      const updatedMats = deductCraftingMaterials(recipeId as string, currentMats);
+      if (db.savePlayerMaterials) {
+        await db.savePlayerMaterials(player.id, updatedMats);
+      }
+      player.materials = updatedMats;
+      await db.addItem(player.id, recipeId as string, 1);
+      const updatedInv = await db.getInventory(player.id);
+      rooms.send(player.ws, {
+        type: 'CRAFT_SUCCESS',
+        payload: { recipeId: recipeId as string, itemType: recipeId as string, materials: updatedMats }
+      });
+      rooms.send(player.ws, { type: 'INVENTORY_UPDATE', payload: { items: updatedInv } });
+      break;
+    }
+
+    // --- Club Haven VIP Membership ---
+
+    case 'BUY_VIP_MEMBERSHIP': {
+      const vipCost = 1000;
+      if (player.coins < vipCost) {
+        rooms.send(player.ws, { type: 'FURNITURE_ERROR', payload: { message: 'Club Haven VIP requires 1,000 HavenCoins!' } });
+        return;
+      }
+      player.coins -= vipCost;
+      await db.addCoins(player.id, -vipCost);
+      const vipResult = db.setVipMembership ? await db.setVipMembership(player.id, 30) : { isVip: true, expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() };
+      player.isVip = true;
+      player.vipExpiresAt = vipResult.expiresAt;
+      rooms.send(player.ws, { type: 'COINS_UPDATED', payload: { coins: player.coins, earned: -vipCost, reason: 'Club Haven VIP (30 days)' } });
+      rooms.send(player.ws, { type: 'VIP_UPDATED', payload: { isVip: true, vipExpiresAt: vipResult.expiresAt } });
+      rooms.broadcast(player.room, { type: 'PLAYER_PROFILE_UPDATED', payload: { playerId: player.id, player: serializePlayer(player) } });
       break;
     }
 

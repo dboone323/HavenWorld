@@ -75,6 +75,13 @@ export class ShardManager {
           ownerId: null,
           flooring: baseRoom.flooring,
           wallpaper: baseRoom.wallpaper,
+          gridWidth: baseRoom.gridWidth || 12,
+          gridHeight: baseRoom.gridHeight || 12,
+          accessMode: 'public',
+          decorators: new Set(),
+          ambientMood: baseRoom.ambientMood || 'day',
+          doorbellGrants: new Set(),
+          pets: new Map(),
         };
         rooms.rooms[shardId] = newShard;
         return shardId;

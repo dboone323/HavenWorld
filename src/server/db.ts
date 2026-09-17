@@ -48,6 +48,8 @@ if (mode !== 'supabase') {
       exec: (s: string) => void;
       close: () => void;
     };
+    sqliteDb.exec('PRAGMA journal_mode = WAL;');
+    sqliteDb.exec('PRAGMA busy_timeout = 10000;');
     mode = 'sqlite';
     sqliteDb.exec(`
       CREATE TABLE IF NOT EXISTS profiles (
@@ -109,13 +111,44 @@ if (mode !== 'supabase') {
         likes_count INTEGER DEFAULT 0,
         flooring TEXT DEFAULT 'parquet',
         wallpaper TEXT DEFAULT 'cozy_wood',
+        grid_width INTEGER DEFAULT 10,
+        grid_height INTEGER DEFAULT 10,
+        access_mode TEXT DEFAULT 'public',
+        password_hash TEXT,
+        ambient_mood TEXT DEFAULT 'day',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS room_decorators (
+        room_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (room_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS marketplace_listings (
+        id TEXT PRIMARY KEY,
+        seller_id TEXT NOT NULL,
+        seller_name TEXT NOT NULL,
+        item_type TEXT NOT NULL,
+        price_coins INTEGER DEFAULT 0,
+        price_gems INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
         created_at TEXT DEFAULT (datetime('now'))
       );
     `);
     try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN flooring TEXT DEFAULT 'parquet'"); } catch {}
     try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN wallpaper TEXT DEFAULT 'cozy_wood'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN grid_width INTEGER DEFAULT 10"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN grid_height INTEGER DEFAULT 10"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN access_mode TEXT DEFAULT 'public'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN password_hash TEXT"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN ambient_mood TEXT DEFAULT 'day'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN last_daily_claim TEXT DEFAULT '1970-01-01T00:00:00.000Z'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN gems INTEGER DEFAULT 50"); } catch {}
     try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN identity_json TEXT DEFAULT '{}'"); } catch {}
     try { sqliteDb.exec('ALTER TABLE profiles ADD COLUMN registered_at TEXT'); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN materials_json TEXT DEFAULT '{\"scrap_metal\":0,\"timber\":0}'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN is_vip INTEGER DEFAULT 0"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN vip_expires_at TEXT"); } catch {}
     sqliteDb.exec(`
       CREATE TRIGGER IF NOT EXISTS profiles_registered_at_immutable
       BEFORE UPDATE OF registered_at ON profiles
@@ -1091,12 +1124,333 @@ export async function getMessages(userId: string): Promise<MessageRecord[]> {
   return [];
 }
 
+/**
+ * Room grid expansion persistence
+ */
+export async function saveRoomExpansion(roomId: string, width: number, height: number): Promise<void> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare(`
+        INSERT INTO rooms (id, name, grid_width, grid_height)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET grid_width = excluded.grid_width, grid_height = excluded.grid_height
+      `);
+      stmt.run(roomId, roomId, width, height);
+    } catch (e: any) {
+      console.warn('SQLite saveRoomExpansion warning:', e.message);
+    }
+  }
+}
+
+export async function getRoomExpansion(roomId: string): Promise<{ width: number; height: number }> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT grid_width as width, grid_height as height FROM rooms WHERE id = ?');
+      const row = stmt.get(roomId) as { width?: number; height?: number } | undefined;
+      if (row && row.width && row.height) return { width: row.width, height: row.height };
+    } catch (e: any) {}
+  }
+  return { width: roomId === 'plaza' ? 12 : 10, height: roomId === 'plaza' ? 12 : 10 };
+}
+
+/**
+ * Room access permissions & password
+ */
+export async function saveRoomPermissions(roomId: string, accessMode: string, passwordHash?: string): Promise<void> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare(`
+        INSERT INTO rooms (id, name, access_mode, password_hash)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET access_mode = excluded.access_mode, password_hash = excluded.password_hash
+      `);
+      stmt.run(roomId, roomId, accessMode, passwordHash || null);
+    } catch (e: any) {
+      console.warn('SQLite saveRoomPermissions warning:', e.message);
+    }
+  }
+}
+
+export async function getRoomPermissions(roomId: string): Promise<{ accessMode: string; passwordHash: string | null }> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT access_mode, password_hash FROM rooms WHERE id = ?');
+      const row = stmt.get(roomId) as { access_mode?: string; password_hash?: string } | undefined;
+      if (row) return { accessMode: row.access_mode || 'public', passwordHash: row.password_hash || null };
+    } catch (e: any) {}
+  }
+  return { accessMode: 'public', passwordHash: null };
+}
+
+/**
+ * Room ambient mood
+ */
+export async function saveRoomMood(roomId: string, mood: string): Promise<void> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare(`
+        INSERT INTO rooms (id, name, ambient_mood)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET ambient_mood = excluded.ambient_mood
+      `);
+      stmt.run(roomId, roomId, mood);
+    } catch (e: any) {
+      console.warn('SQLite saveRoomMood warning:', e.message);
+    }
+  }
+}
+
+export async function getRoomMood(roomId: string): Promise<string> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT ambient_mood FROM rooms WHERE id = ?');
+      const row = stmt.get(roomId) as { ambient_mood?: string } | undefined;
+      if (row && row.ambient_mood) return row.ambient_mood;
+    } catch (e: any) {}
+  }
+  return 'day';
+}
+
+/**
+ * Co-Building Decorators
+ */
+export async function addRoomDecorator(roomId: string, userId: string): Promise<void> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('INSERT OR REPLACE INTO room_decorators (room_id, user_id, created_at) VALUES (?, ?, ?)');
+      stmt.run(roomId, userId, new Date().toISOString());
+    } catch (e: any) {
+      console.warn('SQLite addRoomDecorator warning:', e.message);
+    }
+  }
+}
+
+export async function removeRoomDecorator(roomId: string, userId: string): Promise<void> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('DELETE FROM room_decorators WHERE room_id = ? AND user_id = ?');
+      stmt.run(roomId, userId);
+    } catch (e: any) {
+      console.warn('SQLite removeRoomDecorator warning:', e.message);
+    }
+  }
+}
+
+export async function getRoomDecorators(roomId: string): Promise<string[]> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT user_id FROM room_decorators WHERE room_id = ?');
+      const rows = stmt.all(roomId) as { user_id: string }[];
+      return rows.map(r => r.user_id);
+    } catch (e: any) {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Dual Currency: HavenGems
+ */
+export async function addGems(userId: string, amount: number): Promise<number> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('UPDATE profiles SET gems = MAX(0, gems + ?) WHERE id = ?');
+      stmt.run(amount, userId);
+      const getStmt = sqliteDb!.prepare('SELECT gems FROM profiles WHERE id = ?');
+      const row = getStmt.get(userId) as { gems?: number } | undefined;
+      return row?.gems ?? 0;
+    } catch (e: any) {
+      console.warn('SQLite addGems warning:', e.message);
+      return 0;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Materials & Recycling Crafting
+ */
+export async function getPlayerMaterials(userId: string): Promise<{ scrap_metal: number; timber: number }> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT materials_json FROM profiles WHERE id = ?');
+      const row = stmt.get(userId) as { materials_json?: string } | undefined;
+      if (row?.materials_json) {
+        const parsed = JSON.parse(row.materials_json);
+        return { scrap_metal: parsed.scrap_metal || 0, timber: parsed.timber || 0 };
+      }
+    } catch (e: any) {}
+  }
+  return { scrap_metal: 0, timber: 0 };
+}
+
+export async function savePlayerMaterials(userId: string, mats: { scrap_metal: number; timber: number }): Promise<void> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('UPDATE profiles SET materials_json = ? WHERE id = ?');
+      stmt.run(JSON.stringify(mats), userId);
+    } catch (e: any) {
+      console.warn('SQLite savePlayerMaterials warning:', e.message);
+    }
+  }
+}
+
+/**
+ * VIP Subscription ("Club Haven")
+ */
+export async function setVipMembership(userId: string, durationDays: number): Promise<{ isVip: boolean; expiresAt: string }> {
+  const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('UPDATE profiles SET is_vip = 1, vip_expires_at = ? WHERE id = ?');
+      stmt.run(expiresAt, userId);
+    } catch (e: any) {
+      console.warn('SQLite setVipMembership warning:', e.message);
+    }
+  }
+  return { isVip: true, expiresAt };
+}
+
+export async function getVipStatus(userId: string): Promise<{ isVip: boolean; expiresAt: string | null }> {
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT is_vip, vip_expires_at FROM profiles WHERE id = ?');
+      const row = stmt.get(userId) as { is_vip?: number; vip_expires_at?: string } | undefined;
+      if (row?.is_vip && row.vip_expires_at) {
+        const active = new Date(row.vip_expires_at).getTime() > Date.now();
+        return { isVip: active, expiresAt: active ? row.vip_expires_at : null };
+      }
+    } catch (e: any) {}
+  }
+  return { isVip: false, expiresAt: null };
+}
+
+/**
+ * Player Marketplace / Auction House
+ */
+export async function createMarketplaceListing(
+  sellerId: string,
+  sellerName: string,
+  itemType: string,
+  priceCoins: number,
+  priceGems: number = 0
+): Promise<{ success: boolean; listingId?: string; message?: string }> {
+  if (mode === 'sqlite') {
+    try {
+      const invStmt = sqliteDb!.prepare('SELECT quantity FROM user_inventory WHERE user_id = ? AND item_type = ?');
+      const invRow = invStmt.get(sellerId, itemType) as { quantity?: number } | undefined;
+      if (!invRow || (invRow.quantity || 0) < 1) {
+        return { success: false, message: 'Item not in your inventory' };
+      }
+      await removeItem(sellerId, itemType);
+      const listingId = 'mkt_' + crypto.randomUUID().substring(0, 8);
+      const listStmt = sqliteDb!.prepare(`
+        INSERT INTO marketplace_listings (id, seller_id, seller_name, item_type, price_coins, price_gems, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+      `);
+      listStmt.run(listingId, sellerId, sellerName, itemType, priceCoins, priceGems, new Date().toISOString());
+      return { success: true, listingId };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+  return { success: false, message: 'Database not available' };
+}
+
+export async function getMarketplaceListings(query?: string): Promise<any[]> {
+  if (mode === 'sqlite') {
+    try {
+      if (query && query.trim()) {
+        const stmt = sqliteDb!.prepare(`
+          SELECT id, seller_id as sellerId, seller_name as sellerName, item_type as itemType,
+                 price_coins as priceCoins, price_gems as priceGems, status, created_at as createdAt
+          FROM marketplace_listings
+          WHERE status = 'active' AND (item_type LIKE ? OR seller_name LIKE ?)
+          ORDER BY created_at DESC
+          LIMIT 50
+        `);
+        const search = `%${query.trim()}%`;
+        return stmt.all(search, search);
+      }
+      const stmt = sqliteDb!.prepare(`
+        SELECT id, seller_id as sellerId, seller_name as sellerName, item_type as itemType,
+               price_coins as priceCoins, price_gems as priceGems, status, created_at as createdAt
+        FROM marketplace_listings
+        WHERE status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 50
+      `);
+      return stmt.all();
+    } catch (e: any) {
+      return [];
+    }
+  }
+  return [];
+}
+
+export async function buyMarketplaceListing(
+  listingId: string,
+  buyerId: string,
+  buyerCoins: number
+): Promise<{ success: boolean; itemType?: string; netPaid?: number; sellerId?: string; message?: string }> {
+  if (mode === 'sqlite') {
+    try {
+      const getListingStmt = sqliteDb!.prepare("SELECT * FROM marketplace_listings WHERE id = ? AND status = 'active'");
+      const listing = getListingStmt.get(listingId) as any;
+      if (!listing) return { success: false, message: 'Listing is no longer active' };
+      if (listing.seller_id === buyerId) return { success: false, message: 'Cannot buy your own listing' };
+
+      const price = listing.price_coins;
+      if (buyerCoins < price) return { success: false, message: 'Insufficient coins' };
+
+      const sellerVip = await getVipStatus(listing.seller_id);
+      const taxRate = sellerVip.isVip ? 0.02 : 0.05;
+      const taxSink = Math.round(price * taxRate);
+      const sellerPayout = price - taxSink;
+
+      await addCoins(buyerId, -price);
+      await addItem(buyerId, listing.item_type);
+      await addCoins(listing.seller_id, sellerPayout);
+      const updateStmt = sqliteDb!.prepare("UPDATE marketplace_listings SET status = 'sold' WHERE id = ?");
+      updateStmt.run(listingId);
+
+      return { success: true, itemType: listing.item_type, netPaid: price, sellerId: listing.seller_id };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+  return { success: false, message: 'Database not available' };
+}
+
+export async function cancelMarketplaceListing(
+  listingId: string,
+  sellerId: string
+): Promise<{ success: boolean; itemType?: string; message?: string }> {
+  if (mode === 'sqlite') {
+    try {
+      const getStmt = sqliteDb!.prepare("SELECT * FROM marketplace_listings WHERE id = ? AND status = 'active'");
+      const listing = getStmt.get(listingId) as any;
+      if (!listing) return { success: false, message: 'Listing not found or inactive' };
+      if (listing.seller_id !== sellerId) return { success: false, message: 'You do not own this listing' };
+
+      await addItem(sellerId, listing.item_type);
+      const cancelStmt = sqliteDb!.prepare("UPDATE marketplace_listings SET status = 'cancelled' WHERE id = ?");
+      cancelStmt.run(listingId);
+      return { success: true, itemType: listing.item_type };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+  return { success: false, message: 'Database not available' };
+}
+
 // Export the cooldown constant for protocol.ts
 export const DAILY_COOLDOWN = DAILY_COOLDOWN_MS;
 
 export default {
   getMode, isConfigured, close,
-  initPlayerProfile, saveAvatar, addCoins,
+  initPlayerProfile, saveAvatar, addCoins, addGems,
   getRoomFurniture, addFurniture, removeFurniture,
   loadPlayerProfile, savePlayerName, saveLastDailyClaim,
   getInventory, addItem, removeItem,
@@ -1105,5 +1459,13 @@ export default {
   signupAccount, loginAccount,
   getUserSanctuaryRoom, getLoftFurniture, getLastDailyClaim,
   saveRoomStyle, getRoomStyle,
+  saveRoomExpansion, getRoomExpansion,
+  saveRoomPermissions, getRoomPermissions,
+  saveRoomMood, getRoomMood,
+  addRoomDecorator, removeRoomDecorator, getRoomDecorators,
+  getPlayerMaterials, savePlayerMaterials,
+  setVipMembership, getVipStatus,
+  createMarketplaceListing, getMarketplaceListings, buyMarketplaceListing, cancelMarketplaceListing,
   DAILY_COOLDOWN,
 };
+

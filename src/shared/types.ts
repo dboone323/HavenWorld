@@ -136,7 +136,28 @@ export type ClientMessage =
   | { type: 'TRADE_UPDATE_OFFER'; payload: { tradeId: string; coins: number; items: string[] } }
   | { type: 'TRADE_LOCK'; payload: { tradeId: string; locked: boolean } }
   | { type: 'TRADE_CONFIRM'; payload: { tradeId: string } }
-  | { type: 'TRADE_CANCEL'; payload: { tradeId: string } };
+  | { type: 'TRADE_CANCEL'; payload: { tradeId: string } }
+  // Track 3: The Loft System
+  | { type: 'ROTATE_ITEM'; payload: { placedItemId: string; rotation: 0 | 90 | 180 | 270 } }
+  | { type: 'EXPAND_ROOM'; payload: { roomId: string; targetSize: number } }
+  | { type: 'SET_ROOM_PERMISSIONS'; payload: { roomId: string; accessMode: 'public' | 'friends' | 'password' | 'locked'; password?: string } }
+  | { type: 'GRANT_DECORATOR'; payload: { roomId: string; targetPlayerId: string } }
+  | { type: 'REVOKE_DECORATOR'; payload: { roomId: string; targetPlayerId: string } }
+  | { type: 'RING_DOORBELL'; payload: { roomId: string } }
+  | { type: 'DOORBELL_DECISION'; payload: { visitorId: string; allow: boolean } }
+  | { type: 'SET_ROOM_MOOD'; payload: { roomId: string; mood: 'day' | 'sunset' | 'night' | 'cyber_neon' | 'rainy' } }
+  | { type: 'TELEPORT_TRIGGER'; payload: { teleporterId: string } }
+  | { type: 'WHITEBOARD_STROKE'; payload: { roomId: string; stroke: { x0: number; y0: number; x1: number; y1: number; color: string; width: number } } }
+  | { type: 'WHITEBOARD_CLEAR'; payload: { roomId: string } }
+  | { type: 'PET_INTERACT'; payload: { petId: string; action: 'pet' | 'feed' | 'play' } }
+  // Track 4: Economy, Progression, and Trading
+  | { type: 'LIST_MARKETPLACE_ITEM'; payload: { itemType: string; priceCoins: number; priceGems?: number } }
+  | { type: 'BROWSE_MARKETPLACE'; payload: { query?: string } }
+  | { type: 'BUY_MARKETPLACE_ITEM'; payload: { listingId: string } }
+  | { type: 'CANCEL_MARKETPLACE_LISTING'; payload: { listingId: string } }
+  | { type: 'RECYCLE_ITEM'; payload: { itemType: string } }
+  | { type: 'CRAFT_ITEM'; payload: { recipeId: string } }
+  | { type: 'BUY_VIP_MEMBERSHIP'; payload: null };
 
 /* ── Outbound (Server → Client) ───────────────────────────────── */
 
@@ -158,6 +179,9 @@ export interface PlayerInfo {
   lastChat: ChatBubble | null;
   isSitting?: boolean;
   facing?: 'NE' | 'SE' | 'SW' | 'NW';
+  isVip?: boolean;
+  vipExpiresAt?: string | null;
+  materials?: { scrap_metal: number; timber: number };
 }
 
 export interface IdentityState {
@@ -207,6 +231,7 @@ export interface PlacedFurniture {
   w?: number;                 // multi-tile footprint width (default 1)
   h?: number;                 // multi-tile footprint height (default 1)
   heightClass?: 'floor' | 'rug' | 'low' | 'avatar' | 'tall';
+  teleportTarget?: string;
   state?: {
     isOn?: boolean;
     [key: string]: unknown;
@@ -219,6 +244,11 @@ export interface RoomInfo {
   furniture: PlacedFurniture[];
   flooring?: string;
   wallpaper?: string;
+  gridWidth?: number;
+  gridHeight?: number;
+  accessMode?: 'public' | 'friends' | 'password' | 'locked';
+  ambientMood?: 'day' | 'sunset' | 'night' | 'cyber_neon' | 'rainy';
+  decorators?: string[];
 }
 
 /* ── Convenience types ── */
@@ -323,9 +353,39 @@ export type ServerMessage =
   | { type: 'TRADE_REQUEST_SENT'; payload: { tradeId: string; targetPlayerId: string; targetPlayerName: string } }
   | { type: 'TRADE_STARTED'; payload: { tradeId: string; session: unknown; partnerName: string } }
   | { type: 'TRADE_UPDATED'; payload: { tradeId: string; session: unknown } }
-  | { type: 'TRADE_COMPLETED'; payload: { tradeId: string; message: string } }
   | { type: 'TRADE_CANCELED'; payload: { tradeId: string; reason: string } }
-  | { type: 'TRADE_ERROR'; payload: { message: string } };
+  | { type: 'TRADE_ERROR'; payload: { message: string } }
+  // Track 3: The Loft System
+  | { type: 'ROOM_EXPANDED'; payload: { roomId: string; gridWidth: number; gridHeight: number } }
+  | { type: 'ROOM_PERMISSIONS_UPDATED'; payload: { roomId: string; accessMode: string } }
+  | { type: 'ROOM_ACCESS_DENIED'; payload: { roomId: string; reason: 'friends_only' | 'password_required' | 'locked' | 'invalid_password'; ownerName?: string } }
+  | { type: 'DECORATORS_UPDATED'; payload: { roomId: string; decorators: string[] } }
+  | { type: 'DOORBELL_RING'; payload: { visitorId: string; visitorName: string } }
+  | { type: 'DOORBELL_RESULT'; payload: { granted: boolean; roomId: string; message: string } }
+  | { type: 'ROOM_MOOD_UPDATED'; payload: { roomId: string; mood: string } }
+  | { type: 'WHITEBOARD_STROKE'; payload: { stroke: { x0: number; y0: number; x1: number; y1: number; color: string; width: number } } }
+  | { type: 'WHITEBOARD_CLEARED'; payload: null }
+  | { type: 'PETS_UPDATED'; payload: { pets: unknown[] } }
+  // Track 4: Economy, Progression, and Trading
+  | { type: 'GEMS_UPDATED'; payload: { gems: number; earned: number; reason: string } }
+  | { type: 'MARKETPLACE_LISTINGS'; payload: { listings: MarketplaceListing[] } }
+  | { type: 'MARKETPLACE_SUCCESS'; payload: { message: string; listingId?: string } }
+  | { type: 'MARKETPLACE_ERROR'; payload: { message: string } }
+  | { type: 'RECYCLE_SUCCESS'; payload: { itemType: string; gained: { scrap_metal: number; timber: number }; materials: Record<string, number> } }
+  | { type: 'CRAFT_SUCCESS'; payload: { recipeId: string; itemType: string; materials: Record<string, number> } }
+  | { type: 'CRAFTING_ERROR'; payload: { message: string } }
+  | { type: 'VIP_UPDATED'; payload: { isVip: boolean; vipExpiresAt: string | null } };
+
+export interface MarketplaceListing {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  itemType: string;
+  priceCoins: number;
+  priceGems: number;
+  status: 'active' | 'sold' | 'cancelled';
+  createdAt: string;
+}
 
 /* ── Convenience: narrow a typed payload from a raw envelope ── */
 export type ClientMessageOf<T extends ClientMessage['type']> = Extract<ClientMessage, { type: T }>;

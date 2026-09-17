@@ -35,6 +35,9 @@ export interface Player {
   friends: string[];
   registeredAt?: string | null;
   authUserId: string | null; // Supabase auth user ID (if logged in via account)
+  isVip?: boolean;
+  vipExpiresAt?: string | null;
+  materials?: { scrap_metal: number; timber: number };
 }
 
 export interface Room {
@@ -46,6 +49,14 @@ export interface Room {
   ownerId: string | null; // for private per-user rooms
   flooring: string;       // e.g. 'marble', 'parquet', 'plush_carpet', 'slate'
   wallpaper: string;      // e.g. 'slate', 'cozy_wood', 'brick', 'pastel'
+  gridWidth: number;
+  gridHeight: number;
+  accessMode: 'public' | 'friends' | 'password' | 'locked';
+  passwordHash?: string;
+  decorators: Set<string>;
+  ambientMood: 'day' | 'sunset' | 'night' | 'cyber_neon' | 'rainy';
+  doorbellGrants: Set<string>;
+  pets: Map<string, any>;
 }
 
 const plazaFurniture: PlacedFurniture[] = [
@@ -76,11 +87,15 @@ export function createDefaultRooms(): Record<string, Room> {
       id: 'plaza', name: 'Central Plaza & Lounge', isPublic: true,
       players: new Map(), furniture: cloneFurniture(plazaFurniture), ownerId: null,
       flooring: 'marble', wallpaper: 'slate',
+      gridWidth: 12, gridHeight: 12, accessMode: 'public',
+      decorators: new Set(), ambientMood: 'day', doorbellGrants: new Set(), pets: new Map(),
     },
     sanctuary_loft: {
       id: 'sanctuary_loft', name: 'Cozy Personal Loft', isPublic: false,
       players: new Map(), furniture: cloneFurniture(loftFurniture), ownerId: null,
       flooring: 'parquet', wallpaper: 'cozy_wood',
+      gridWidth: 10, gridHeight: 10, accessMode: 'public',
+      decorators: new Set(), ambientMood: 'day', doorbellGrants: new Set(), pets: new Map(),
     },
   };
 }
@@ -93,6 +108,11 @@ export function serializeRoom(room: Room): RoomInfo {
     furniture: room.furniture,
     flooring: room.flooring || 'parquet',
     wallpaper: room.wallpaper || 'cozy_wood',
+    gridWidth: room.gridWidth || (room.id === 'plaza' ? 12 : 10),
+    gridHeight: room.gridHeight || (room.id === 'plaza' ? 12 : 10),
+    accessMode: room.accessMode || 'public',
+    ambientMood: room.ambientMood || 'day',
+    decorators: Array.from(room.decorators || []),
   };
 }
 
@@ -116,6 +136,9 @@ export function serializePlayer(p: Player): PlayerInfo {
     title: p.identity?.title || '',
     statusMessage: p.identity?.statusMessage || '',
     pinnedBadges: p.identity?.pinnedBadges || [],
+    isVip: p.isVip || false,
+    vipExpiresAt: p.vipExpiresAt || null,
+    materials: p.materials || { scrap_metal: 0, timber: 0 },
   };
 }
 
@@ -168,6 +191,13 @@ export class RoomManager {
       ownerId: playerId,
       flooring: 'parquet',
       wallpaper: 'cozy_wood',
+      gridWidth: 10,
+      gridHeight: 10,
+      accessMode: 'public',
+      decorators: new Set(),
+      ambientMood: 'day',
+      doorbellGrants: new Set(),
+      pets: new Map(),
     };
     return this.rooms[roomId];
   }
@@ -190,6 +220,97 @@ export class RoomManager {
   leave(player: Player): void {
     const room = this.rooms[player.room];
     if (room) room.players.delete(player.id);
+  }
+
+  canAccess(
+    roomId: string,
+    playerId: string,
+    password?: string | null,
+    areFriends: boolean = false
+  ): { allowed: boolean; reason?: 'friends_only' | 'password_required' | 'locked' | 'invalid_password'; ownerName?: string } {
+    const room = this.rooms[roomId];
+    if (!room) return { allowed: false };
+    // Owners always have full access
+    if (room.ownerId === playerId) return { allowed: true };
+    // Approved doorbell visitors bypass restrictions
+    if (room.doorbellGrants && room.doorbellGrants.has(playerId)) return { allowed: true };
+    // Public rooms open to all
+    if (!room.accessMode || room.accessMode === 'public') return { allowed: true };
+
+    if (room.accessMode === 'locked') {
+      // Only decorators or owner
+      if (room.decorators && room.decorators.has(playerId)) return { allowed: true };
+      return { allowed: false, reason: 'locked', ownerName: room.name };
+    }
+
+    if (room.accessMode === 'friends') {
+      if (areFriends || (room.decorators && room.decorators.has(playerId))) return { allowed: true };
+      return { allowed: false, reason: 'friends_only', ownerName: room.name };
+    }
+
+    if (room.accessMode === 'password') {
+      if (!password) return { allowed: false, reason: 'password_required', ownerName: room.name };
+      if (room.passwordHash && password !== room.passwordHash) {
+        return { allowed: false, reason: 'invalid_password', ownerName: room.name };
+      }
+      return { allowed: true };
+    }
+
+    return { allowed: true };
+  }
+
+  canDecorate(roomId: string, playerId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    if (room.ownerId === playerId) return true;
+    if (room.decorators && room.decorators.has(playerId)) return true;
+    return false;
+  }
+
+  expandRoom(roomId: string, newSize: number): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    room.gridWidth = newSize;
+    room.gridHeight = newSize;
+    return true;
+  }
+
+  setAccessMode(roomId: string, mode: 'public' | 'friends' | 'password' | 'locked', password?: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    room.accessMode = mode;
+    if (password !== undefined) room.passwordHash = password;
+    return true;
+  }
+
+  grantDecorator(roomId: string, playerId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    if (!room.decorators) room.decorators = new Set();
+    room.decorators.add(playerId);
+    return true;
+  }
+
+  revokeDecorator(roomId: string, playerId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room || !room.decorators) return false;
+    room.decorators.delete(playerId);
+    return true;
+  }
+
+  grantDoorbell(roomId: string, visitorId: string): void {
+    const room = this.rooms[roomId];
+    if (room) {
+      if (!room.doorbellGrants) room.doorbellGrants = new Set();
+      room.doorbellGrants.add(visitorId);
+    }
+  }
+
+  setRoomMood(roomId: string, mood: 'day' | 'sunset' | 'night' | 'cyber_neon' | 'rainy'): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    room.ambientMood = mood;
+    return true;
   }
 
   broadcast(

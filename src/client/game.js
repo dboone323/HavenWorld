@@ -14,6 +14,9 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
 import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowScale } from './shared/emotes.js';
 import { furnitureDepthKey, avatarDepthKey } from './shared/zsort.js';
 import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/authority.js';
+import { CATALOG_ITEMS, getRotatingFeaturedStock, getTimeUntilNextRotation } from './shared/catalog.js';
+import { WORKSHOP_RECIPES, calculateSalvageYield, canCraftRecipe } from './shared/crafting.js';
+import { createPet, advancePetAI, petInteract } from './shared/pet.js';
 
   // State
   let ws = null;
@@ -124,7 +127,11 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   // Isometric Constants
   const TILE_WIDTH = 64;
   const TILE_HEIGHT = 32;
-  const GRID_SIZE = 12;
+  const DEFAULT_GRID_SIZE = 12;
+  function getRoomGridWidth() { return currentRoom?.gridWidth || DEFAULT_GRID_SIZE; }
+  function getRoomGridHeight() { return currentRoom?.gridHeight || DEFAULT_GRID_SIZE; }
+  let currentFurniRotation = 0; // 0, 90, 180, 270
+
   // Emotes whose animation replaces the locomotion pose in the world renderer.
   const POSE_EMOTES = ['dance', 'run', 'lie'];
 
@@ -223,6 +230,9 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
         otherPlayers.clear();
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
         updateCoinUI(selfPlayer.coins);
+        if (selfPlayer.gems !== undefined) updateGemUI(selfPlayer.gems);
+        if (selfPlayer.materials) updateMaterialsUI(selfPlayer.materials);
+        applyRoomMood(currentRoom.ambientMood || 'day');
 
         // If the server sent us a personal loft room ID, add it to the dropdown
         if (msg.payload.playerLoftRoomId) {
@@ -364,6 +374,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
 
       case 'ROOM_CHANGED': {
         currentRoom = msg.payload.room;
+        applyRoomMood(currentRoom.ambientMood || 'day');
         const savedName = localStorage.getItem('haven_player_name') || selfPlayer.name;
         const serverPlayer = msg.payload.player || {};
         if (savedName && (!serverPlayer.name || serverPlayer.name.startsWith('usr_'))) {
@@ -601,6 +612,145 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
 
       case 'TRADE_ERROR': {
         showToast(msg.payload.message, '⚠️');
+        break;
+      }
+
+      // --- Track 3: Loft Expansion, Permissions, Mood, Doorbell & Whiteboard ---
+      case 'ROOM_EXPANDED': {
+        currentRoom.gridWidth = msg.payload.width;
+        currentRoom.gridHeight = msg.payload.height;
+        const sizeLabel = document.getElementById('loft-current-size');
+        if (sizeLabel) sizeLabel.textContent = `${msg.payload.width}×${msg.payload.height} Tiles`;
+        showToast(`Sanctuary expanded to ${msg.payload.width}×${msg.payload.height}! 📐`, '🏰');
+        playFurniPop();
+        break;
+      }
+
+      case 'ROOM_PERMISSIONS_UPDATED': {
+        currentRoom.accessMode = msg.payload.accessMode;
+        showToast(`Sanctuary access set to ${msg.payload.accessMode.toUpperCase()}! 🔒`, '✅');
+        break;
+      }
+
+      case 'ROOM_ACCESS_DENIED': {
+        pendingRestrictedRoomId = msg.payload.roomId;
+        const nameEl = document.getElementById('doorbell-room-name');
+        if (nameEl) nameEl.textContent = msg.payload.roomName || 'This Sanctuary';
+        const doorbellVisitorModal = document.getElementById('doorbell-visitor-modal');
+        if (doorbellVisitorModal) doorbellVisitorModal.classList.remove('hidden');
+        showToast(msg.payload.reason || 'Sanctuary access is restricted.', '🚪');
+        break;
+      }
+
+      case 'DOORBELL_RING': {
+        pendingDoorbellVisitorId = msg.payload.visitorId;
+        const guestEl = document.getElementById('doorbell-guest-name');
+        if (guestEl) guestEl.textContent = msg.payload.visitorName || 'A Traveler';
+        const doorbellHostModal = document.getElementById('doorbell-host-modal');
+        if (doorbellHostModal) doorbellHostModal.classList.remove('hidden');
+        playChatPing();
+        showToast(`🔔 ${msg.payload.visitorName || 'A Traveler'} rang your doorbell!`, '🔔');
+        break;
+      }
+
+      case 'DOORBELL_RESULT': {
+        if (msg.payload.allowed) {
+          showToast('Doorbell answered: Entry granted! 🚪✨', '🎉');
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: msg.payload.roomId } }));
+          }
+        } else {
+          showToast('The host declined entry.', '🚪');
+        }
+        break;
+      }
+
+      case 'ROOM_MOOD_UPDATED': {
+        currentRoom.ambientMood = msg.payload.mood;
+        applyRoomMood(msg.payload.mood);
+        showToast(`Sanctuary ambiance updated: ${msg.payload.mood}! 🌅`, '✨');
+        break;
+      }
+
+      case 'DECORATOR_UPDATED': {
+        currentRoom.decorators = msg.payload.decorators || [];
+        renderLoftDecoratorsList();
+        showToast(msg.payload.message || 'Decorator permissions updated.', '🤝');
+        break;
+      }
+
+      case 'WHITEBOARD_STROKE': {
+        drawWhiteboardStroke(msg.payload.stroke);
+        break;
+      }
+
+      case 'WHITEBOARD_CLEARED': {
+        const wbCanvas = document.getElementById('whiteboard-canvas');
+        if (wbCanvas) {
+          const wbCtx = wbCanvas.getContext('2d');
+          wbCtx.clearRect(0, 0, wbCanvas.width, wbCanvas.height);
+        }
+        break;
+      }
+
+      // --- Track 4: Dual Currency, Marketplace, Workshop & Pets ---
+      case 'GEMS_UPDATED': {
+        selfPlayer.gems = msg.payload.gems;
+        updateGemUI(selfPlayer.gems);
+        showToast(`💎 +${msg.payload.earned || 0} HavenGems (${msg.payload.reason || 'Reward'})!`, '💎');
+        playCoinChime();
+        break;
+      }
+
+      case 'MARKETPLACE_LISTINGS': {
+        activeMarketplaceListings = msg.payload.listings || [];
+        renderMarketplaceListings();
+        renderMyMarketplaceListings();
+        break;
+      }
+
+      case 'MARKETPLACE_SUCCESS': {
+        showToast(msg.payload.message || 'Marketplace transaction successful! 🛒', '🎉');
+        playCoinChime();
+        sendWs({ type: 'BROWSE_MARKETPLACE', payload: {} });
+        break;
+      }
+
+      case 'RECYCLE_SUCCESS': {
+        selfPlayer.materials = msg.payload.materials;
+        updateMaterialsUI(selfPlayer.materials);
+        const y = msg.payload.yield || {};
+        showToast(`Dismantled! Salvaged +${y.scrap_metal || 0} Scrap Metal 🔩, +${y.timber || 0} Timber 🪵`, '🔨');
+        playFurniPop();
+        populateRecycleDropdown();
+        break;
+      }
+
+      case 'CRAFT_SUCCESS': {
+        selfPlayer.materials = msg.payload.materials;
+        updateMaterialsUI(selfPlayer.materials);
+        showToast(`Crafted ${msg.payload.recipeName || 'item'}! Added to decorator inventory! ✨`, '🔨');
+        playFurniPop();
+        renderCraftingRecipes();
+        break;
+      }
+
+      case 'VIP_UPDATED': {
+        selfPlayer.isVip = !!msg.payload.isVip;
+        selfPlayer.vipExpiresAt = msg.payload.vipExpiresAt || null;
+        updateVipBadge();
+        showToast(`Club Haven VIP: ${selfPlayer.isVip ? 'Active! 👑 2% Market Tax + Perks' : 'Expired'}`, '👑');
+        break;
+      }
+
+      case 'PETS_UPDATED': {
+        currentRoom.pets = msg.payload.pets || [];
+        break;
+      }
+
+      case 'PET_INTERACT_RESULT': {
+        playChatPing();
+        showToast(`Pet reacted: ${msg.payload.emote || '❤️'} (${msg.payload.reaction || 'Friendly'})`, '🐾');
         break;
       }
     }
@@ -1060,8 +1210,8 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     drawNorthEastWall(wallpaper);
 
     // 3. Draw Floor Tiles
-    for (let x = 0; x < GRID_SIZE; x++) {
-      for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < getRoomGridWidth(); x++) {
+      for (let y = 0; y < getRoomGridHeight(); y++) {
         const pt = toScreen(x, y);
 
         ctx.beginPath();
@@ -1072,7 +1222,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
         ctx.closePath();
 
         // Check if this tile is the interactive doorway
-        const isDoorTile = (x === Math.floor(GRID_SIZE / 2) && y === 0);
+        const isDoorTile = (x === Math.floor(getRoomGridWidth() / 2) && y === 0);
 
         if (isDoorTile) {
           ctx.fillStyle = '#f59e0b';
@@ -1119,7 +1269,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       baseboardColor = '#2e0231';
     }
 
-    for (let x = 0; x < GRID_SIZE; x++) {
+    for (let x = 0; x < getRoomGridWidth(); x++) {
       const p0 = toScreen(x, 0);
       const p1 = toScreen(x + 1, 0);
 
@@ -1172,7 +1322,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       baseboardColor = '#1f0121';
     }
 
-    for (let y = 0; y < GRID_SIZE; y++) {
+    for (let y = 0; y < getRoomGridHeight(); y++) {
       const p0 = toScreen(0, y);
       const p1 = toScreen(0, y + 1);
 
@@ -1206,7 +1356,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   }
 
   function drawInteractiveDoorway() {
-    const doorX = Math.floor(GRID_SIZE / 2);
+    const doorX = Math.floor(getRoomGridWidth() / 2);
     const p0 = toScreen(doorX, 0);
     const p1 = toScreen(doorX + 1, 0);
     const doorHeight = 62;
@@ -1303,6 +1453,12 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     const cy = pt.y + TILE_HEIGHT / 2 - elevationOffset;
 
     ctx.save();
+    if (f.rotation) {
+      ctx.translate(cx, cy);
+      ctx.rotate((f.rotation * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+    }
+
     switch (f.type) {
       case 'sofa': {
         // Modern Cozy Velvet Sofa
@@ -1425,6 +1581,164 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       case 'bench': {
         ctx.fillStyle = '#475569';
         ctx.fillRect(cx - 20, cy - 16, 40, 10);
+        break;
+      }
+      case 'bed': {
+        // Cozy Bed
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(cx - 24, cy - 20, 48, 24);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(cx - 20, cy - 22, 16, 10);
+        ctx.fillRect(cx + 4, cy - 22, 16, 10);
+        ctx.fillStyle = '#6366f1';
+        ctx.fillRect(cx - 22, cy - 12, 44, 16);
+        break;
+      }
+      case 'bookshelf': {
+        ctx.fillStyle = '#451a03';
+        ctx.fillRect(cx - 16, cy - 44, 32, 44);
+        const bookColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7'];
+        for (let b = 0; b < 5; b++) {
+          ctx.fillStyle = bookColors[b % bookColors.length];
+          ctx.fillRect(cx - 12 + b * 5, cy - 36, 4, 14);
+          ctx.fillRect(cx - 12 + b * 5, cy - 18, 4, 14);
+        }
+        break;
+      }
+      case 'whiteboard': {
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(cx - 2, cy - 8, 4, 16);
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(cx - 20, cy - 36, 40, 26);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(cx - 18, cy - 34, 36, 22);
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - 12, cy - 24);
+        ctx.quadraticCurveTo(cx - 2, cy - 30, cx + 10, cy - 22);
+        ctx.stroke();
+        break;
+      }
+      case 'teleporter_pad': {
+        const pulse = Math.sin(performance.now() / 250) * 4;
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 12 + pulse;
+        ctx.fillStyle = '#0891b2';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 4, 22, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#67e8f9';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 4, 12, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        break;
+      }
+      case 'pet_cat': {
+        const bob = Math.sin(performance.now() / 300) * 2;
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 6 + bob, 10, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx + 6, cy - 12 + bob, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx + 3, cy - 16 + bob); ctx.lineTo(cx + 6, cy - 22 + bob); ctx.lineTo(cx + 8, cy - 16 + bob);
+        ctx.moveTo(cx + 7, cy - 16 + bob); ctx.lineTo(cx + 10, cy - 22 + bob); ctx.lineTo(cx + 12, cy - 16 + bob);
+        ctx.fill();
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - 8, cy - 6 + bob);
+        ctx.quadraticCurveTo(cx - 14, cy - 16 + bob, cx - 12, cy - 20 + bob);
+        ctx.stroke();
+        break;
+      }
+      case 'pet_dog': {
+        const bob = Math.sin(performance.now() / 220) * 2;
+        ctx.fillStyle = '#d97706';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 7 + bob, 12, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx + 8, cy - 13 + bob, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#b45309';
+        ctx.beginPath();
+        ctx.ellipse(cx + 6, cy - 12 + bob, 3, 6, 0.4, 0, Math.PI * 2);
+        ctx.ellipse(cx + 11, cy - 12 + bob, 3, 6, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        const wag = Math.sin(performance.now() / 100) * 4;
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx - 10, cy - 8 + bob);
+        ctx.lineTo(cx - 16 + wag, cy - 14 + bob);
+        ctx.stroke();
+        break;
+      }
+      case 'pet_dragon':
+      case 'clockwork_pet_dragon': {
+        const flap = Math.sin(performance.now() / 150) * 6;
+        ctx.fillStyle = '#b45309';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 10, 11, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx + 8, cy - 16, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.moveTo(cx - 2, cy - 12);
+        ctx.lineTo(cx - 12, cy - 24 + flap);
+        ctx.lineTo(cx + 4, cy - 16);
+        ctx.fill();
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.moveTo(cx + 6, cy - 20); ctx.lineTo(cx + 8, cy - 26); ctx.lineTo(cx + 10, cy - 20);
+        ctx.fill();
+        break;
+      }
+      case 'steampunk_sofa': {
+        ctx.fillStyle = '#78350f';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 8, 32, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#451a03';
+        ctx.fillRect(cx - 30, cy - 28, 60, 20);
+        ctx.fillStyle = '#f59e0b';
+        for (let g = -20; g <= 20; g += 10) {
+          ctx.beginPath();
+          ctx.arc(cx + g, cy - 22, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      }
+      case 'reclaimed_wood_table': {
+        ctx.fillStyle = '#57300a';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 16, 26, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#2d1102';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(cx - 16, cy - 14); ctx.lineTo(cx - 16, cy + 2);
+        ctx.moveTo(cx + 16, cy - 14); ctx.lineTo(cx + 16, cy + 2);
+        ctx.stroke();
+        break;
+      }
+      case 'neon_foundry_lamp': {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(cx - 3, cy - 32, 6, 32);
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = '#67e8f9';
+        ctx.beginPath();
+        ctx.arc(cx, cy - 34, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
         break;
       }
     }
@@ -1585,8 +1899,8 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       }
     }
 
-    // 2. Check if clicking on the Interactive Doorway (at doorX = Math.floor(GRID_SIZE / 2), y = 0)
-    const doorX = Math.floor(GRID_SIZE / 2);
+    // 2. Check if clicking on the Interactive Doorway (at doorX = Math.floor(getRoomGridWidth() / 2), y = 0)
+    const doorX = Math.floor(getRoomGridWidth() / 2);
     const doorPt0 = toScreen(doorX, 0);
     const doorPt1 = toScreen(doorX + 1, 0);
     const doorMidX = (doorPt0.x + doorPt1.x) / 2;
@@ -1615,11 +1929,11 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     }
 
     const grid = toGrid(sx, sy);
-    if (grid.x < -0.5 || grid.x > GRID_SIZE + 0.5 || grid.y < -0.5 || grid.y > GRID_SIZE + 0.5) return;
+    if (grid.x < -0.5 || grid.x > getRoomGridWidth() + 0.5 || grid.y < -0.5 || grid.y > getRoomGridHeight() + 0.5) return;
 
     // Gentle clamp within the playable grid
-    const targetX = Math.max(0.5, Math.min(GRID_SIZE - 0.5, grid.x));
-    const targetY = Math.max(0.5, Math.min(GRID_SIZE - 0.5, grid.y));
+    const targetX = Math.max(0.5, Math.min(getRoomGridWidth() - 0.5, grid.x));
+    const targetY = Math.max(0.5, Math.min(getRoomGridHeight() - 0.5, grid.y));
 
     const isPersonalLoft = currentRoom.id.startsWith('loft_');
 
@@ -1643,7 +1957,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
         return; // Don't place yet — now in "place on surface" mode
       }
 
-      // Place furniture
+      // Place furniture with rotation
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'PLACE_FURNITURE',
@@ -1652,14 +1966,15 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
             x: targetX,
             y: targetY,
             elevation: parentSurfaceId ? 1 : 0,
-            parentSurfaceId: parentSurfaceId || null
+            parentSurfaceId: parentSurfaceId || null,
+            rotation: currentFurniRotation || 0
           }
         }));
       }
       // Clear parent surface selection after placing
       if (parentSurfaceId) parentSurfaceId = null;
     } else {
-      // Check interactive furniture hit test (seating, toggles, plant rustle, arcade)
+      // Check interactive furniture hit test (seating, toggles, whiteboard, teleporter, pets)
       const clickedFurniture = currentRoom.furniture.slice().reverse().find(f => {
         const pt = toScreen(f.x, f.y);
         const cx = pt.x;
@@ -1679,9 +1994,35 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
           playArcadeJingle();
           return;
         }
+        if (clickedFurniture.type === 'whiteboard') {
+          openWhiteboardModal();
+          return;
+        }
+        if (clickedFurniture.type === 'teleporter_pad') {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'TELEPORT_TRIGGER',
+              payload: { teleporterId: clickedFurniture.id }
+            }));
+          }
+          playDoorwayWhoosh();
+          showToast('Stepped on teleporter! 🌀', '🌀');
+          return;
+        }
+        if (clickedFurniture.type.startsWith('pet_') || clickedFurniture.type === 'clockwork_pet_dragon') {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'PET_INTERACT',
+              payload: { petId: clickedFurniture.id, action: 'pet' }
+            }));
+          }
+          playChatPing();
+          showToast('You pet your companion! ❤️', '🐾');
+          return;
+        }
 
-        const seatTypes = ['sofa', 'bench', 'chair', 'stool', 'bed'];
-        const lightTypes = ['lamp', 'neon', 'tv'];
+        const seatTypes = ['sofa', 'bench', 'chair', 'stool', 'bed', 'steampunk_sofa'];
+        const lightTypes = ['lamp', 'neon', 'tv', 'neon_foundry_lamp'];
         if (seatTypes.includes(clickedFurniture.type)) {
           playSitSound();
           triggerPassportAction('SIT');
@@ -1730,7 +2071,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     const sy = e.clientY - rect.top;
 
     // Check doorway hover
-    const doorX = Math.floor(GRID_SIZE / 2);
+    const doorX = Math.floor(getRoomGridWidth() / 2);
     const doorPt0 = toScreen(doorX, 0);
     const doorPt1 = toScreen(doorX + 1, 0);
     const doorMidX = (doorPt0.x + doorPt1.x) / 2;
@@ -2877,7 +3218,537 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     }
   }
 
-  // --- Start Client ---
+  // ==========================================================================
+  // TRACK 3 & 4 CONTROLLERS: ROTATION, LOFT SETTINGS, DOORBELL, MARKET, CRAFTING, WHITEBOARD
+  // ==========================================================================
+
+  // --- UI Helpers ---
+  function applyRoomMood(mood = 'day') {
+    canvas.className = `mood-${mood}`;
+  }
+
+  function updateGemUI(gems) {
+    const gemEl = document.getElementById('gem-amount');
+    if (gemEl) gemEl.textContent = (gems || 0).toLocaleString();
+  }
+
+  function updateMaterialsUI(materials) {
+    const mats = materials || { scrap_metal: 0, timber: 0 };
+    const scrapEl = document.getElementById('craft-scrap-amount');
+    const timberEl = document.getElementById('craft-timber-amount');
+    if (scrapEl) scrapEl.textContent = (mats.scrap_metal || 0).toLocaleString();
+    if (timberEl) timberEl.textContent = (mats.timber || 0).toLocaleString();
+  }
+
+  function updateVipBadge() {
+    const crown = document.querySelector('.vip-crown');
+    if (selfPlayer.isVip && !crown) {
+      const nameEl = document.getElementById('passport-player-name');
+      if (nameEl) {
+        const span = document.createElement('span');
+        span.className = 'vip-crown';
+        span.textContent = '👑';
+        nameEl.prepend(span);
+      }
+    }
+  }
+
+  // --- 4-Way Rotation Controller ---
+  function cycleFurnitureRotation() {
+    currentFurniRotation = (currentFurniRotation + 90) % 360;
+    const label = document.getElementById('current-rot-label');
+    const dirNames = { 0: '0° (South)', 90: '90° (West)', 180: '180° (North)', 270: '270° (East)' };
+    if (label) {
+      label.textContent = dirNames[currentFurniRotation] || `${currentFurniRotation}°`;
+    }
+    showToast(`Orientation: ${dirNames[currentFurniRotation] || currentFurniRotation + '°'}`, '🔄');
+  }
+
+  document.getElementById('btn-rotate-furni')?.addEventListener('click', cycleFurnitureRotation);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'r' || e.key === 'R') {
+      cycleFurnitureRotation();
+    }
+  });
+
+  // --- Loft Settings & Expansion Modal ---
+  const loftSettingsModal = document.getElementById('loft-settings-modal');
+  const btnLoftSettings = document.getElementById('btn-loft-settings');
+  const btnCloseLoftSettings = document.getElementById('btn-close-loft-settings');
+
+  btnLoftSettings?.addEventListener('click', () => {
+    const sizeEl = document.getElementById('loft-current-size');
+    if (sizeEl) sizeEl.textContent = `${getRoomGridWidth()}×${getRoomGridHeight()} Tiles`;
+    const moodSelect = document.getElementById('loft-mood-select');
+    if (moodSelect && currentRoom.ambientMood) moodSelect.value = currentRoom.ambientMood;
+    const currentMode = currentRoom.accessMode || 'public';
+    const radio = document.querySelector(`input[name="loft-access"][value="${currentMode}"]`);
+    if (radio) radio.checked = true;
+    const passContainer = document.getElementById('loft-password-container');
+    if (passContainer) passContainer.classList.toggle('hidden', currentMode !== 'password');
+    renderLoftDecoratorsList();
+    loftSettingsModal?.classList.remove('hidden');
+  });
+
+  btnCloseLoftSettings?.addEventListener('click', () => {
+    loftSettingsModal?.classList.add('hidden');
+  });
+
+  loftSettingsModal?.addEventListener('click', (e) => {
+    if (e.target === loftSettingsModal) loftSettingsModal.classList.add('hidden');
+  });
+
+  document.querySelectorAll('input[name="loft-access"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const passContainer = document.getElementById('loft-password-container');
+      if (passContainer) passContainer.classList.toggle('hidden', e.target.value !== 'password');
+    });
+  });
+
+  document.getElementById('btn-expand-14')?.addEventListener('click', () => {
+    sendWs({ type: 'EXPAND_ROOM', payload: { roomId: currentRoom.id, targetSize: 14 } });
+  });
+
+  document.getElementById('btn-expand-18')?.addEventListener('click', () => {
+    sendWs({ type: 'EXPAND_ROOM', payload: { roomId: currentRoom.id, targetSize: 18 } });
+  });
+
+  document.getElementById('btn-expand-20')?.addEventListener('click', () => {
+    sendWs({ type: 'EXPAND_ROOM', payload: { roomId: currentRoom.id, targetSize: 20 } });
+  });
+
+  document.getElementById('btn-save-permissions')?.addEventListener('click', () => {
+    const mode = document.querySelector('input[name="loft-access"]:checked')?.value || 'public';
+    const password = document.getElementById('loft-password-input')?.value || '';
+    sendWs({ type: 'SET_ROOM_PERMISSIONS', payload: { roomId: currentRoom.id, accessMode: mode, password } });
+    loftSettingsModal?.classList.add('hidden');
+  });
+
+  document.getElementById('btn-save-mood')?.addEventListener('click', () => {
+    const mood = document.getElementById('loft-mood-select')?.value || 'day';
+    sendWs({ type: 'SET_ROOM_MOOD', payload: { roomId: currentRoom.id, mood } });
+    applyRoomMood(mood);
+    loftSettingsModal?.classList.add('hidden');
+  });
+
+  document.getElementById('btn-add-decorator')?.addEventListener('click', () => {
+    const input = document.getElementById('loft-decorator-input');
+    const decoratorId = input?.value.trim();
+    if (decoratorId) {
+      sendWs({ type: 'GRANT_DECORATOR', payload: { roomId: currentRoom.id, decoratorId } });
+      input.value = '';
+    }
+  });
+
+  function renderLoftDecoratorsList() {
+    const listEl = document.getElementById('loft-decorators-list');
+    if (!listEl) return;
+    const decorators = currentRoom.decorators || [];
+    if (decorators.length === 0) {
+      listEl.textContent = 'No co-building decorators assigned yet.';
+      return;
+    }
+    listEl.innerHTML = decorators.map(d => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+        <span>🤝 ${escapeHtml(d)}</span>
+        <button class="chip-danger btn-remove-dec" data-id="${escapeHtml(d)}" style="padding:2px 8px; font-size:11px;">Revoke</button>
+      </div>
+    `).join('');
+    listEl.querySelectorAll('.btn-remove-dec').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const decId = btn.getAttribute('data-id');
+        sendWs({ type: 'REVOKE_DECORATOR', payload: { roomId: currentRoom.id, decoratorId: decId } });
+      });
+    });
+  }
+
+  // --- Doorbell Modals & State ---
+  let pendingRestrictedRoomId = null;
+  let pendingDoorbellVisitorId = null;
+
+  document.getElementById('btn-ring-doorbell')?.addEventListener('click', () => {
+    if (pendingRestrictedRoomId) {
+      sendWs({ type: 'RING_DOORBELL', payload: { roomId: pendingRestrictedRoomId } });
+      showToast('Ringing doorbell... 🔔 Waiting for host.', '🔔');
+    }
+    document.getElementById('doorbell-visitor-modal')?.classList.add('hidden');
+  });
+
+  document.getElementById('btn-cancel-doorbell')?.addEventListener('click', () => {
+    document.getElementById('doorbell-visitor-modal')?.classList.add('hidden');
+  });
+
+  document.getElementById('btn-doorbell-allow')?.addEventListener('click', () => {
+    if (pendingDoorbellVisitorId) {
+      sendWs({ type: 'DOORBELL_DECISION', payload: { visitorId: pendingDoorbellVisitorId, allow: true } });
+      showToast('Entry allowed! 🚪✨', '✅');
+    }
+    document.getElementById('doorbell-host-modal')?.classList.add('hidden');
+  });
+
+  document.getElementById('btn-doorbell-deny')?.addEventListener('click', () => {
+    if (pendingDoorbellVisitorId) {
+      sendWs({ type: 'DOORBELL_DECISION', payload: { visitorId: pendingDoorbellVisitorId, allow: false } });
+      showToast('Visitor declined. 🚪', '❌');
+    }
+    document.getElementById('doorbell-host-modal')?.classList.add('hidden');
+  });
+
+  // --- Player Marketplace ---
+  let activeMarketplaceListings = [];
+  const marketplaceModal = document.getElementById('marketplace-modal');
+  const btnMarketplace = document.getElementById('btn-marketplace');
+  const btnCloseMarketplace = document.getElementById('btn-close-marketplace');
+  const tabMarketBrowse = document.getElementById('tab-market-browse');
+  const tabMarketSell = document.getElementById('tab-market-sell');
+  const marketBrowsePanel = document.getElementById('market-browse-panel');
+  const marketSellPanel = document.getElementById('market-sell-panel');
+  const marketSearchInput = document.getElementById('market-search-input');
+
+  btnMarketplace?.addEventListener('click', () => {
+    marketplaceModal?.classList.remove('hidden');
+    sendWs({ type: 'BROWSE_MARKETPLACE', payload: {} });
+    populateMarketSellDropdown();
+  });
+
+  btnCloseMarketplace?.addEventListener('click', () => {
+    marketplaceModal?.classList.add('hidden');
+  });
+
+  marketplaceModal?.addEventListener('click', (e) => {
+    if (e.target === marketplaceModal) marketplaceModal.classList.add('hidden');
+  });
+
+  tabMarketBrowse?.addEventListener('click', () => {
+    tabMarketBrowse.classList.add('active');
+    tabMarketSell.classList.remove('active');
+    marketBrowsePanel?.classList.remove('hidden');
+    marketSellPanel?.classList.add('hidden');
+  });
+
+  tabMarketSell?.addEventListener('click', () => {
+    tabMarketSell.classList.add('active');
+    tabMarketBrowse.classList.remove('active');
+    marketSellPanel?.classList.remove('hidden');
+    marketBrowsePanel?.classList.add('hidden');
+    populateMarketSellDropdown();
+    renderMyMarketplaceListings();
+  });
+
+  marketSearchInput?.addEventListener('input', () => {
+    renderMarketplaceListings();
+  });
+
+  function populateMarketSellDropdown() {
+    const select = document.getElementById('market-sell-select');
+    if (!select) return;
+    select.innerHTML = Object.values(CATALOG_ITEMS).map(item => `
+      <option value="${item.id}">${item.icon} ${escapeHtml(item.name)} (${item.rarity.toUpperCase()})</option>
+    `).join('');
+  }
+
+  document.getElementById('btn-create-listing')?.addEventListener('click', () => {
+    const itemType = document.getElementById('market-sell-select')?.value;
+    const price = parseInt(document.getElementById('market-price-input')?.value || '100', 10);
+    const currency = document.getElementById('market-currency-select')?.value || 'coins';
+    if (!itemType || isNaN(price) || price <= 0) {
+      showToast('Please specify a valid item and price.', '⚠️');
+      return;
+    }
+    sendWs({ type: 'LIST_MARKETPLACE_ITEM', payload: { itemType, price, currency } });
+  });
+
+  function renderMarketplaceListings() {
+    const grid = document.getElementById('market-listings-grid');
+    if (!grid) return;
+    const query = (marketSearchInput?.value || '').toLowerCase().trim();
+    const filtered = activeMarketplaceListings.filter(l => {
+      const item = CATALOG_ITEMS[l.itemType];
+      const name = item ? item.name.toLowerCase() : l.itemType.toLowerCase();
+      return !query || name.includes(query) || (l.sellerName && l.sellerName.toLowerCase().includes(query));
+    });
+
+    if (filtered.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1; padding:30px; text-align:center; color:var(--text-muted);">No active listings match your search.</div>';
+      return;
+    }
+
+    grid.innerHTML = filtered.map(l => {
+      const item = CATALOG_ITEMS[l.itemType] || { name: l.itemType, icon: '📦', rarity: 'common' };
+      const isMine = l.sellerId === selfId;
+      const currencyIcon = l.currency === 'gems' ? '💎' : '🪙';
+      return `
+        <div class="marketplace-item-card rarity-${item.rarity || 'common'}">
+          <div class="item-header">
+            <span style="font-size:24px;">${item.icon || '📦'}</span>
+            <span class="rarity-badge rarity-${item.rarity || 'common'}">${(item.rarity || 'common').toUpperCase()}</span>
+          </div>
+          <div class="item-name">${escapeHtml(item.name)}</div>
+          <div class="item-seller">Seller: ${escapeHtml(l.sellerName || 'Traveler')}</div>
+          <div class="item-price">${currencyIcon} ${l.price.toLocaleString()} ${l.currency}</div>
+          ${isMine ? `
+            <button class="chip-danger btn-cancel-listing" data-id="${l.id}" style="padding:6px; font-size:12px; margin-top:4px;">Cancel & Reclaim</button>
+          ` : `
+            <button class="primary-btn btn-buy-listing" data-id="${l.id}" style="padding:6px; font-size:12px; margin-top:4px;">Buy Now</button>
+          `}
+        </div>
+      `;
+    }).join('');
+
+    grid.querySelectorAll('.btn-buy-listing').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const listingId = btn.getAttribute('data-id');
+        sendWs({ type: 'BUY_MARKETPLACE_ITEM', payload: { listingId } });
+      });
+    });
+
+    grid.querySelectorAll('.btn-cancel-listing').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const listingId = btn.getAttribute('data-id');
+        sendWs({ type: 'CANCEL_MARKETPLACE_LISTING', payload: { listingId } });
+      });
+    });
+  }
+
+  function renderMyMarketplaceListings() {
+    const container = document.getElementById('market-my-listings');
+    if (!container) return;
+    const myListings = activeMarketplaceListings.filter(l => l.sellerId === selfId);
+    if (myListings.length === 0) {
+      container.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">You have no active escrow listings.</div>';
+      return;
+    }
+    container.innerHTML = myListings.map(l => {
+      const item = CATALOG_ITEMS[l.itemType] || { name: l.itemType, icon: '📦' };
+      const currencyIcon = l.currency === 'gems' ? '💎' : '🪙';
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:8px;">
+          <span>${item.icon} ${escapeHtml(item.name)} — <strong>${currencyIcon} ${l.price}</strong></span>
+          <button class="chip-danger btn-cancel-my-listing" data-id="${l.id}" style="padding:4px 10px; font-size:11px;">Cancel</button>
+        </div>
+      `;
+    }).join('');
+
+    container.querySelectorAll('.btn-cancel-my-listing').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const listingId = btn.getAttribute('data-id');
+        sendWs({ type: 'CANCEL_MARKETPLACE_LISTING', payload: { listingId } });
+      });
+    });
+  }
+
+  // --- Workshop & Crafting Modal ---
+  const craftingModal = document.getElementById('crafting-modal');
+  const btnCrafting = document.getElementById('btn-crafting');
+  const btnCloseCrafting = document.getElementById('btn-close-crafting');
+  const tabCraftRecipes = document.getElementById('tab-craft-recipes');
+  const tabCraftRecycle = document.getElementById('tab-craft-recycle');
+  const craftBlueprintsPanel = document.getElementById('craft-blueprints-panel');
+  const craftRecyclePanel = document.getElementById('craft-recycle-panel');
+
+  btnCrafting?.addEventListener('click', () => {
+    craftingModal?.classList.remove('hidden');
+    updateMaterialsUI(selfPlayer.materials);
+    renderCraftingRecipes();
+    populateRecycleDropdown();
+  });
+
+  btnCloseCrafting?.addEventListener('click', () => {
+    craftingModal?.classList.add('hidden');
+  });
+
+  craftingModal?.addEventListener('click', (e) => {
+    if (e.target === craftingModal) craftingModal.classList.add('hidden');
+  });
+
+  tabCraftRecipes?.addEventListener('click', () => {
+    tabCraftRecipes.classList.add('active');
+    tabCraftRecycle.classList.remove('active');
+    craftBlueprintsPanel?.classList.remove('hidden');
+    craftRecyclePanel?.classList.add('hidden');
+    renderCraftingRecipes();
+  });
+
+  tabCraftRecycle?.addEventListener('click', () => {
+    tabCraftRecycle.classList.add('active');
+    tabCraftRecipes.classList.remove('active');
+    craftRecyclePanel?.classList.remove('hidden');
+    craftBlueprintsPanel?.classList.add('hidden');
+    populateRecycleDropdown();
+  });
+
+  function renderCraftingRecipes() {
+    const list = document.getElementById('workshop-recipes-list');
+    if (!list) return;
+    const mats = selfPlayer.materials || { scrap_metal: 0, timber: 0 };
+    list.innerHTML = Object.values(WORKSHOP_RECIPES).map(r => {
+      const canCraft = canCraftRecipe(r.id, mats);
+      return `
+        <div class="recipe-card rarity-${r.rarity || 'common'}">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:26px;">${r.icon}</span>
+            <div class="recipe-info">
+              <div class="recipe-name">${escapeHtml(r.name)}</div>
+              <div class="recipe-cost">
+                <span>🔩 Scrap: <span class="cost-val" style="color:${(mats.scrap_metal || 0) >= r.materials.scrap_metal ? '#34d399' : '#ef4444'}">${r.materials.scrap_metal}</span></span>
+                <span>🪵 Timber: <span class="cost-val" style="color:${(mats.timber || 0) >= r.materials.timber ? '#34d399' : '#ef4444'}">${r.materials.timber}</span></span>
+              </div>
+            </div>
+          </div>
+          <button class="primary-btn btn-craft-action" data-id="${r.id}" ${canCraft ? '' : 'disabled'} style="padding:8px 16px; font-size:12px;">
+            ${canCraft ? '🔨 Assemble' : '🔒 Missing Parts'}
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.btn-craft-action').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const recipeId = btn.getAttribute('data-id');
+        sendWs({ type: 'CRAFT_ITEM', payload: { recipeId } });
+      });
+    });
+  }
+
+  function populateRecycleDropdown() {
+    const select = document.getElementById('recycle-item-select');
+    if (!select) return;
+    select.innerHTML = Object.values(CATALOG_ITEMS).map(item => `
+      <option value="${item.id}">${item.icon} ${escapeHtml(item.name)}</option>
+    `).join('');
+    updateRecycleYieldPreview();
+  }
+
+  function updateRecycleYieldPreview() {
+    const select = document.getElementById('recycle-item-select');
+    const preview = document.getElementById('recycle-yield-preview');
+    if (!select || !preview) return;
+    const y = calculateSalvageYield(select.value);
+    preview.textContent = `Estimated Salvage: +${y.scrap_metal} Scrap Metal 🔩, +${y.timber} Timber 🪵`;
+  }
+
+  document.getElementById('recycle-item-select')?.addEventListener('change', updateRecycleYieldPreview);
+
+  document.getElementById('btn-recycle-action')?.addEventListener('click', () => {
+    const select = document.getElementById('recycle-item-select');
+    const itemType = select?.value;
+    if (itemType) {
+      sendWs({ type: 'RECYCLE_ITEM', payload: { itemType } });
+    }
+  });
+
+  // --- Collaborative Whiteboard ---
+  const whiteboardModal = document.getElementById('whiteboard-modal');
+  const btnCloseWhiteboard = document.getElementById('btn-close-whiteboard');
+  const wbCanvas = document.getElementById('whiteboard-canvas');
+  const wbCtx = wbCanvas?.getContext('2d');
+  let wbActiveColor = '#ffffff';
+  let wbActiveSize = 3;
+  let isWbDrawing = false;
+  let currentStrokePoints = [];
+
+  function openWhiteboardModal() {
+    whiteboardModal?.classList.remove('hidden');
+  }
+
+  btnCloseWhiteboard?.addEventListener('click', () => {
+    whiteboardModal?.classList.add('hidden');
+  });
+
+  whiteboardModal?.addEventListener('click', (e) => {
+    if (e.target === whiteboardModal) whiteboardModal.classList.add('hidden');
+  });
+
+  document.querySelectorAll('.wb-color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.wb-color-btn').forEach(b => b.style.border = 'none');
+      btn.style.border = '2px solid #a855f7';
+      wbActiveColor = btn.getAttribute('data-color') || '#ffffff';
+      wbActiveSize = wbActiveColor === '#0f172a' ? 14 : 3;
+    });
+  });
+
+  document.getElementById('whiteboard-clear-btn')?.addEventListener('click', () => {
+    sendWs({ type: 'WHITEBOARD_CLEAR', payload: { roomId: currentRoom.id } });
+    if (wbCtx && wbCanvas) {
+      wbCtx.clearRect(0, 0, wbCanvas.width, wbCanvas.height);
+    }
+  });
+
+  function drawWhiteboardStroke(stroke) {
+    if (!wbCtx || !stroke || !stroke.points || stroke.points.length < 2) return;
+    wbCtx.strokeStyle = stroke.color;
+    wbCtx.lineWidth = stroke.size || 3;
+    wbCtx.lineCap = 'round';
+    wbCtx.lineJoin = 'round';
+    wbCtx.beginPath();
+    wbCtx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    for (let i = 1; i < stroke.points.length; i++) {
+      wbCtx.lineTo(stroke.points[i].x, stroke.points[i].y);
+    }
+    wbCtx.stroke();
+  }
+
+  if (wbCanvas && wbCtx) {
+    function getWbPos(e) {
+      const rect = wbCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (wbCanvas.width / rect.width),
+        y: (clientY - rect.top) * (wbCanvas.height / rect.height)
+      };
+    }
+
+    const startDraw = (e) => {
+      isWbDrawing = true;
+      const pt = getWbPos(e);
+      currentStrokePoints = [pt];
+      wbCtx.strokeStyle = wbActiveColor;
+      wbCtx.lineWidth = wbActiveSize;
+      wbCtx.lineCap = 'round';
+      wbCtx.beginPath();
+      wbCtx.moveTo(pt.x, pt.y);
+    };
+
+    const moveDraw = (e) => {
+      if (!isWbDrawing) return;
+      const pt = getWbPos(e);
+      currentStrokePoints.push(pt);
+      wbCtx.lineTo(pt.x, pt.y);
+      wbCtx.stroke();
+    };
+
+    const endDraw = () => {
+      if (!isWbDrawing) return;
+      isWbDrawing = false;
+      if (currentStrokePoints.length > 1) {
+        sendWs({
+          type: 'WHITEBOARD_STROKE',
+          payload: {
+            roomId: currentRoom.id,
+            stroke: {
+              color: wbActiveColor,
+              size: wbActiveSize,
+              points: currentStrokePoints
+            }
+          }
+        });
+      }
+      currentStrokePoints = [];
+    };
+
+    wbCanvas.addEventListener('mousedown', startDraw);
+    wbCanvas.addEventListener('mousemove', moveDraw);
+    window.addEventListener('mouseup', endDraw);
+
+    wbCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, { passive: false });
+    wbCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); moveDraw(e); }, { passive: false });
+    window.addEventListener('touchend', endDraw);
+  }
+
   // Auto-connect immediately: use saved account or persistent guest session
   const storedToken = localStorage.getItem('haven_token');
   let storedGuestId = localStorage.getItem('haven_guest_id');

@@ -42,12 +42,29 @@
           <span id="coin-amount">1,000</span>
         </div>
 
+        <div class="currency-pill" id="gem-counter" title="Your HavenGems Balance">
+          <span class="coin-icon">💎</span>
+          <span id="gem-amount">50</span>
+        </div>
+
         <button id="btn-daily-bonus" class="action-btn bonus-btn" title="Claim 250 Daily Coins">
           🎁 Daily Gift
         </button>
 
         <button id="btn-passport" class="action-btn passport-btn" title="Haven Passport & Stamps">
           🛂 Passport
+        </button>
+
+        <button id="btn-marketplace" class="action-btn market-btn" title="Player Marketplace">
+          🛒 Market
+        </button>
+
+        <button id="btn-crafting" class="action-btn craft-btn" title="Workshop & Recycling">
+          🔨 Workshop
+        </button>
+
+        <button id="btn-loft-settings" class="action-btn loft-btn" title="Loft Management & Expansion">
+          ⚙️ Loft
         </button>
 
         <button id="btn-minigame" class="action-btn minigame-btn" title="Play Pizza Chef Mini-game">
@@ -86,15 +103,26 @@
           <span>🛠️ Room Decorator</span>
           <button id="btn-close-decor" class="close-btn">✕</button>
         </div>
-        <p class="panel-tip">Select furniture, then click any floor tile to place it!</p>
-        <div class="panel-section-title">Furniture:</div>
+        <p class="panel-tip">Click a tile to place. Press <strong>[R]</strong> or click below to rotate 4-ways!</p>
+        <div style="margin: 8px 0 12px; display: flex; align-items: center; justify-content: space-between;">
+          <button id="btn-rotate-furni" class="action-btn" style="flex: 1; padding: 6px 12px; font-size: 12px; font-weight: 600;">
+            🔄 Orientation: <span id="current-rot-label" style="color: #a855f7; font-weight: 700;">0° (South)</span>
+          </button>
+        </div>
+        <div class="panel-section-title">Furniture & Pets:</div>
         <div class="furniture-grid">
           <button class="furniture-chip active" data-type="sofa">🛋️ Cozy Sofa</button>
           <button class="furniture-chip" data-type="table">🪵 Oak Table</button>
-          <button class="furniture-chip" data-type="plant">🪴 Monstera Plant</button>
+          <button class="furniture-chip" data-type="plant">🪴 Monstera</button>
           <button class="furniture-chip" data-type="tv">📺 Retro TV</button>
           <button class="furniture-chip" data-type="neon">✨ Neon Sign</button>
-          <button class="furniture-chip" data-type="arcade">🕹️ Arcade Cabinet</button>
+          <button class="furniture-chip" data-type="arcade">🕹️ Arcade</button>
+          <button class="furniture-chip" data-type="bed">🛏️ Cozy Bed</button>
+          <button class="furniture-chip" data-type="bookshelf">📚 Bookshelf</button>
+          <button class="furniture-chip" data-type="whiteboard">📋 Whiteboard</button>
+          <button class="furniture-chip" data-type="teleporter_pad">🌀 Teleporter</button>
+          <button class="furniture-chip" data-type="pet_cat">🐱 Calico Cat</button>
+          <button class="furniture-chip" data-type="pet_dog">🐶 Golden Pup</button>
         </div>
         <div class="panel-section-title">Flooring Style:</div>
         <div class="style-selector-row" id="flooring-options">
@@ -487,6 +515,213 @@
           <div class="passport-stamps-grid" id="passport-stamps-grid">
             <!-- Dynamic stamps -->
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loft Settings & Expansion Modal -->
+    <div id="loft-settings-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 520px;">
+        <div class="modal-header">
+          <h3>⚙️ Loft Management & Settings</h3>
+          <button id="btn-close-loft-settings" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Expansion Section -->
+          <div class="settings-card-section" style="background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px;">
+            <h4 style="font-size: 14px; font-weight: 700; color: #f8fafc; margin-bottom: 6px;">📐 Sanctuary Dimensions</h4>
+            <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Current grid floor: <strong id="loft-current-size" style="color: #a855f7;">10×10 Tiles</strong></p>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="btn-expand-14" class="action-btn" style="flex: 1; min-width: 130px; font-size: 11px;">14×14 Studio (500🪙)</button>
+              <button id="btn-expand-18" class="action-btn" style="flex: 1; min-width: 130px; font-size: 11px;">18×18 Suite (1,500🪙)</button>
+              <button id="btn-expand-20" class="action-btn" style="flex: 1; min-width: 130px; font-size: 11px;">20×20 Estate (3,000🪙)</button>
+            </div>
+          </div>
+
+          <!-- Access Mode & Privacy -->
+          <div class="settings-card-section" style="background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px;">
+            <h4 style="font-size: 14px; font-weight: 700; color: #f8fafc; margin-bottom: 8px;">🔒 Privacy & Access Permissions</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: #cbd5e1; margin-bottom: 10px;">
+              <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="loft-access" value="public" checked> Public (Open)</label>
+              <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="loft-access" value="friends"> Friends Only</label>
+              <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="loft-access" value="password"> Passcode Locked</label>
+              <label style="display: flex; align-items: center; gap: 6px;"><input type="radio" name="loft-access" value="locked"> Private (Locked)</label>
+            </div>
+            <div id="loft-password-container" class="hidden" style="margin-bottom: 8px;">
+              <input type="password" id="loft-password-input" placeholder="Enter room passcode..." style="width: 100%; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 12px;">
+            </div>
+            <button id="btn-save-permissions" class="primary-btn" style="width: 100%; padding: 8px; font-size: 12px;">Save Access Permissions</button>
+          </div>
+
+          <!-- Ambient Lighting Mood -->
+          <div class="settings-card-section" style="background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px;">
+            <h4 style="font-size: 14px; font-weight: 700; color: #f8fafc; margin-bottom: 8px;">🌅 Atmosphere & Lighting Mood</h4>
+            <div style="display: flex; gap: 8px;">
+              <select id="loft-mood-select" style="flex: 1; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px; color: #fff; font-size: 13px;">
+                <option value="day">☀️ Clear Daylight</option>
+                <option value="sunset">🌇 Golden Sunset</option>
+                <option value="night">🌙 Midnight Moonlight</option>
+                <option value="cyber_neon">🔮 Cyberpunk Neon</option>
+                <option value="rainy">🌧️ Rainy Twilight</option>
+              </select>
+              <button id="btn-save-mood" class="action-btn" style="padding: 8px 16px; font-size: 12px;">Apply</button>
+            </div>
+          </div>
+
+          <!-- Co-Building Decorators -->
+          <div class="settings-card-section" style="background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px;">
+            <h4 style="font-size: 14px; font-weight: 700; color: #f8fafc; margin-bottom: 8px;">🤝 Co-Building Decorators</h4>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <input type="text" id="loft-decorator-input" placeholder="Friend's player ID or username..." style="flex: 1; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 12px;">
+              <button id="btn-add-decorator" class="action-btn" style="font-size: 12px; padding: 6px 14px;">Grant Rights</button>
+            </div>
+            <div id="loft-decorators-list" style="font-size: 12px; color: #94a3b8;">No decorators assigned yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Doorbell Visitor Modal -->
+    <div id="doorbell-visitor-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 380px; text-align: center;">
+        <div style="font-size: 36px; margin-bottom: 8px;">🔔</div>
+        <h3 style="margin-bottom: 6px;">Knock, Knock!</h3>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+          <strong id="doorbell-room-name" style="color: #f8fafc;">This sanctuary</strong> is currently restricted. Would you like to ring the host's doorbell?
+        </p>
+        <div style="display: flex; gap: 8px; justify-content: center;">
+          <button id="btn-ring-doorbell" class="primary-btn" style="padding: 10px 20px;">🔔 Ring Bell</button>
+          <button id="btn-cancel-doorbell" class="action-btn" style="padding: 10px 16px;">Return</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Doorbell Host Prompt Modal -->
+    <div id="doorbell-host-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 380px; text-align: center;">
+        <div style="font-size: 36px; margin-bottom: 8px;">🚪</div>
+        <h3 style="margin-bottom: 6px;">Visitor at your Door!</h3>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+          <strong id="doorbell-guest-name" style="color: #a855f7;">Traveler</strong> is ringing your sanctuary doorbell. Allow them to enter?
+        </p>
+        <div style="display: flex; gap: 8px; justify-content: center;">
+          <button id="btn-doorbell-allow" class="primary-btn" style="padding: 10px 20px;">✅ Allow Entry</button>
+          <button id="btn-doorbell-deny" class="action-btn" style="padding: 10px 16px;">❌ Decline</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Player Marketplace Modal -->
+    <div id="marketplace-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 680px; height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>🛒 Player Marketplace</h3>
+          <button id="btn-close-marketplace" class="close-btn">✕</button>
+        </div>
+        <div style="display: flex; gap: 8px; padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+          <button id="tab-market-browse" class="action-btn active" style="padding: 6px 14px;">Browse Listings</button>
+          <button id="tab-market-sell" class="action-btn" style="padding: 6px 14px;">List an Item</button>
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 6px;">
+            <input type="text" id="market-search-input" placeholder="Search marketplace..." style="background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 12px; width: 180px;">
+          </div>
+        </div>
+        <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 16px 20px;">
+          <!-- Browse Panel -->
+          <div id="market-browse-panel">
+            <div id="market-listings-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+              <!-- Dynamic listing cards -->
+            </div>
+          </div>
+          <!-- Sell Panel -->
+          <div id="market-sell-panel" class="hidden">
+            <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+              <h4 style="margin-bottom: 10px;">Post an Item for Sale</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <label style="display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">Choose Inventory Item:</label>
+                  <select id="market-sell-select" style="width: 100%; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px; color: #fff; font-size: 12px;"></select>
+                </div>
+                <div>
+                  <label style="display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">Asking Price (5% deflation tax applies):</label>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="number" id="market-price-input" min="1" max="999999" value="100" style="flex: 1; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px; color: #fff; font-size: 12px;">
+                    <select id="market-currency-select" style="background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px; color: #fff; font-size: 12px;">
+                      <option value="coins">🪙 Coins</option>
+                      <option value="gems">💎 Gems</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <button id="btn-create-listing" class="primary-btn" style="width: 100%; padding: 10px;">Post Listing into Escrow</button>
+            </div>
+            <h4 style="margin-bottom: 8px; font-size: 13px; color: #94a3b8;">My Active Listings</h4>
+            <div id="market-my-listings" style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- My listings -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workshop & Crafting Modal -->
+    <div id="crafting-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 620px; height: 75vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>🔨 Workshop & Recycling</h3>
+          <button id="btn-close-crafting" class="close-btn">✕</button>
+        </div>
+        <div style="padding: 12px 20px; background: rgba(15,23,42,0.8); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; gap: 16px; align-items: center;">
+          <div style="font-size: 13px; color: #94a3b8;">
+            Resources: <span style="color: #cbd5e1; font-weight: 700;">🔩 Scrap Metal: <strong id="craft-scrap-amount" style="color: #60a5fa;">0</strong></span> | <span style="color: #cbd5e1; font-weight: 700;">🪵 Timber: <strong id="craft-timber-amount" style="color: #f59e0b;">0</strong></span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; padding: 10px 20px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+          <button id="tab-craft-recipes" class="action-btn active" style="padding: 6px 14px;">Workshop Blueprints</button>
+          <button id="tab-craft-recycle" class="action-btn" style="padding: 6px 14px;">Dismantle Furniture</button>
+        </div>
+        <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 16px 20px;">
+          <!-- Blueprints Panel -->
+          <div id="craft-blueprints-panel">
+            <div id="workshop-recipes-list" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Dynamic blueprints -->
+            </div>
+          </div>
+          <!-- Dismantle Panel -->
+          <div id="craft-recycle-panel" class="hidden">
+            <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px;">
+              <h4 style="margin-bottom: 8px;">Dismantle Inventory Furniture</h4>
+              <p style="font-size: 12px; color: #94a3b8; margin-bottom: 12px;">Recovers ~40% of initial value as scrap metal and timber for crafting.</p>
+              <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <select id="recycle-item-select" style="flex: 1; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px; color: #fff; font-size: 12px;"></select>
+                <button id="btn-recycle-action" class="action-btn" style="padding: 8px 16px; font-size: 12px; color: #ef4444; border-color: rgba(239,68,68,0.3);">Dismantle</button>
+              </div>
+              <div id="recycle-yield-preview" style="font-size: 12px; color: #a855f7;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collaborative Whiteboard Modal -->
+    <div id="whiteboard-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 680px;">
+        <div class="modal-header">
+          <h3>🎨 Collaborative Whiteboard</h3>
+          <button id="btn-close-whiteboard" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+          <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+            <button class="wb-color-btn active" data-color="#ffffff" style="background: #ffffff; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #a855f7; cursor: pointer;"></button>
+            <button class="wb-color-btn" data-color="#3b82f6" style="background: #3b82f6; width: 24px; height: 24px; border-radius: 50%; border: none; cursor: pointer;"></button>
+            <button class="wb-color-btn" data-color="#ef4444" style="background: #ef4444; width: 24px; height: 24px; border-radius: 50%; border: none; cursor: pointer;"></button>
+            <button class="wb-color-btn" data-color="#10b981" style="background: #10b981; width: 24px; height: 24px; border-radius: 50%; border: none; cursor: pointer;"></button>
+            <button class="wb-color-btn" data-color="#f59e0b" style="background: #f59e0b; width: 24px; height: 24px; border-radius: 50%; border: none; cursor: pointer;"></button>
+            <button class="wb-color-btn" data-color="#0f172a" style="background: #0f172a; width: 24px; height: 24px; border-radius: 50%; border: 1px solid #475569; cursor: pointer;" title="Eraser"></button>
+            <div style="margin-left: auto; display: flex; gap: 8px;">
+              <button id="whiteboard-clear-btn" class="action-btn" style="padding: 4px 10px; font-size: 11px;">Clear</button>
+            </div>
+          </div>
+          <canvas id="whiteboard-canvas" width="620" height="380" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; cursor: crosshair; touch-action: none;"></canvas>
         </div>
       </div>
     </div>

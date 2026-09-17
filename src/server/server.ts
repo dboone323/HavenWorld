@@ -239,8 +239,10 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
     friends: [] as string[],
     registeredAt: authUserId ? await db.getRegistrationDate(playerId) : null,
     authUserId,
+    isVip: false,
+    vipExpiresAt: null,
+    materials: { scrap_metal: 0, timber: 0 },
   };
-
   // Hydrate persisted room furniture for public/lobby rooms
   for (const roomId of rooms.list()) {
     const dbFurniture = await db.getRoomFurniture(roomId);
@@ -264,7 +266,30 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
     if (dbLoft.flooring || dbLoft.wallpaper) {
       rooms.setRoomStyle(loftRoom.id, dbLoft.flooring, dbLoft.wallpaper);
     }
+    const exp = await db.getRoomExpansion(loftRoom.id);
+    if (exp) {
+      loftRoom.gridWidth = exp.width;
+      loftRoom.gridHeight = exp.height;
+    }
+    const perm = await db.getRoomPermissions(loftRoom.id);
+    if (perm) {
+      loftRoom.accessMode = perm.accessMode as any;
+      if (perm.passwordHash) loftRoom.passwordHash = perm.passwordHash;
+    }
+    const mood = await db.getRoomMood(loftRoom.id);
+    if (mood) loftRoom.ambientMood = mood as any;
+    const decs = await db.getRoomDecorators(loftRoom.id);
+    if (decs) loftRoom.decorators = new Set(decs);
   }
+
+  // Load VIP status and crafting materials
+  const vipStatus = await db.getVipStatus(playerId);
+  if (vipStatus.isVip) {
+    player.isVip = true;
+    player.vipExpiresAt = vipStatus.expiresAt;
+  }
+  const mats = await db.getPlayerMaterials(playerId);
+  player.materials = mats;
 
   // Assign to initial room
   rooms.join('plaza', player);
