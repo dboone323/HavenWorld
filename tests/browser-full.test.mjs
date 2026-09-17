@@ -143,10 +143,18 @@ async function run() {
 
   // Test 9: Minigame button opens pizza modal
   await test('Minigame button opens pizza chef modal', async () => {
+    const closeAvatar = await page.$('#btn-close-avatar');
+    if (closeAvatar) await closeAvatar.click();
+    await page.waitForTimeout(200);
+
     await page.$eval('#btn-minigame', el => el.click());
     await page.waitForTimeout(300);
     const cls = await page.$eval('#minigame-modal', el => el.getAttribute('class'));
     assert.ok(!cls.includes('hidden'), 'minigame modal is visible');
+
+    const closeMini = await page.$('#btn-close-minigame');
+    if (closeMini) await closeMini.click();
+    await page.waitForTimeout(200);
   });
 
   // Test 10: Edit mode button toggles
@@ -156,6 +164,52 @@ async function run() {
     const palette = await page.$('#decor-palette');
     const cls = await palette.getAttribute('class');
     assert.ok(!cls.includes('hidden'), 'decor palette shows after edit mode');
+
+    // Toggle off edit mode so palette does not obstruct other clicks
+    await page.$eval('#btn-edit-mode', el => el.click());
+    await page.waitForTimeout(200);
+  });
+
+  // Test 10b: Elevator Navigator modal opens
+  await test('Navigator button opens sanctuary elevator modal', async () => {
+    const navBtn = await page.$('#btn-navigator');
+    assert.ok(navBtn, '#btn-navigator exists in top bar');
+    await navBtn.click();
+    await page.waitForTimeout(300);
+    const cls = await page.$eval('#navigator-modal', el => el.getAttribute('class'));
+    assert.ok(!cls.includes('hidden'), 'navigator modal is visible');
+    const closeBtn = await page.$('#btn-close-navigator');
+    if (closeBtn) await closeBtn.click();
+    await page.waitForTimeout(200);
+  });
+
+  // Test 10c: Haven Passport modal opens
+  await test('Passport button opens stamps & achievements modal', async () => {
+    const passBtn = await page.$('#btn-passport');
+    assert.ok(passBtn, '#btn-passport exists in top bar');
+    await passBtn.click();
+    await page.waitForTimeout(300);
+    const cls = await page.$eval('#passport-modal', el => el.getAttribute('class'));
+    assert.ok(!cls.includes('hidden'), 'passport modal is visible');
+    const grid = await page.$('#passport-stamps-grid');
+    assert.ok(grid, 'passport stamps grid rendered');
+    const closeBtn = await page.$('#btn-close-passport');
+    if (closeBtn) await closeBtn.click();
+    await page.waitForTimeout(200);
+  });
+
+  // Test 10d: Audio toggle button exists and toggles
+  await test('Audio toggle button switches sound state', async () => {
+    const audioBtn = await page.$('#btn-audio-toggle');
+    assert.ok(audioBtn, '#btn-audio-toggle exists');
+    const initialText = await audioBtn.textContent();
+    await audioBtn.click();
+    await page.waitForTimeout(200);
+    const newText = await audioBtn.textContent();
+    assert.notEqual(initialText, newText, 'audio toggle changed state');
+    // Toggle back
+    await audioBtn.click();
+    await page.waitForTimeout(200);
   });
 
   // Test 11: No browser console errors

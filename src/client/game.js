@@ -4,7 +4,7 @@ import { toScreen as isoToScreen, toGrid as isoToGrid } from './shared/iso.js';
 import { calculateFacing, getWalkBob, stepToward, frameDt, fadeAlpha } from './shared/movement.js';
 import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from './shared/pizza.js';
 import { escapeHtml } from './shared/chat.js';
-import { initAudio, playFootstep, playFurniPop, playCoinChime, playChatPing, playDoorwayWhoosh, playSitSound, playSwitchClick } from './shared/audio.js';
+import { initAudio, playFootstep, playFurniPop, playCoinChime, playChatPing, playDoorwayWhoosh, playSitSound, playSwitchClick, toggleMuted, getMuted } from './shared/audio.js';
 import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPassportProgress } from './shared/passport.js';
 
   // State
@@ -2171,6 +2171,20 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
   if (btnClosePassport) {
     btnClosePassport.addEventListener('click', () => {
       passportModal.classList.add('hidden');
+    });
+  }
+
+  const btnAudioToggle = document.getElementById('btn-audio-toggle');
+  if (btnAudioToggle) {
+    const updateAudioBtnText = () => {
+      btnAudioToggle.textContent = getMuted() ? '🔇 Sound: Off' : '🔊 Sound: On';
+    };
+    updateAudioBtnText();
+    btnAudioToggle.addEventListener('click', () => {
+      initAudio();
+      toggleMuted();
+      updateAudioBtnText();
+      showToast(getMuted() ? '🔇 Sound muted' : '🔊 Sound enabled', 'info');
     });
   }
 
