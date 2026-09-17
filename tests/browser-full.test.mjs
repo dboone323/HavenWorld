@@ -214,7 +214,7 @@ async function run() {
 
   // Test 10e: Quick emote button triggers character emote animation
   await test('Quick emote button triggers character emote state', async () => {
-    const waveBtn = await page.$('.emote-btn[data-text="👋"]');
+    const waveBtn = await page.$('.emote-btn[data-text*="👋"]');
     assert.ok(waveBtn, 'quick wave emote button exists');
     await waveBtn.click();
     await page.waitForTimeout(250);
