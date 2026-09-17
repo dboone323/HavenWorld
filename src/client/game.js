@@ -1825,13 +1825,13 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
   // Quick Emotes
   document.querySelectorAll('.emote-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const text = btn.getAttribute('data-text');
+      const text = btn.getAttribute('data-text') || '';
       // Trigger physical emote animation & overhead bubble locally immediately
       let emoteKey = 'jump';
-      if (text === '👋') emoteKey = 'wave';
-      else if (text === '❤️') emoteKey = 'hug';
-      else if (text === '🔥' || text === '🎉') emoteKey = 'dance';
-      else emoteKey = text;
+      if (text.includes('👋') || text === 'wave') emoteKey = 'wave';
+      else if (text.includes('💖') || text.includes('❤️') || text === 'hug') emoteKey = 'hug';
+      else if (text.includes('💃') || text.includes('🔥') || text.includes('🎉') || text === 'dance') emoteKey = 'dance';
+      else emoteKey = 'jump';
 
       triggerPlayerEmote(selfPlayer, emoteKey);
 
@@ -2870,6 +2870,7 @@ import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowS
   window.__havenGame = {
     getCurrentRoom: () => currentRoom,
     getSelfPlayer: () => selfPlayer,
+    get selfPlayer() { return selfPlayer; },
   };
 
   requestAnimationFrame(gameLoop);
