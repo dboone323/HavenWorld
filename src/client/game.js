@@ -124,9 +124,9 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
   const canvas = document.getElementById('viewport');
   const ctx = canvas.getContext('2d');
 
-  // Isometric Constants
-  const TILE_WIDTH = 64;
-  const TILE_HEIGHT = 32;
+  // Isometric Constants (Enlarged playable area by +125% area, 2:1 isometric ratio)
+  const TILE_WIDTH = 96;
+  const TILE_HEIGHT = 48;
   const DEFAULT_GRID_SIZE = 12;
   function getRoomGridWidth() { return currentRoom?.gridWidth || DEFAULT_GRID_SIZE; }
   function getRoomGridHeight() { return currentRoom?.gridHeight || DEFAULT_GRID_SIZE; }
@@ -135,8 +135,15 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
   // Emotes whose animation replaces the locomotion pose in the world renderer.
   const POSE_EMOTES = ['dance', 'run', 'lie'];
 
-    // Bind canvas-derived origin to the shared pure isometric converters.
-  function origin() { return { x: canvas.width / 2, y: Math.max(120, canvas.height * 0.22) }; }
+  // Bind canvas-derived origin to the shared pure isometric converters.
+  // Dynamically centers any room size (12x12 to 20x20) within the viewport.
+  function origin() {
+    const gw = getRoomGridWidth();
+    const gh = getRoomGridHeight();
+    const roomDepth = (gw + gh) * (TILE_HEIGHT / 4);
+    const targetY = Math.max(90, Math.min(canvas.height * 0.28, (canvas.height - roomDepth) / 2 + 10));
+    return { x: canvas.width / 2, y: targetY };
+  }
   function toScreen(gx, gy) {
     const o = origin();
     return isoToScreen(gx, gy, o.x, o.y, TILE_WIDTH, TILE_HEIGHT);
@@ -1002,14 +1009,14 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     playSwitchClick();
     const pt = toScreen(plant.x, plant.y);
     const originX = pt.x;
-    const originY = pt.y + TILE_HEIGHT / 2 - 24;
+    const originY = pt.y + TILE_HEIGHT / 2 - 36;
     const leafColors = ['#4ade80', '#22c55e', '#16a34a', '#86efac', '#a3e635'];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 9; i++) {
       leafParticles.push({
-        x: originX + (Math.random() - 0.5) * 22,
-        y: originY + (Math.random() - 0.5) * 16,
-        vx: (Math.random() - 0.5) * 1.6,
-        vy: 0.7 + Math.random() * 1.3,
+        x: originX + (Math.random() - 0.5) * 32,
+        y: originY + (Math.random() - 0.5) * 24,
+        vx: (Math.random() - 0.5) * 2.2,
+        vy: 0.8 + Math.random() * 1.6,
         rotation: Math.random() * Math.PI * 2,
         vRot: (Math.random() - 0.5) * 0.12,
         color: leafColors[Math.floor(Math.random() * leafColors.length)],
@@ -1195,7 +1202,7 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
   // ==========================================================================
   // Isometric Drawing Helpers
   // ==========================================================================
-  const WALL_HEIGHT = 80;
+  const WALL_HEIGHT = 110;
 
   function drawIsometricFloor() {
     const isPlaza = currentRoom.id === 'plaza' || !currentRoom.id.startsWith('loft_');
@@ -1295,8 +1302,8 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
-      ctx.lineTo(p1.x, p1.y - 8);
-      ctx.lineTo(p0.x, p0.y - 8);
+      ctx.lineTo(p1.x, p1.y - 11);
+      ctx.lineTo(p0.x, p0.y - 11);
       ctx.closePath();
       ctx.fillStyle = baseboardColor;
       ctx.fill();
@@ -1347,8 +1354,8 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
-      ctx.lineTo(p1.x, p1.y - 8);
-      ctx.lineTo(p0.x, p0.y - 8);
+      ctx.lineTo(p1.x, p1.y - 11);
+      ctx.lineTo(p0.x, p0.y - 11);
       ctx.closePath();
       ctx.fillStyle = baseboardColor;
       ctx.fill();
@@ -1359,7 +1366,7 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     const doorX = Math.floor(getRoomGridWidth() / 2);
     const p0 = toScreen(doorX, 0);
     const p1 = toScreen(doorX + 1, 0);
-    const doorHeight = 62;
+    const doorHeight = 88;
 
     // Doorway opening on North-West wall
     ctx.save();
@@ -1379,21 +1386,21 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
 
     // Golden frame border
     ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
 
     // Doorway sign badge
     const midX = (p0.x + p1.x) / 2;
-    const midY = (p0.y + p1.y) / 2 - doorHeight - 12;
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    const midY = (p0.y + p1.y) / 2 - doorHeight - 16;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
     ctx.beginPath();
-    ctx.roundRect(midX - 35, midY - 9, 70, 18, 9);
+    ctx.roundRect(midX - 44, midY - 11, 88, 22, 11);
     ctx.fill();
     ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.font = 'bold 9px Quicksand, sans-serif';
+    ctx.font = 'bold 11px Quicksand, sans-serif';
     ctx.fillStyle = '#fbbf24';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1406,16 +1413,16 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     const pt = toScreen(t.x, t.y);
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(pt.x, pt.y + TILE_HEIGHT / 2, 16, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(pt.x, pt.y + TILE_HEIGHT / 2, 24, 12, 0, 0, Math.PI * 2);
     ctx.strokeStyle = `rgba(168, 85, 247, ${t.alpha})`;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.restore();
   }
 
   function drawAmbientLighting() {
     const lights = currentRoom.furniture.filter(f => {
-      const isLight = f.type === 'neon' || f.type === 'tv' || f.type === 'lamp';
+      const isLight = f.type === 'neon' || f.type === 'tv' || f.type === 'lamp' || f.type === 'neon_foundry_lamp';
       return isLight && (f.state?.isOn ?? true);
     });
 
@@ -1425,15 +1432,17 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     for (const f of lights) {
       const pt = toScreen(f.x, f.y);
       const cx = pt.x;
-      const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20 - 15;
-      const radius = f.type === 'neon' ? 110 : f.type === 'tv' ? 95 : 100;
-      const grad = ctx.createRadialGradient(cx, cy, 6, cx, cy, radius);
+      const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 28 - 20;
+      const radius = f.type === 'neon' ? 140 : f.type === 'tv' ? 120 : f.type === 'neon_foundry_lamp' ? 150 : 130;
+      const grad = ctx.createRadialGradient(cx, cy, 8, cx, cy, radius);
       if (f.type === 'neon') {
-        grad.addColorStop(0, 'rgba(236, 72, 153, 0.24)');
+        grad.addColorStop(0, 'rgba(236, 72, 153, 0.28)');
       } else if (f.type === 'tv') {
-        grad.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
+        grad.addColorStop(0, 'rgba(56, 189, 248, 0.26)');
+      } else if (f.type === 'neon_foundry_lamp') {
+        grad.addColorStop(0, 'rgba(6, 182, 212, 0.32)');
       } else {
-        grad.addColorStop(0, 'rgba(253, 224, 71, 0.26)');
+        grad.addColorStop(0, 'rgba(253, 224, 71, 0.30)');
       }
       grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
@@ -1445,11 +1454,118 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     ctx.restore();
   }
 
+  // --------------------------------------------------------------------------
+  // Volumetric 3D Isometric Solids & Procedural Lighting Helpers
+  // --------------------------------------------------------------------------
+  function drawIsoBox(ctx, cx, cy, opt) {
+    const hw = opt.hw || 16;
+    const hd = opt.hd || 8;
+    const h = opt.h || 12;
+
+    // Contact drop shadow on floor
+    if (opt.shadow) {
+      ctx.save();
+      const sScale = opt.shadowScale || 1.0;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + hd * 0.35, hw * 1.15 * sScale, hd * 0.85 * sScale, 0, 0, Math.PI * 2);
+      ctx.fillStyle = opt.shadowColor || 'rgba(0, 0, 0, 0.28)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Left vertical face (South-West: diffuse fill light)
+    ctx.fillStyle = opt.leftColor || '#475569';
+    ctx.beginPath();
+    ctx.moveTo(cx - hw, cy - h);
+    ctx.lineTo(cx, cy - h + hd);
+    ctx.lineTo(cx, cy + hd);
+    ctx.lineTo(cx - hw, cy);
+    ctx.closePath();
+    ctx.fill();
+    if (opt.stroke) {
+      ctx.strokeStyle = opt.stroke;
+      ctx.lineWidth = opt.lineWidth || 1;
+      ctx.stroke();
+    }
+
+    // Right vertical face (South-East: core shadow & ambient occlusion)
+    ctx.fillStyle = opt.rightColor || '#1e293b';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h + hd);
+    ctx.lineTo(cx + hw, cy - h);
+    ctx.lineTo(cx + hw, cy);
+    ctx.lineTo(cx, cy + hd);
+    ctx.closePath();
+    ctx.fill();
+    if (opt.stroke) {
+      ctx.strokeStyle = opt.stroke;
+      ctx.lineWidth = opt.lineWidth || 1;
+      ctx.stroke();
+    }
+
+    // Top horizontal face (Diamond at z = h: overhead key highlight)
+    ctx.fillStyle = opt.topColor || '#94a3b8';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h - hd);
+    ctx.lineTo(cx + hw, cy - h);
+    ctx.lineTo(cx, cy - h + hd);
+    ctx.lineTo(cx - hw, cy - h);
+    ctx.closePath();
+    ctx.fill();
+    if (opt.stroke) {
+      ctx.strokeStyle = opt.stroke;
+      ctx.lineWidth = opt.lineWidth || 1;
+      ctx.stroke();
+    }
+  }
+
+  function drawIsoCylinder(ctx, cx, cy, opt) {
+    const rx = opt.rx || 14;
+    const ry = opt.ry || 7;
+    const h = opt.h || 14;
+
+    if (opt.shadow) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + ry * 0.35, rx * 1.15, ry * 0.9, 0, 0, Math.PI * 2);
+      ctx.fillStyle = opt.shadowColor || 'rgba(0, 0, 0, 0.28)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Curved body with directional horizontal lighting
+    const bodyGrad = ctx.createLinearGradient(cx - rx, 0, cx + rx, 0);
+    bodyGrad.addColorStop(0, opt.leftColor || '#475569');
+    bodyGrad.addColorStop(0.35, opt.midColor || opt.topColor || '#64748b');
+    bodyGrad.addColorStop(1, opt.rightColor || '#1e293b');
+
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(cx - rx, cy - h);
+    ctx.ellipse(cx, cy - h, rx, ry, 0, Math.PI, 0, true);
+    ctx.lineTo(cx + rx, cy);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI, false);
+    ctx.lineTo(cx - rx, cy - h);
+    ctx.closePath();
+    ctx.fill();
+
+    // Top cap
+    ctx.fillStyle = opt.topColor || '#94a3b8';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - h, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (opt.stroke) {
+      ctx.strokeStyle = opt.stroke;
+      ctx.lineWidth = opt.lineWidth || 1;
+      ctx.stroke();
+    }
+  }
+
   function drawFurniture(f) {
     const pt = toScreen(f.x, f.y);
     const cx = pt.x;
     // Elevation offsets the furniture upward (z-ordering for multi-layer)
-    const elevationOffset = (f.elevation || 0) * 20;
+    const elevationOffset = (f.elevation || 0) * 28;
     const cy = pt.y + TILE_HEIGHT / 2 - elevationOffset;
 
     ctx.save();
@@ -1461,284 +1577,616 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
 
     switch (f.type) {
       case 'sofa': {
-        // Modern Cozy Velvet Sofa
-        ctx.fillStyle = '#6366f1';
+        // Modern Cozy Velvet Sofa (Volumetric 3D)
+        // 1. Soft ground contact shadow
+        drawIsoBox(ctx, cx, cy, { hw: 40, hd: 20, h: 0, shadow: true, shadowScale: 1.1 });
+        // 2. Brass tapered corner legs
+        drawIsoBox(ctx, cx - 28, cy + 2, { hw: 3, hd: 2, h: 6, topColor: '#fbbf24', leftColor: '#d97706', rightColor: '#92400e' });
+        drawIsoBox(ctx, cx + 28, cy + 2, { hw: 3, hd: 2, h: 6, topColor: '#fbbf24', leftColor: '#d97706', rightColor: '#92400e' });
+        drawIsoBox(ctx, cx - 28, cy - 14, { hw: 3, hd: 2, h: 6, topColor: '#fbbf24', leftColor: '#d97706', rightColor: '#92400e' });
+        drawIsoBox(ctx, cx + 28, cy - 14, { hw: 3, hd: 2, h: 6, topColor: '#fbbf24', leftColor: '#d97706', rightColor: '#92400e' });
+        // 3. Wooden base plinth
+        drawIsoBox(ctx, cx, cy - 4, { hw: 36, hd: 18, h: 6, topColor: '#312e81', leftColor: '#25216d', rightColor: '#1e1b4b' });
+        // 4. Velvet seat cushion
+        drawIsoBox(ctx, cx, cy - 10, { hw: 34, hd: 16, h: 10, topColor: '#6366f1', leftColor: '#4f46e5', rightColor: '#3730a3', stroke: 'rgba(255,255,255,0.12)' });
+        // Cushion dividing seam
+        ctx.strokeStyle = '#3730a3';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 8, 30, 15, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#4f46e5';
-        ctx.fillRect(cx - 28, cy - 28, 56, 18); // Backrest
-        ctx.fillStyle = '#818cf8';
-        ctx.fillRect(cx - 24, cy - 12, 48, 8); // Cushions
+        ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy - 10);
+        ctx.stroke();
+        // 5. Plush high backrest
+        drawIsoBox(ctx, cx, cy - 20, { hw: 34, hd: 7, h: 22, topColor: '#4f46e5', leftColor: '#4338ca', rightColor: '#312e81' });
+        // Tufting button indents
+        for (let bx = -22; bx <= 22; bx += 11) {
+          ctx.fillStyle = '#25216d';
+          ctx.beginPath(); ctx.arc(cx + bx, cy - 30, 2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#818cf8';
+          ctx.beginPath(); ctx.arc(cx + bx, cy - 31, 1, 0, Math.PI * 2); ctx.fill();
+        }
+        // 6. Left and right velvet armrests
+        drawIsoBox(ctx, cx - 28, cy - 12, { hw: 7, hd: 15, h: 18, topColor: '#818cf8', leftColor: '#6366f1', rightColor: '#4338ca' });
+        drawIsoBox(ctx, cx + 28, cy - 12, { hw: 7, hd: 15, h: 18, topColor: '#818cf8', leftColor: '#6366f1', rightColor: '#4338ca' });
+        // 7. Accent throw pillow
+        drawIsoBox(ctx, cx + 18, cy - 15, { hw: 6, hd: 6, h: 9, topColor: '#fbbf24', leftColor: '#f59e0b', rightColor: '#d97706' });
+        break;
+      }
+      case 'steampunk_sofa': {
+        // Distressed Oxblood Leather Steampunk Chesterfield (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 42, hd: 21, h: 0, shadow: true, shadowScale: 1.15 });
+        // Cast brass feet
+        drawIsoBox(ctx, cx - 30, cy + 2, { hw: 3.5, hd: 2.5, h: 6, topColor: '#f59e0b', leftColor: '#d97706', rightColor: '#92400e' });
+        drawIsoBox(ctx, cx + 30, cy + 2, { hw: 3.5, hd: 2.5, h: 6, topColor: '#f59e0b', leftColor: '#d97706', rightColor: '#92400e' });
+        // Base mahogany plinth
+        drawIsoBox(ctx, cx, cy - 4, { hw: 38, hd: 19, h: 7, topColor: '#451a03', leftColor: '#2d1102', rightColor: '#1c0a00' });
+        // Leather seat
+        drawIsoBox(ctx, cx, cy - 11, { hw: 36, hd: 17, h: 11, topColor: '#9a3412', leftColor: '#7c2d12', rightColor: '#531e0b', stroke: 'rgba(245, 158, 11, 0.2)' });
+        // Deep tufted backrest
+        drawIsoBox(ctx, cx, cy - 22, { hw: 36, hd: 8, h: 24, topColor: '#7c2d12', leftColor: '#531e0b', rightColor: '#361306' });
+        // Brass rivets along backrest and welt
+        for (let bx = -26; bx <= 26; bx += 10) {
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath(); ctx.arc(cx + bx, cy - 32, 2, 0, Math.PI * 2); ctx.fill();
+        }
+        // Heavy brass rolled armrests
+        drawIsoBox(ctx, cx - 30, cy - 13, { hw: 8, hd: 16, h: 20, topColor: '#d97706', leftColor: '#b45309', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx + 30, cy - 13, { hw: 8, hd: 16, h: 20, topColor: '#d97706', leftColor: '#b45309', rightColor: '#78350f' });
+        // Copper steam pipe detail running behind the backrest
+        ctx.strokeStyle = '#b45309';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - 32, cy - 42); ctx.lineTo(cx + 32, cy - 42);
+        ctx.stroke();
+        // Mini pressure gauge
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath(); ctx.arc(cx, cy - 44, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#78350f'; ctx.lineWidth = 1; ctx.stroke();
         break;
       }
       case 'table': {
-        // Oak Coffee Table
-        ctx.fillStyle = '#b45309';
+        // Solid Oak Coffee Table (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 32, hd: 18, h: 0, shadow: true, shadowScale: 1.1 });
+        // 4 Turned wooden legs
+        drawIsoBox(ctx, cx - 20, cy + 3, { hw: 3, hd: 2, h: 18, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx + 20, cy + 3, { hw: 3, hd: 2, h: 18, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx - 20, cy - 11, { hw: 3, hd: 2, h: 18, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx + 20, cy - 11, { hw: 3, hd: 2, h: 18, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        // Wood apron under-frame
+        drawIsoBox(ctx, cx, cy - 15, { hw: 26, hd: 14, h: 3, topColor: '#92400e', leftColor: '#78350f', rightColor: '#451a03' });
+        // Chamfered solid oak tabletop
+        drawIsoBox(ctx, cx, cy - 18, { hw: 30, hd: 16, h: 5, topColor: '#d97706', leftColor: '#b45309', rightColor: '#78350f', stroke: 'rgba(255, 255, 255, 0.15)' });
+        // Woodgrain grain lines on top face
+        ctx.strokeStyle = 'rgba(254, 243, 199, 0.2)';
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 16, 22, 12, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#78350f';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(cx - 14, cy - 14); ctx.lineTo(cx - 14, cy);
-        ctx.moveTo(cx + 14, cy - 14); ctx.lineTo(cx + 14, cy);
+        ctx.moveTo(cx - 16, cy - 22); ctx.lineTo(cx + 8, cy - 18);
+        ctx.moveTo(cx - 8, cy - 25); ctx.lineTo(cx + 16, cy - 21);
         ctx.stroke();
+        // Ceramic coffee mug on top
+        drawIsoCylinder(ctx, cx - 6, cy - 23, { rx: 3.5, ry: 1.8, h: 5, topColor: '#f8fafc', leftColor: '#cbd5e1', rightColor: '#94a3b8' });
+        break;
+      }
+      case 'reclaimed_wood_table': {
+        // Heavy Industrial Reclaimed Timber Table (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 36, hd: 20, h: 0, shadow: true, shadowScale: 1.15 });
+        // Cast iron trestle leg frames
+        drawIsoBox(ctx, cx - 22, cy - 1, { hw: 3.5, hd: 14, h: 20, topColor: '#334155', leftColor: '#1e293b', rightColor: '#0f172a' });
+        drawIsoBox(ctx, cx + 22, cy - 1, { hw: 3.5, hd: 14, h: 20, topColor: '#334155', leftColor: '#1e293b', rightColor: '#0f172a' });
+        // Thick distressed timber slab top
+        drawIsoBox(ctx, cx, cy - 20, { hw: 34, hd: 18, h: 7, topColor: '#78350f', leftColor: '#572607', rightColor: '#3b1802', stroke: '#270e02' });
+        // Plank seams & wrought iron strap brackets
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - 12, cy - 29); ctx.lineTo(cx - 12, cy - 19);
+        ctx.moveTo(cx + 12, cy - 29); ctx.lineTo(cx + 12, cy - 19);
+        ctx.stroke();
+        // Corner iron brackets
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(cx - 30, cy - 24, 5, 5);
+        ctx.fillRect(cx + 25, cy - 24, 5, 5);
         break;
       }
       case 'plant': {
-        // Monstera / Tree with spring wobble animation
+        // Monstera Deliciosa in Ceramic Planter (Volumetric 3D)
         let wobbleX = 0;
         if (f.wobbleStart) {
           const wobbleAge = (performance.now() - f.wobbleStart) / 450;
           if (wobbleAge >= 1) {
             delete f.wobbleStart;
           } else {
-            wobbleX = Math.sin(wobbleAge * Math.PI * 6) * (1 - wobbleAge) * 5;
+            wobbleX = Math.sin(wobbleAge * Math.PI * 6) * (1 - wobbleAge) * 6;
           }
         }
-        ctx.fillStyle = '#92400e';
-        ctx.fillRect(cx - 8, cy - 10, 16, 12); // Terracotta pot
+        // Terracotta ceramic pot
+        drawIsoCylinder(ctx, cx, cy, { rx: 15, ry: 7.5, h: 20, shadow: true, topColor: '#b45309', leftColor: '#9a3412', midColor: '#b45309', rightColor: '#7c2d12', stroke: '#78350f' });
+        // Potting soil layer
+        ctx.fillStyle = '#271004';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 20, 13, 6.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Stems & Leaves
+        ctx.strokeStyle = '#065f46';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 20); ctx.quadraticCurveTo(cx - 10 + wobbleX, cy - 35, cx - 14 + wobbleX, cy - 46);
+        ctx.moveTo(cx, cy - 20); ctx.quadraticCurveTo(cx + 10 + wobbleX, cy - 35, cx + 15 + wobbleX, cy - 48);
+        ctx.moveTo(cx, cy - 20); ctx.lineTo(cx + wobbleX, cy - 54);
+        ctx.stroke();
+        // Left Monstera Leaf
+        ctx.fillStyle = '#059669';
+        ctx.beginPath();
+        ctx.ellipse(cx - 15 + wobbleX, cy - 42, 14, 20, -0.45, 0, Math.PI * 2);
+        ctx.fill();
         ctx.fillStyle = '#10b981';
         ctx.beginPath();
-        ctx.ellipse(cx - 10 + wobbleX, cy - 26, 12, 18, -0.4, 0, Math.PI * 2);
-        ctx.ellipse(cx + 10 + wobbleX, cy - 26, 12, 18, 0.4, 0, Math.PI * 2);
-        ctx.ellipse(cx + wobbleX, cy - 32, 14, 20, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx - 13 + wobbleX, cy - 43, 10, 16, -0.45, 0, Math.PI * 2);
         ctx.fill();
+        // Right Monstera Leaf
+        ctx.fillStyle = '#047857';
+        ctx.beginPath();
+        ctx.ellipse(cx + 15 + wobbleX, cy - 44, 14, 20, 0.45, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#059669';
+        ctx.beginPath();
+        ctx.ellipse(cx + 13 + wobbleX, cy - 45, 10, 16, 0.45, 0, Math.PI * 2);
+        ctx.fill();
+        // Top Majestic Central Leaf
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.ellipse(cx + wobbleX, cy - 52, 16, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#34d399';
+        ctx.beginPath();
+        ctx.ellipse(cx + wobbleX, cy - 54, 11, 17, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Center vein
+        ctx.strokeStyle = '#a7f3d0';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx + wobbleX, cy - 40); ctx.lineTo(cx + wobbleX, cy - 64);
+        ctx.stroke();
         break;
       }
       case 'tv': {
-        // Retro CRT TV
+        // Retro CRT Television (Volumetric 3D)
         const isOn = f.state?.isOn ?? true;
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(cx - 16, cy - 32, 32, 26);
-        ctx.fillStyle = isOn ? '#38bdf8' : '#0f172a';
-        ctx.fillRect(cx - 12, cy - 28, 20, 18); // Screen
+        drawIsoBox(ctx, cx, cy, { hw: 26, hd: 16, h: 0, shadow: true, shadowScale: 1.1 });
+        // 4 Wooden legs
+        drawIsoBox(ctx, cx - 16, cy + 2, { hw: 2.5, hd: 2, h: 10, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx + 16, cy + 2, { hw: 2.5, hd: 2, h: 10, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx - 16, cy - 8, { hw: 2.5, hd: 2, h: 10, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        drawIsoBox(ctx, cx + 16, cy - 8, { hw: 2.5, hd: 2, h: 10, topColor: '#b45309', leftColor: '#92400e', rightColor: '#78350f' });
+        // Main TV cabinet chassis
+        drawIsoBox(ctx, cx, cy - 10, { hw: 24, hd: 15, h: 32, topColor: '#334155', leftColor: '#1e293b', rightColor: '#0f172a', stroke: '#020617' });
+        // Front recessed screen housing
+        const scrColor = isOn ? '#38bdf8' : '#090d16';
+        ctx.fillStyle = scrColor;
+        ctx.beginPath();
+        ctx.roundRect(cx - 16, cy - 38, 24, 20, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
         if (isOn) {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-          ctx.fillRect(cx - 10, cy - 26, 16, 2); // Glare
+          // Phosphor glare streak
+          const glare = ctx.createLinearGradient(cx - 14, cy - 36, cx + 6, cy - 20);
+          glare.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+          glare.addColorStop(0.3, 'rgba(255, 255, 255, 0.1)');
+          glare.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.fillStyle = glare;
+          ctx.beginPath();
+          ctx.roundRect(cx - 14, cy - 36, 20, 16, 3);
+          ctx.fill();
         }
+        // Side control knobs
+        ctx.fillStyle = '#94a3b8';
+        ctx.beginPath(); ctx.arc(cx + 12, cy - 34, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 12, cy - 26, 2.5, 0, Math.PI * 2); ctx.fill();
+        // Antenna rabbit ears atop
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - 3, cy - 42); ctx.lineTo(cx - 14, cy - 60);
+        ctx.moveTo(cx + 3, cy - 42); ctx.lineTo(cx + 14, cy - 60);
+        ctx.stroke();
         break;
       }
       case 'neon': {
-        // Neon Wall Sign
+        // Neon Wall Sign (Volumetric 3D Standoffs & Tubes)
         const isOn = f.state?.isOn ?? true;
+        // Translucent acrylic backplate
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.beginPath();
+        ctx.roundRect(cx - 38, cy - 42, 76, 28, 6);
+        ctx.fill();
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // Standoff screws
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(cx - 34, cy - 39, 3, 3);
+        ctx.fillRect(cx + 31, cy - 39, 3, 3);
+        ctx.fillRect(cx - 34, cy - 19, 3, 3);
+        ctx.fillRect(cx + 31, cy - 19, 3, 3);
+        // Glowing Neon Typography
         if (isOn) {
           ctx.shadowColor = '#ec4899';
-          ctx.shadowBlur = 14;
+          ctx.shadowBlur = 18;
           ctx.fillStyle = '#f472b6';
         } else {
           ctx.shadowBlur = 0;
           ctx.fillStyle = '#475569';
         }
-        ctx.font = 'bold 12px Quicksand';
-        ctx.fillText('✨ HAVEN', cx - 26, cy - 24);
+        ctx.font = 'bold 13px Quicksand, sans-serif';
+        ctx.fillText('✨ HAVEN', cx - 30, cy - 23);
+        ctx.shadowBlur = 0;
         break;
       }
       case 'lamp': {
-        // Modern Table/Floor Lamp
+        // Modern Brass Floor Arc Lamp (Volumetric 3D)
         const isOn = f.state?.isOn ?? true;
-        ctx.fillStyle = '#64748b';
-        ctx.fillRect(cx - 2, cy - 26, 4, 26); // Stand
-        ctx.beginPath();
-        ctx.ellipse(cx, cy - 2, 7, 4, 0, 0, Math.PI * 2);
-        ctx.fill(); // Base
-        // Lampshade
-        ctx.fillStyle = isOn ? '#fef08a' : '#94a3b8';
+        // Heavy brass weighted base
+        drawIsoCylinder(ctx, cx, cy, { rx: 11, ry: 5.5, h: 4, shadow: true, topColor: '#fbbf24', leftColor: '#d97706', midColor: '#fbbf24', rightColor: '#92400e' });
+        // Vertical brass pole
+        ctx.fillStyle = '#d97706';
+        ctx.fillRect(cx - 2, cy - 44, 4, 44);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(cx - 1, cy - 44, 2, 44); // Specular streak
+        // Conical lampshade
         if (isOn) {
           ctx.shadowColor = '#facc15';
-          ctx.shadowBlur = 14;
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = '#fef08a';
+        } else {
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#94a3b8';
         }
         ctx.beginPath();
-        ctx.moveTo(cx - 10, cy - 18);
-        ctx.lineTo(cx + 10, cy - 18);
-        ctx.lineTo(cx + 14, cy - 34);
-        ctx.lineTo(cx - 14, cy - 34);
+        ctx.moveTo(cx - 14, cy - 32);
+        ctx.lineTo(cx + 14, cy - 32);
+        ctx.lineTo(cx + 9, cy - 52);
+        ctx.lineTo(cx - 9, cy - 52);
         ctx.closePath();
         ctx.fill();
+        ctx.shadowBlur = 0;
+        // Pull chain
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx + 6, cy - 32); ctx.lineTo(cx + 6, cy - 24);
+        ctx.stroke();
+        break;
+      }
+      case 'neon_foundry_lamp': {
+        // Industrial Foundry Reactor Lamp (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 14, hd: 9, h: 6, shadow: true, topColor: '#334155', leftColor: '#1e293b', rightColor: '#0f172a' });
+        // Hazard stripes on base
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(cx - 6, cy - 5, 4, 3);
+        ctx.fillRect(cx + 2, cy - 5, 4, 3);
+        // Glass plasma chamber
+        drawIsoCylinder(ctx, cx, cy - 6, { rx: 9, ry: 4.5, h: 32, topColor: '#67e8f9', leftColor: '#06b6d4', midColor: '#67e8f9', rightColor: '#0891b2' });
+        // Glowing cyan energy core
+        ctx.save();
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#a5f3fc';
+        ctx.beginPath();
+        ctx.arc(cx, cy - 22, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        // Protective iron cage bars
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - 7, cy - 6); ctx.lineTo(cx - 7, cy - 38);
+        ctx.moveTo(cx, cy - 2); ctx.lineTo(cx, cy - 34);
+        ctx.moveTo(cx + 7, cy - 6); ctx.lineTo(cx + 7, cy - 38);
+        ctx.stroke();
         break;
       }
       case 'arcade': {
-        // Arcade Cabinet
-        ctx.fillStyle = '#a855f7';
-        ctx.fillRect(cx - 14, cy - 42, 28, 40);
+        // Retro Arcade Cabinet (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 22, hd: 14, h: 0, shadow: true, shadowScale: 1.1 });
+        // Lower pedestal chassis
+        drawIsoBox(ctx, cx, cy, { hw: 20, hd: 12, h: 28, topColor: '#475569', leftColor: '#334155', rightColor: '#1e293b' });
+        // Coin door
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(cx - 8, cy - 18, 16, 12);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(cx - 5, cy - 14, 3, 4); // Coin slot 1
+        ctx.fillRect(cx + 2, cy - 14, 3, 4); // Coin slot 2
+        // Control panel shelf protruding forward
+        drawIsoBox(ctx, cx, cy - 28, { hw: 22, hd: 10, h: 6, topColor: '#9333ea', leftColor: '#7e22ce', rightColor: '#581c87' });
+        // Dual joysticks & action buttons
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath(); ctx.arc(cx - 10, cy - 34, 3, 0, Math.PI * 2); ctx.fill(); // Left joystick ball
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath(); ctx.arc(cx + 6, cy - 34, 3, 0, Math.PI * 2); ctx.fill(); // Right joystick ball
         ctx.fillStyle = '#facc15';
-        ctx.fillRect(cx - 10, cy - 36, 20, 14); // Screen
+        ctx.beginPath(); ctx.arc(cx - 2, cy - 35, 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 14, cy - 35, 1.8, 0, Math.PI * 2); ctx.fill();
+        // Slanted upper housing & screen
+        drawIsoBox(ctx, cx, cy - 34, { hw: 20, hd: 10, h: 28, topColor: '#7e22ce', leftColor: '#6b21a8', rightColor: '#3b0764' });
+        // Screen bezel & display
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(cx - 14, cy - 54, 28, 18);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(cx - 11, cy - 52, 22, 14); // Glowing game screen
+        // Pixel spaceship on screen
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(cx - 2, cy - 47, 4, 4);
+        // Backlit Marquee Header
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(cx - 16, cy - 64, 32, 8);
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 7px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('HAVEN', cx, cy - 58);
         break;
       }
       case 'fountain': {
-        // Plaza Water Fountain
-        ctx.fillStyle = '#64748b';
+        // Plaza Multi-Tier Stone Fountain (Volumetric 3D)
+        // Lower wide stone basin
+        drawIsoCylinder(ctx, cx, cy, { rx: 46, ry: 23, h: 12, shadow: true, topColor: '#64748b', leftColor: '#475569', midColor: '#64748b', rightColor: '#334155', stroke: '#1e293b' });
+        // Lower basin water surface with caustic ripples
+        const waterT = performance.now() / 400;
+        const waterGrad = ctx.createRadialGradient(cx, cy - 12, 4, cx, cy - 12, 38);
+        waterGrad.addColorStop(0, '#67e8f9');
+        waterGrad.addColorStop(1, '#0284c7');
+        ctx.fillStyle = waterGrad;
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 6, 36, 18, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy - 12, 42, 20, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#38bdf8';
+        // Center pedestal
+        drawIsoCylinder(ctx, cx, cy - 12, { rx: 14, ry: 7, h: 16, topColor: '#94a3b8', leftColor: '#64748b', midColor: '#94a3b8', rightColor: '#475569' });
+        // Upper bowl basin
+        drawIsoCylinder(ctx, cx, cy - 28, { rx: 24, ry: 12, h: 8, topColor: '#38bdf8', leftColor: '#475569', midColor: '#64748b', rightColor: '#334155' });
+        // Animated water jet & splashing droplets
+        ctx.fillStyle = '#e0f2fe';
+        const splash = Math.sin(waterT * 3) * 4;
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 10, 26, 13, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy - 42 + splash * 0.4, 4, 8 + splash, 0, 0, Math.PI * 2);
         ctx.fill();
-        break;
-      }
-      case 'bench': {
-        ctx.fillStyle = '#475569';
-        ctx.fillRect(cx - 20, cy - 16, 40, 10);
-        break;
-      }
-      case 'bed': {
-        // Cozy Bed
-        ctx.fillStyle = '#78350f';
-        ctx.fillRect(cx - 24, cy - 20, 48, 24);
-        ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(cx - 20, cy - 22, 16, 10);
-        ctx.fillRect(cx + 4, cy - 22, 16, 10);
-        ctx.fillStyle = '#6366f1';
-        ctx.fillRect(cx - 22, cy - 12, 44, 16);
-        break;
-      }
-      case 'bookshelf': {
-        ctx.fillStyle = '#451a03';
-        ctx.fillRect(cx - 16, cy - 44, 32, 44);
-        const bookColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7'];
-        for (let b = 0; b < 5; b++) {
-          ctx.fillStyle = bookColors[b % bookColors.length];
-          ctx.fillRect(cx - 12 + b * 5, cy - 36, 4, 14);
-          ctx.fillRect(cx - 12 + b * 5, cy - 18, 4, 14);
+        for (let d = 0; d < 4; d++) {
+          const dropAngle = waterT * 2 + (d * Math.PI) / 2;
+          const dx = Math.cos(dropAngle) * 12;
+          const dy = Math.sin(dropAngle) * 6;
+          ctx.fillRect(cx + dx, cy - 34 + dy, 2.5, 2.5);
         }
         break;
       }
-      case 'whiteboard': {
-        ctx.fillStyle = '#64748b';
-        ctx.fillRect(cx - 2, cy - 8, 4, 16);
-        ctx.fillStyle = '#334155';
-        ctx.fillRect(cx - 20, cy - 36, 40, 26);
-        ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(cx - 18, cy - 34, 36, 22);
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 1.5;
+      case 'bench': {
+        // Cast-Iron & Teak Garden Bench (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 28, hd: 14, h: 0, shadow: true, shadowScale: 1.1 });
+        // Cast iron scrollwork ends
+        drawIsoBox(ctx, cx - 22, cy, { hw: 3, hd: 12, h: 14, topColor: '#334155', leftColor: '#1e293b', rightColor: '#0f172a' });
+        drawIsoBox(ctx, cx + 22, cy, { hw: 3, hd: 12, h: 14, topColor: '#334155', leftColor: '#1e293b', rightColor: '#0f172a' });
+        // Teak seat slats
+        for (let s = 0; s < 3; s++) {
+          drawIsoBox(ctx, cx, cy - 14 - s * 3 + s * 2, { hw: 24, hd: 3, h: 3, topColor: '#d97706', leftColor: '#b45309', rightColor: '#78350f' });
+        }
+        // Teak backrest slats
+        for (let b = 0; b < 2; b++) {
+          drawIsoBox(ctx, cx, cy - 22 - b * 6, { hw: 24, hd: 2.5, h: 4, topColor: '#d97706', leftColor: '#b45309', rightColor: '#78350f' });
+        }
+        break;
+      }
+      case 'bed': {
+        // Luxury Platform Bed (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 38, hd: 28, h: 0, shadow: true, shadowScale: 1.12 });
+        // Tall dark oak headboard
+        drawIsoBox(ctx, cx, cy - 16, { hw: 36, hd: 6, h: 36, topColor: '#451a03', leftColor: '#2d1102', rightColor: '#1a0a01' });
+        // Platform wooden frame
+        drawIsoBox(ctx, cx, cy, { hw: 36, hd: 26, h: 8, topColor: '#78350f', leftColor: '#572607', rightColor: '#3b1802' });
+        // Plush memory foam mattress
+        drawIsoBox(ctx, cx, cy - 8, { hw: 34, hd: 24, h: 9, topColor: '#f8fafc', leftColor: '#e2e8f0', rightColor: '#cbd5e1' });
+        // Fluffy angled pillows against headboard
+        drawIsoBox(ctx, cx - 14, cy - 18, { hw: 10, hd: 6, h: 6, topColor: '#ffffff', leftColor: '#f1f5f9', rightColor: '#e2e8f0' });
+        drawIsoBox(ctx, cx + 14, cy - 18, { hw: 10, hd: 6, h: 6, topColor: '#ffffff', leftColor: '#f1f5f9', rightColor: '#e2e8f0' });
+        // Quilted duvet comforter
+        drawIsoBox(ctx, cx, cy - 14, { hw: 34, hd: 18, h: 7, topColor: '#6366f1', leftColor: '#4f46e5', rightColor: '#3730a3', stroke: 'rgba(255,255,255,0.15)' });
+        // Folded back sheet hem
+        ctx.fillStyle = '#e0e7ff';
         ctx.beginPath();
-        ctx.moveTo(cx - 12, cy - 24);
-        ctx.quadraticCurveTo(cx - 2, cy - 30, cx + 10, cy - 22);
+        ctx.ellipse(cx, cy - 22, 28, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'bookshelf': {
+        // Rich Mahogany Bookshelf (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 26, hd: 12, h: 58, shadow: true, topColor: '#451a03', leftColor: '#2d1102', rightColor: '#1a0a01' });
+        // Recessed inner shelf cavities
+        ctx.fillStyle = '#1c0a00';
+        ctx.fillRect(cx - 20, cy - 52, 40, 48);
+        // 3 Shelf Dividers
+        ctx.fillStyle = '#451a03';
+        ctx.fillRect(cx - 21, cy - 36, 42, 4);
+        ctx.fillRect(cx - 21, cy - 20, 42, 4);
+        // 3D Books on shelves with varied colors and gold spine ribs
+        const bookTiers = [
+          { y: cy - 36, books: ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ec4899'] },
+          { y: cy - 20, books: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'] },
+          { y: cy - 4,  books: ['#10b981', '#a855f7', '#3b82f6', '#f59e0b', '#ef4444', '#06b6d4'] }
+        ];
+        bookTiers.forEach(tier => {
+          tier.books.forEach((color, i) => {
+            const bx = cx - 18 + i * 6;
+            ctx.fillStyle = color;
+            ctx.fillRect(bx, tier.y - 12, 5, 12);
+            // Gold foil spine rib
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillRect(bx, tier.y - 8, 5, 1.5);
+          });
+        });
+        break;
+      }
+      case 'whiteboard': {
+        // Standing Collaborative Whiteboard Easel (Volumetric 3D)
+        drawIsoBox(ctx, cx, cy, { hw: 28, hd: 14, h: 0, shadow: true, shadowScale: 1.1 });
+        // Aluminum A-frame legs
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - 22, cy); ctx.lineTo(cx - 16, cy - 48);
+        ctx.moveTo(cx + 22, cy); ctx.lineTo(cx + 16, cy - 48);
+        ctx.stroke();
+        // Caster wheels
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath(); ctx.arc(cx - 22, cy, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 22, cy, 3, 0, Math.PI * 2); ctx.fill();
+        // Whiteboard panel frame & surface
+        drawIsoBox(ctx, cx, cy - 20, { hw: 26, hd: 4, h: 32, topColor: '#e2e8f0', leftColor: '#94a3b8', rightColor: '#64748b', stroke: '#475569' });
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(cx - 22, cy - 50, 44, 28);
+        // Marker tray
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(cx - 20, cy - 22, 40, 3);
+        // Dry-erase markers
+        ctx.fillStyle = '#3b82f6'; ctx.fillRect(cx - 12, cy - 24, 6, 2);
+        ctx.fillStyle = '#ef4444'; ctx.fillRect(cx - 3, cy - 24, 6, 2);
+        // Collaborative user drawing preview on board
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - 16, cy - 42); ctx.quadraticCurveTo(cx - 4, cy - 48, cx + 14, cy - 36);
         ctx.stroke();
         break;
       }
       case 'teleporter_pad': {
-        const pulse = Math.sin(performance.now() / 250) * 4;
+        // High-Tech Sci-Fi Teleportation Dais (Volumetric 3D)
+        const t = performance.now() / 250;
+        const pulse = Math.sin(t) * 5;
+        // Outer chamfered titanium dais
+        drawIsoCylinder(ctx, cx, cy, { rx: 32, ry: 16, h: 8, shadow: true, topColor: '#0891b2', leftColor: '#0e7490', midColor: '#0891b2', rightColor: '#155e75', stroke: '#06b6d4' });
+        // Recessed glowing plasma portal
+        ctx.save();
         ctx.shadowColor = '#06b6d4';
-        ctx.shadowBlur = 12 + pulse;
-        ctx.fillStyle = '#0891b2';
+        ctx.shadowBlur = 16 + pulse;
+        ctx.fillStyle = '#22d3ee';
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 4, 22, 11, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy - 8, 22, 11, 0, 0, Math.PI * 2);
         ctx.fill();
+        // Inner concentric energy ring
+        ctx.strokeStyle = '#cffafe';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 8, 12, 6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        // Floating teleport vortex particles
         ctx.fillStyle = '#67e8f9';
-        ctx.beginPath();
-        ctx.ellipse(cx, cy - 4, 12, 6, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        for (let p = 0; p < 3; p++) {
+          const pAngle = t * 1.5 + (p * Math.PI * 2) / 3;
+          const px = cx + Math.cos(pAngle) * 16;
+          const py = cy - 14 - p * 6 + Math.sin(pAngle) * 4;
+          ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
+        }
         break;
       }
       case 'pet_cat': {
-        const bob = Math.sin(performance.now() / 300) * 2;
+        // 3D Expressive Companion Cat
+        const bob = Math.sin(performance.now() / 280) * 2.5;
+        // Contact shadow
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 1, 14, 7, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        ctx.fill();
+        ctx.restore();
+        // Volumetric Cat Body
+        drawIsoCylinder(ctx, cx, cy - 2 + bob, { rx: 12, ry: 8, h: 10, topColor: '#fb923c', leftColor: '#ea580c', midColor: '#f97316', rightColor: '#c2410c' });
+        // Head
         ctx.fillStyle = '#f97316';
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 6 + bob, 10, 8, 0, 0, Math.PI * 2);
+        ctx.arc(cx + 8, cy - 14 + bob, 8, 0, Math.PI * 2);
         ctx.fill();
+        // Triangular ears with pink inside
+        ctx.fillStyle = '#ea580c';
         ctx.beginPath();
-        ctx.arc(cx + 6, cy - 12 + bob, 6, 0, Math.PI * 2);
+        ctx.moveTo(cx + 4, cy - 20 + bob); ctx.lineTo(cx + 8, cy - 27 + bob); ctx.lineTo(cx + 11, cy - 20 + bob);
+        ctx.moveTo(cx + 9, cy - 20 + bob); ctx.lineTo(cx + 13, cy - 27 + bob); ctx.lineTo(cx + 16, cy - 20 + bob);
         ctx.fill();
+        ctx.fillStyle = '#fda4af';
         ctx.beginPath();
-        ctx.moveTo(cx + 3, cy - 16 + bob); ctx.lineTo(cx + 6, cy - 22 + bob); ctx.lineTo(cx + 8, cy - 16 + bob);
-        ctx.moveTo(cx + 7, cy - 16 + bob); ctx.lineTo(cx + 10, cy - 22 + bob); ctx.lineTo(cx + 12, cy - 16 + bob);
+        ctx.moveTo(cx + 6, cy - 20 + bob); ctx.lineTo(cx + 8, cy - 24 + bob); ctx.lineTo(cx + 10, cy - 20 + bob);
         ctx.fill();
+        // Curled tail with bobbing tip
         ctx.strokeStyle = '#ea580c';
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.moveTo(cx - 8, cy - 6 + bob);
-        ctx.quadraticCurveTo(cx - 14, cy - 16 + bob, cx - 12, cy - 20 + bob);
+        ctx.moveTo(cx - 10, cy - 6 + bob);
+        ctx.quadraticCurveTo(cx - 18, cy - 18 + bob, cx - 14, cy - 24 + bob);
         ctx.stroke();
         break;
       }
       case 'pet_dog': {
-        const bob = Math.sin(performance.now() / 220) * 2;
+        // 3D Loyal Companion Dog
+        const bob = Math.sin(performance.now() / 220) * 2.5;
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 1, 16, 8, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        ctx.fill();
+        ctx.restore();
+        // Volumetric Dog Body
+        drawIsoCylinder(ctx, cx, cy - 3 + bob, { rx: 14, ry: 9, h: 12, topColor: '#fbbf24', leftColor: '#d97706', midColor: '#f59e0b', rightColor: '#b45309' });
+        // Head & snout
         ctx.fillStyle = '#d97706';
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 7 + bob, 12, 9, 0, 0, Math.PI * 2);
+        ctx.arc(cx + 10, cy - 16 + bob, 9, 0, Math.PI * 2);
         ctx.fill();
-        ctx.beginPath();
-        ctx.arc(cx + 8, cy - 13 + bob, 7, 0, Math.PI * 2);
-        ctx.fill();
+        // Floppy ears
         ctx.fillStyle = '#b45309';
         ctx.beginPath();
-        ctx.ellipse(cx + 6, cy - 12 + bob, 3, 6, 0.4, 0, Math.PI * 2);
-        ctx.ellipse(cx + 11, cy - 12 + bob, 3, 6, -0.4, 0, Math.PI * 2);
+        ctx.ellipse(cx + 8, cy - 14 + bob, 4, 8, 0.4, 0, Math.PI * 2);
+        ctx.ellipse(cx + 15, cy - 14 + bob, 4, 8, -0.4, 0, Math.PI * 2);
         ctx.fill();
-        const wag = Math.sin(performance.now() / 100) * 4;
+        // Wagging tail
+        const wag = Math.sin(performance.now() / 90) * 6;
         ctx.strokeStyle = '#d97706';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.moveTo(cx - 10, cy - 8 + bob);
-        ctx.lineTo(cx - 16 + wag, cy - 14 + bob);
+        ctx.moveTo(cx - 12, cy - 8 + bob);
+        ctx.lineTo(cx - 20 + wag, cy - 16 + bob);
         ctx.stroke();
         break;
       }
       case 'pet_dragon':
       case 'clockwork_pet_dragon': {
-        const flap = Math.sin(performance.now() / 150) * 6;
+        // 3D Clockwork Mythic Dragon
+        const flap = Math.sin(performance.now() / 140) * 8;
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 1, 15, 8, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        ctx.fill();
+        ctx.restore();
+        // Dragon Body
+        drawIsoCylinder(ctx, cx, cy - 4, { rx: 13, ry: 8, h: 12, topColor: '#f59e0b', leftColor: '#d97706', midColor: '#f59e0b', rightColor: '#92400e' });
+        // Dragon Head with golden horns
         ctx.fillStyle = '#b45309';
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 10, 11, 8, 0, 0, Math.PI * 2);
+        ctx.arc(cx + 10, cy - 18, 8, 0, Math.PI * 2);
         ctx.fill();
-        ctx.beginPath();
-        ctx.arc(cx + 8, cy - 16, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#f59e0b';
-        ctx.beginPath();
-        ctx.moveTo(cx - 2, cy - 12);
-        ctx.lineTo(cx - 12, cy - 24 + flap);
-        ctx.lineTo(cx + 4, cy - 16);
-        ctx.fill();
+        // Horns
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
-        ctx.moveTo(cx + 6, cy - 20); ctx.lineTo(cx + 8, cy - 26); ctx.lineTo(cx + 10, cy - 20);
+        ctx.moveTo(cx + 8, cy - 22); ctx.lineTo(cx + 10, cy - 30); ctx.lineTo(cx + 13, cy - 22);
+        ctx.moveTo(cx + 12, cy - 22); ctx.lineTo(cx + 15, cy - 30); ctx.lineTo(cx + 17, cy - 22);
         ctx.fill();
-        break;
-      }
-      case 'steampunk_sofa': {
-        ctx.fillStyle = '#78350f';
-        ctx.beginPath();
-        ctx.ellipse(cx, cy - 8, 32, 16, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#451a03';
-        ctx.fillRect(cx - 30, cy - 28, 60, 20);
+        // Animated wings
         ctx.fillStyle = '#f59e0b';
-        for (let g = -20; g <= 20; g += 10) {
-          ctx.beginPath();
-          ctx.arc(cx + g, cy - 22, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        break;
-      }
-      case 'reclaimed_wood_table': {
-        ctx.fillStyle = '#57300a';
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 16, 26, 14, 0, 0, Math.PI * 2);
+        ctx.moveTo(cx - 2, cy - 14);
+        ctx.lineTo(cx - 16, cy - 28 + flap);
+        ctx.lineTo(cx + 6, cy - 18);
+        ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = '#2d1102';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(cx - 16, cy - 14); ctx.lineTo(cx - 16, cy + 2);
-        ctx.moveTo(cx + 16, cy - 14); ctx.lineTo(cx + 16, cy + 2);
+        ctx.strokeStyle = '#b45309';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
-        break;
-      }
-      case 'neon_foundry_lamp': {
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(cx - 3, cy - 32, 6, 32);
-        ctx.shadowColor = '#06b6d4';
-        ctx.shadowBlur = 16;
-        ctx.fillStyle = '#67e8f9';
-        ctx.beginPath();
-        ctx.arc(cx, cy - 34, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
         break;
       }
     }
@@ -1757,7 +2205,7 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     const av = p.avatar || selfPlayer.avatar;
     const isSitting = !!p.isSitting;
     const facing = p.facing || 'SE';
-    const bounce = (!isSitting && p.isWalking) ? getWalkBob(p.walkCycle || 0, 3) : 0;
+    const bounce = (!isSitting && p.isWalking) ? getWalkBob(p.walkCycle || 0, 3.5) : 0;
 
     let jumpOffsetY = 0;
     let waveAngle = 0;
@@ -1772,49 +2220,52 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
         p.activeEmote = null;
       } else {
         if (p.activeEmote.type === 'jump') {
-          jumpOffsetY = computeJumpOffset(progress, 22);
+          jumpOffsetY = computeJumpOffset(progress, 26);
         } else if (p.activeEmote.type === 'wave') {
           waveAngle = computeWaveAngle(progress, 0.45);
         } else if (p.activeEmote.type === 'dance') {
-          const d = computeDanceOffset(progress, 6);
+          const d = computeDanceOffset(progress, 8);
           danceOffsetX = d.x;
           danceOffsetY = d.y;
         } else if (p.activeEmote.type === 'hug' || p.activeEmote.type === 'heart') {
-          danceOffsetY = -Math.abs(Math.sin(progress * Math.PI * 3)) * 4;
+          danceOffsetY = -Math.abs(Math.sin(progress * Math.PI * 3)) * 5;
         }
       }
     }
 
-    const shadowScale = computeShadowScale(jumpOffsetY, 22);
     const charX = cx + danceOffsetX;
-    const baseY = cy - (isSitting ? 2 : 8) + bounce + jumpOffsetY + danceOffsetY;
+    const baseY = cy - (isSitting ? 4 : 10) + bounce + jumpOffsetY + danceOffsetY;
 
+    // Render scaled avatar
     ctx.save();
+    ctx.translate(charX, baseY);
+    ctx.scale(1.35, 1.35);
 
     // Emote poses (dance/run/lie) override locomotion so every documented frame
     // set is reachable in-world; explicit p.pose still wins for forced poses.
     const emotePose = p.activeEmote && POSE_EMOTES.includes(p.activeEmote.type) ? p.activeEmote.type : null;
     const pose = p.pose || emotePose || (isSitting ? 'sit' : p.isWalking ? 'walk' : 'idle');
-    drawModularAvatar(ctx, av, charX, baseY, { pose, facing, time: performance.now(), wave: waveAngle });
+    drawModularAvatar(ctx, av, 0, 0, { pose, facing, time: performance.now(), wave: waveAngle });
     p.auraState ||= {};
     const auraNow = performance.now();
-    drawAura(ctx, p.auraState, av.aura || 'none', charX, baseY, (auraNow - (p.auraAt || auraNow)) / 1000);
+    drawAura(ctx, p.auraState, av.aura || 'none', 0, 0, (auraNow - (p.auraAt || auraNow)) / 1000);
     p.auraAt = auraNow;
+    ctx.restore();
 
-    // Name Tag — Persistently synchronized
+    // Name Tag — Persistently synchronized above scaled avatar
+    ctx.save();
     ctx.font = 'bold 11px Quicksand, sans-serif';
     const titleLabel = TITLES[p.title]?.label;
     const tagText = `${titleLabel ? `[${titleLabel}] ` : ''}${(isSelf ? selfPlayer.name : p.name) || 'Traveler'}`;
     const textWidth = ctx.measureText(tagText).width;
 
-    ctx.fillStyle = isSelf ? 'rgba(139, 92, 246, 0.88)' : 'rgba(15, 23, 42, 0.78)';
+    ctx.fillStyle = isSelf ? 'rgba(139, 92, 246, 0.90)' : 'rgba(15, 23, 42, 0.82)';
     ctx.beginPath();
-    ctx.roundRect(charX - textWidth / 2 - 6, (isSitting ? baseY - 54 : baseY - 62), textWidth + 12, 16, 8);
+    ctx.roundRect(charX - textWidth / 2 - 6, (isSitting ? baseY - 66 : baseY - 78), textWidth + 12, 18, 9);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(tagText, charX - textWidth / 2, (isSitting ? baseY - 42 : baseY - 50));
-
+    ctx.fillText(tagText, charX - textWidth / 2, (isSitting ? baseY - 53 : baseY - 65));
     ctx.restore();
   }
 
@@ -1832,15 +2283,15 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
       const elapsed = performance.now() - p.activeEmote.startTime;
       const progress = elapsed / p.activeEmote.duration;
       if (progress < 1) {
-        if (p.activeEmote.type === 'jump') jumpOffsetY = computeJumpOffset(progress, 22);
-        else if (p.activeEmote.type === 'dance') danceOffsetX = computeDanceOffset(progress, 6).x;
+        if (p.activeEmote.type === 'jump') jumpOffsetY = computeJumpOffset(progress, 26);
+        else if (p.activeEmote.type === 'dance') danceOffsetX = computeDanceOffset(progress, 8).x;
       }
     }
 
     const alpha = fadeAlpha(age, 6, 5);
     const pt = toScreen(p.x, p.y);
     const cx = pt.x + danceOffsetX;
-    const cy = pt.y + TILE_HEIGHT / 2 - 76 + jumpOffsetY;
+    const cy = pt.y + TILE_HEIGHT / 2 - 94 + jumpOffsetY;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -1889,10 +2340,10 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     for (const [pId, p] of otherPlayers) {
       const pt = toScreen(p.x, p.y);
       const cx = pt.x;
-      const cy = pt.y + TILE_HEIGHT / 2 - 20; // center of avatar torso/head
+      const cy = pt.y + TILE_HEIGHT / 2 - 28; // center of scaled avatar torso/head
       const dx = sx - cx;
       const dy = sy - cy;
-      if (Math.hypot(dx, dy) < 28) {
+      if (Math.hypot(dx, dy) < 36) {
         // Hit detected on other player!
         openPlayerContextMenu(p, e.clientX, e.clientY);
         return;
@@ -1904,8 +2355,8 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     const doorPt0 = toScreen(doorX, 0);
     const doorPt1 = toScreen(doorX + 1, 0);
     const doorMidX = (doorPt0.x + doorPt1.x) / 2;
-    const doorMidY = (doorPt0.y + doorPt1.y) / 2 - 30; // middle of doorway frame
-    if (Math.hypot(sx - doorMidX, sy - doorMidY) < 36) {
+    const doorMidY = (doorPt0.y + doorPt1.y) / 2 - 44; // middle of 88px doorway frame
+    if (Math.hypot(sx - doorMidX, sy - doorMidY) < 48) {
       // Toggle room: if in plaza, switch to personal loft; if in loft, switch to plaza
       const isLoft = currentRoom.id.startsWith('loft_');
       let targetRoomId = 'plaza';
@@ -1947,7 +2398,7 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
         const cy = pt.y + TILE_HEIGHT / 2;
         const dx = sx - cx;
         const dy = sy - cy;
-        return Math.hypot(dx, dy) < 30; // Approx click radius
+        return Math.hypot(dx, dy) < 42; // Approx click radius
       });
 
       if (clickedFurniture && !parentSurfaceId) {
@@ -1978,10 +2429,10 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
       const clickedFurniture = currentRoom.furniture.slice().reverse().find(f => {
         const pt = toScreen(f.x, f.y);
         const cx = pt.x;
-        const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20;
+        const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 28;
         const dx = sx - cx;
         const dy = sy - cy;
-        return Math.hypot(dx, dy) < 28;
+        return Math.hypot(dx, dy) < 38;
       });
 
       if (clickedFurniture) {
@@ -2075,13 +2526,13 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     const doorPt0 = toScreen(doorX, 0);
     const doorPt1 = toScreen(doorX + 1, 0);
     const doorMidX = (doorPt0.x + doorPt1.x) / 2;
-    const doorMidY = (doorPt0.y + doorPt1.y) / 2 - 30;
-    if (Math.hypot(sx - doorMidX, sy - doorMidY) < 36) {
+    const doorMidY = (doorPt0.y + doorPt1.y) / 2 - 44;
+    if (Math.hypot(sx - doorMidX, sy - doorMidY) < 48) {
       const isLoft = currentRoom.id.startsWith('loft_');
       hoveredEntity = {
         type: 'door',
         screenX: doorMidX,
-        screenY: doorMidY - 30,
+        screenY: doorMidY - 36,
         icon: '🚪',
         title: isLoft ? 'Central Plaza Exit' : 'Personal Loft Door',
         hint: 'Click to travel'
@@ -2094,14 +2545,14 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     for (const [pId, p] of otherPlayers) {
       const pt = toScreen(p.x, p.y);
       const cx = pt.x;
-      const cy = pt.y + TILE_HEIGHT / 2 - 20;
-      if (Math.hypot(sx - cx, sy - cy) < 28) {
+      const cy = pt.y + TILE_HEIGHT / 2 - 28;
+      if (Math.hypot(sx - cx, sy - cy) < 36) {
         const titleLabel = TITLES[p.title]?.label;
         const statusText = p.statusMessage || p.identity?.statusMessage;
         hoveredEntity = {
           type: 'player',
           screenX: cx,
-          screenY: cy - 36,
+          screenY: cy - 48,
           icon: '👤',
           title: `${titleLabel ? `[${titleLabel}] ` : ''}${p.name || 'Traveler'}`,
           hint: statusText ? `“${statusText}”` : 'Click to open player menu'
@@ -2115,8 +2566,8 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     const hoveredFurni = currentRoom.furniture.slice().reverse().find(f => {
       const pt = toScreen(f.x, f.y);
       const cx = pt.x;
-      const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20;
-      return Math.hypot(sx - cx, sy - cy) < 28;
+      const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 28;
+      return Math.hypot(sx - cx, sy - cy) < 38;
     });
 
     if (hoveredFurni) {
@@ -2141,7 +2592,7 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
       hoveredEntity = {
         type: hoveredFurni.type,
         screenX: pt.x,
-        screenY: pt.y + TILE_HEIGHT / 2 - 45 - (hoveredFurni.elevation || 0) * 20,
+        screenY: pt.y + TILE_HEIGHT / 2 - 58 - (hoveredFurni.elevation || 0) * 28,
         icon,
         title,
         hint
