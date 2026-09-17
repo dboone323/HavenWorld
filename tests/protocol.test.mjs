@@ -386,3 +386,83 @@ test('SEND_PRIVATE_MESSAGE blocks non-friends', async () => {
   assert.equal(msg.type, 'PRIVATE_MESSAGE_ERROR');
   assert.ok(msg.payload.message.includes('friends'));
 });
+
+test('PLAYER_EMOTE broadcasts hug emote and visual emote event', async () => {
+  const rooms = new RoomManager();
+  const { api } = mockDb();
+  const alice = makePlayer('a1', 'plaza'); alice.name = 'Alice'; rooms.join('plaza', alice);
+  const bob = makePlayer('b1', 'plaza'); bob.name = 'Bob'; rooms.join('plaza', bob);
+  const globalPlayers = new Map([['a1', alice], ['b1', bob]]);
+
+  await handleMessage({
+    type: 'PLAYER_EMOTE',
+    payload: { emote: 'hug', targetPlayerId: 'b1' }
+  }, alice, C(rooms, api, alice, globalPlayers));
+
+  // Both alice and bob should receive CHAT_MESSAGE and PLAYER_EMOTED
+  const bobSent = bob.ws.sent.map(s => JSON.parse(s));
+  const chatMsg = bobSent.find(m => m.type === 'CHAT_MESSAGE');
+  const emoteMsg = bobSent.find(m => m.type === 'PLAYER_EMOTED');
+
+  assert.ok(chatMsg);
+  assert.ok(chatMsg.payload.text.includes('*hugs Bob warmly! 🫂*'));
+  assert.ok(emoteMsg);
+  assert.equal(emoteMsg.payload.emote, 'hug');
+  assert.equal(emoteMsg.payload.fromPlayerId, 'a1');
+  assert.equal(emoteMsg.payload.targetPlayerId, 'b1');
+});
+
+test('UPDATE_ROOM_STYLE updates style for loft owner and rejects non-owner', async () => {
+  const rooms = new RoomManager();
+  let savedFlooring = null;
+  let savedWallpaper = null;
+  const api = {
+    ...mockDb().api,
+    saveRoomStyle: async (roomId, f, w) => { savedFlooring = f; savedWallpaper = w; },
+    getRoomStyle: async () => ({ flooring: savedFlooring, wallpaper: savedWallpaper }),
+  };
+
+  const alice = makePlayer('usr_alice123', 'loft_alice123'); alice.name = 'Alice';
+  const loftRoom = {
+    id: 'loft_alice123',
+    name: "Alice's Loft",
+    isPublic: false,
+    players: new Map(),
+    furniture: [],
+    ownerId: 'usr_alice123',
+    flooring: 'parquet',
+    wallpaper: 'cozy_wood',
+  };
+  rooms.rooms['loft_alice123'] = loftRoom;
+  rooms.join('loft_alice123', alice);
+
+  // 1. Owner updates style
+  await handleMessage({
+    type: 'UPDATE_ROOM_STYLE',
+    payload: { roomId: 'loft_alice123', flooring: 'plush_carpet', wallpaper: 'brick' }
+  }, alice, C(rooms, api, alice));
+
+  assert.equal(loftRoom.flooring, 'plush_carpet');
+  assert.equal(loftRoom.wallpaper, 'brick');
+  assert.equal(savedFlooring, 'plush_carpet');
+  assert.equal(savedWallpaper, 'brick');
+
+  const aliceSent = alice.ws.sent.map(s => JSON.parse(s));
+  const updateEvent = aliceSent.find(m => m.type === 'ROOM_STYLE_UPDATED');
+  assert.ok(updateEvent);
+  assert.equal(updateEvent.payload.flooring, 'plush_carpet');
+
+  // 2. Non-owner tries to update style in someone else's loft
+  const eve = makePlayer('usr_eve999', 'loft_alice123'); eve.name = 'Eve';
+  rooms.join('loft_alice123', eve);
+  await handleMessage({
+    type: 'UPDATE_ROOM_STYLE',
+    payload: { roomId: 'loft_alice123', flooring: 'slate' }
+  }, eve, C(rooms, api, eve));
+
+  const eveSent = eve.ws.sent.map(s => JSON.parse(s));
+  const errEvent = eveSent.find(m => m.type === 'FURNITURE_ERROR');
+  assert.ok(errEvent);
+  assert.ok(errEvent.payload.message.includes('customize your own loft'));
+});
+

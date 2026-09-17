@@ -5,7 +5,7 @@
  */
 import { clampGrid } from '../shared/iso.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
-import { serializePlayer, RoomManager, getUserLoftRoomId } from './rooms.ts';
+import { serializePlayer, serializeRoom, RoomManager, getUserLoftRoomId } from './rooms.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
@@ -57,7 +57,9 @@ export interface DispatchContext {
     areFriends: (userId: string, friendId: string) => Promise<boolean>;
     saveMessage: (senderId: string, recipientId: string, text: string) => Promise<void>;
     getMessages: (userId: string) => Promise<MessageRecord[]>;
-    getUserSanctuaryRoom: (userId: string, playerName: string) => Promise<{ roomId: string; roomCode: string; name: string } | null>;
+    getUserSanctuaryRoom: (userId: string, playerName: string) => Promise<{ roomId: string; roomCode: string; name: string; flooring?: string; wallpaper?: string } | null>;
+    saveRoomStyle?: (roomId: string, flooring?: string, wallpaper?: string) => Promise<void>;
+    getRoomStyle?: (roomId: string) => Promise<{ flooring: string; wallpaper: string } | null>;
   };
   ws: WebSocket;
   globalPlayers?: Map<string, Player>;
@@ -127,17 +129,39 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
 
       // Handle personal loft switch — create room lazily if needed
       if (rooms.isUserLoft(targetRoomId)) {
-        // Ensure the user's loft room exists in the registry
-        const loftRoom = await rooms.getUserLoft(player.id, player.name);
-        // Load furniture from DB if the room is empty
+        let loftRoom = rooms.get(targetRoomId);
+        if (!loftRoom) {
+          // If the player is visiting their own loft:
+          const myLoftId = getUserLoftRoomId(player.id);
+          if (targetRoomId === myLoftId) {
+            loftRoom = await rooms.getUserLoft(player.id, player.name);
+          } else {
+            // Player is visiting another player's loft (e.g. friend)
+            // Create the room shell with a friendly default name
+            loftRoom = {
+              id: targetRoomId,
+              name: `Loft (${targetRoomId})`,
+              isPublic: false,
+              players: new Map(),
+              furniture: [],
+              ownerId: null,
+              flooring: 'parquet',
+              wallpaper: 'cozy_wood',
+            };
+            rooms.rooms[targetRoomId] = loftRoom;
+          }
+        }
+        // Load furniture and style from DB if empty
         if (loftRoom.furniture.length === 0) {
           const dbFurn = await db.getLoftFurniture(loftRoom.id);
           if (dbFurn && dbFurn.length > 0) {
             rooms.setFurniture(loftRoom.id, dbFurn);
-          } else if (!dbFurn) {
-            // DB has no furniture for this loft — keep the default starter furniture
-            // The room was created with empty furniture, so seed with starter
-            // (This happens on first visit; the DB also inserts starter furniture)
+          }
+        }
+        if (db.getRoomStyle) {
+          const style = await db.getRoomStyle(loftRoom.id);
+          if (style) {
+            rooms.setRoomStyle(loftRoom.id, style.flooring, style.wallpaper);
           }
         }
         rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } }, player.ws);
@@ -149,7 +173,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
         rooms.send(player.ws, {
           type: 'ROOM_CHANGED',
           payload: {
-            room: { id: target!.id, name: target!.name, furniture: target!.furniture },
+            room: serializeRoom(target!),
             player: serializePlayer(player),
             otherPlayers: rooms.othersIn(targetRoomId, player.id)
           }
@@ -169,7 +193,7 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       rooms.send(player.ws, {
         type: 'ROOM_CHANGED',
         payload: {
-          room: { id: target!.id, name: target!.name, furniture: target!.furniture },
+          room: serializeRoom(target!),
           player: serializePlayer(player),
           otherPlayers: rooms.othersIn(targetRoomId, player.id)
         }
@@ -521,6 +545,74 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     case 'GET_PRIVATE_MESSAGES': {
       db.getMessages(player.id).then((messages) => {
         rooms.send(player.ws, { type: 'PRIVATE_MESSAGES_LIST', payload: { messages } });
+      });
+      break;
+    }
+
+    // --- Social Emotes (Hug, Wave, Heart) ---
+    case 'PLAYER_EMOTE': {
+      const emote = (msg.payload && msg.payload.emote as string) || 'hug';
+      const targetPlayerId = (msg.payload && msg.payload.targetPlayerId as string) || undefined;
+      const targetP = targetPlayerId ? (currentRoom.players.get(targetPlayerId) || ctx.globalPlayers?.get(targetPlayerId)) : undefined;
+
+      let emoteText = '';
+      if (emote === 'hug') {
+        emoteText = targetP ? `*hugs ${targetP.name} warmly! 🫂*` : `*offers a warm hug! 🫂*`;
+      } else if (emote === 'wave') {
+        emoteText = targetP ? `*waves to ${targetP.name}! 👋*` : `*waves to everyone! 👋*`;
+      } else if (emote === 'heart') {
+        emoteText = targetP ? `*sends love to ${targetP.name}! 💖*` : `*shares some love! 💖*`;
+      } else {
+        emoteText = `*${emote}*`;
+      }
+
+      // Broadcast as chat announcement to room
+      rooms.broadcast(room, {
+        type: 'CHAT_MESSAGE',
+        payload: {
+          playerId: player.id,
+          sender: player.name,
+          text: emoteText,
+          channel: 'room',
+          timestamp: Date.now(),
+        }
+      });
+
+      // Also broadcast dedicated visual emote event
+      rooms.broadcast(room, {
+        type: 'PLAYER_EMOTED',
+        payload: {
+          fromPlayerId: player.id,
+          fromPlayerName: player.name,
+          emote,
+          targetPlayerId: targetP?.id,
+          targetPlayerName: targetP?.name,
+          text: emoteText,
+        }
+      });
+      break;
+    }
+
+    // --- Room Customization (Flooring & Wallpaper) ---
+    case 'UPDATE_ROOM_STYLE': {
+      const isOwner = currentRoom.ownerId === player.id || currentRoom.id === getUserLoftRoomId(player.id);
+      if (!isOwner) {
+        rooms.send(player.ws, { type: 'FURNITURE_ERROR', payload: { message: 'You can only customize your own loft style.' } });
+        return;
+      }
+      const { flooring, wallpaper } = (msg.payload || {}) as { flooring?: string; wallpaper?: string };
+      if (flooring) currentRoom.flooring = flooring;
+      if (wallpaper) currentRoom.wallpaper = wallpaper;
+      if (db.saveRoomStyle) {
+        await db.saveRoomStyle(room, flooring, wallpaper);
+      }
+      rooms.broadcast(room, {
+        type: 'ROOM_STYLE_UPDATED',
+        payload: {
+          roomId: room,
+          flooring: currentRoom.flooring,
+          wallpaper: currentRoom.wallpaper,
+        }
       });
       break;
     }

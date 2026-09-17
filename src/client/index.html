@@ -71,6 +71,7 @@
           <button id="btn-close-decor" class="close-btn">✕</button>
         </div>
         <p class="panel-tip">Select furniture, then click any floor tile to place it!</p>
+        <div class="panel-section-title">Furniture:</div>
         <div class="furniture-grid">
           <button class="furniture-chip active" data-type="sofa">🛋️ Cozy Sofa</button>
           <button class="furniture-chip" data-type="table">🪵 Oak Table</button>
@@ -79,8 +80,37 @@
           <button class="furniture-chip" data-type="neon">✨ Neon Sign</button>
           <button class="furniture-chip" data-type="arcade">🕹️ Arcade Cabinet</button>
         </div>
+        <div class="panel-section-title">Flooring Style:</div>
+        <div class="style-selector-row" id="flooring-options">
+          <button class="style-chip active" data-flooring="parquet">🪵 Hardwood</button>
+          <button class="style-chip" data-flooring="marble">🏛️ Marble</button>
+          <button class="style-chip" data-flooring="plush_carpet">🧶 Plush Carpet</button>
+          <button class="style-chip" data-flooring="slate">⬛ Slate</button>
+        </div>
+        <div class="panel-section-title">Wallpaper Style:</div>
+        <div class="style-selector-row" id="wallpaper-options">
+          <button class="style-chip active" data-wallpaper="cozy_wood">🌲 Cozy Wood</button>
+          <button class="style-chip" data-wallpaper="brick">🧱 Warm Brick</button>
+          <button class="style-chip" data-wallpaper="slate">🏙️ Modern Slate</button>
+          <button class="style-chip" data-wallpaper="pastel">🎨 Pastel Bloom</button>
+        </div>
         <div class="decor-actions">
           <button id="btn-clear-room" class="chip-danger">🗑️ Clear Room</button>
+        </div>
+      </div>
+
+      <!-- Player Context Menu (Click other player avatar) -->
+      <div id="player-context-menu" class="context-menu hidden">
+        <div class="context-menu-header">
+          <span id="ctx-player-name">Player</span>
+          <button id="btn-close-ctx-menu" class="close-btn">✕</button>
+        </div>
+        <div class="context-menu-actions">
+          <button id="ctx-btn-hug" class="ctx-action-btn">🫂 Hug</button>
+          <button id="ctx-btn-wave" class="ctx-action-btn">👋 Wave</button>
+          <button id="ctx-btn-friend" class="ctx-action-btn">➕ Add Friend</button>
+          <button id="ctx-btn-visit" class="ctx-action-btn">🏠 Visit Loft</button>
+          <button id="ctx-btn-whisper" class="ctx-action-btn">💬 Whisper</button>
         </div>
       </div>
 
@@ -129,7 +159,7 @@
                 <div id="login-error" class="panel-tip" style="color: #f87171; display: none;"></div>
                 <button type="submit" class="primary-btn" style="width: 100%;">Sign In</button>
               </form>
-              <form id="signup-form" style="display: none;">
+              <form id="signup-form" class="hidden">
                 <div style="margin-bottom: 10px;">
                   <label style="font-size: 12px; color: var(--text-muted);">Username</label>
                   <input type="text" id="signup-username" maxlength="32" autocomplete="off"
@@ -324,6 +354,26 @@
               <input type="text" id="pm-text" placeholder="Type a message..." maxlength="280" autocomplete="off">
               <button type="submit" class="primary-btn">Send</button>
             </form>
+          </div>
+        </div>
+      </div>
+    <!-- Welcome / Auth Gate Overlay -->
+    <div id="welcome-overlay" class="modal-overlay hidden">
+      <div class="modal-card welcome-card">
+        <div class="welcome-header">
+          <div class="logo-badge large">✨</div>
+          <h2>Welcome to HavenWorld</h2>
+          <p class="brand-sub">Escape Reality • Your Cozy Isometric Virtual World</p>
+        </div>
+        <div class="welcome-body">
+          <div class="welcome-guest-section">
+            <button id="btn-welcome-guest" class="primary-btn large-btn">🎮 Play as Guest</button>
+            <p class="welcome-hint">Jump right in! Your progress is saved in this browser.</p>
+          </div>
+          <div class="welcome-divider"><span>OR</span></div>
+          <div class="welcome-auth-actions">
+            <button id="btn-welcome-signin" class="action-btn">🔐 Sign In</button>
+            <button id="btn-welcome-signup" class="action-btn">📝 Create Account</button>
           </div>
         </div>
       </div>

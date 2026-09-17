@@ -70,6 +70,20 @@ import { escapeHtml } from './shared/chat.js';
   const dailyPopupMsg = document.getElementById('daily-popup-message');
   const dailyCooldownText = document.getElementById('daily-cooldown-text');
 
+  // Context menu & player interaction state
+  let activeContextPlayer = null; // { id, name }
+  const playerContextMenu = document.getElementById('player-context-menu');
+  const ctxPlayerName = document.getElementById('ctx-player-name');
+
+  // Welcome modal DOM
+  const welcomeOverlay = document.getElementById('welcome-overlay');
+  const btnWelcomeGuest = document.getElementById('btn-welcome-guest');
+  const btnWelcomeSignin = document.getElementById('btn-welcome-signin');
+  const btnWelcomeSignup = document.getElementById('btn-welcome-signup');
+
+  // Floating heart particles for emotes
+  const floatingHearts = [];
+
   let editMode = false;
   let selectedFurnitureType = 'sofa';
   let targetIndicator = null; // { x, y, alpha }
@@ -106,12 +120,18 @@ import { escapeHtml } from './shared/chat.js';
   // ==========================================================================
   // WebSocket Multiplayer Networking
   // ==========================================================================
-  function initWebSocket(token = null) {
+  function initWebSocket(token = null, guestId = null) {
     authToken = token;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     let wsUrl = `${protocol}//${window.location.host}`;
+    const params = [];
     if (token) {
-      wsUrl += (wsUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+      params.push('token=' + encodeURIComponent(token));
+    } else if (guestId) {
+      params.push('guestId=' + encodeURIComponent(guestId));
+    }
+    if (params.length > 0) {
+      wsUrl += '?' + params.join('&');
     }
     ws = new WebSocket(wsUrl);
 
@@ -132,7 +152,10 @@ import { escapeHtml } from './shared/chat.js';
 
     ws.onclose = () => {
       appendChatMessage('system', 'Disconnected from server. Retrying in 3 seconds...');
-      setTimeout(() => initWebSocket(authToken), 3000);
+      setTimeout(() => {
+        const currentGuest = localStorage.getItem('haven_guest_id');
+        initWebSocket(authToken, currentGuest);
+      }, 3000);
     };
   }
 
@@ -342,6 +365,28 @@ import { escapeHtml } from './shared/chat.js';
         }
         break;
       }
+
+      case 'PLAYER_EMOTED': {
+        const { fromPlayerId, emote, targetPlayerId } = msg.payload;
+        // Spawn floating hearts if hug or heart
+        if (emote === 'hug' || emote === 'heart') {
+          const fromP = fromPlayerId === selfPlayer.id ? selfPlayer : otherPlayers.get(fromPlayerId);
+          if (fromP) spawnEmoteHearts(fromP.x, fromP.y);
+          if (targetPlayerId) {
+            const toP = targetPlayerId === selfPlayer.id ? selfPlayer : otherPlayers.get(targetPlayerId);
+            if (toP) spawnEmoteHearts(toP.x, toP.y);
+          }
+        }
+        break;
+      }
+
+      case 'ROOM_STYLE_UPDATED': {
+        if (msg.payload.roomId === currentRoom.id) {
+          if (msg.payload.flooring) currentRoom.flooring = msg.payload.flooring;
+          if (msg.payload.wallpaper) currentRoom.wallpaper = msg.payload.wallpaper;
+        }
+        break;
+      }
     }
   }
 
@@ -438,6 +483,19 @@ import { escapeHtml } from './shared/chat.js';
       targetIndicator.alpha -= dt * 1.5;
       if (targetIndicator.alpha <= 0) targetIndicator = null;
     }
+
+    // Update floating heart particles
+    for (let i = floatingHearts.length - 1; i >= 0; i--) {
+      const h = floatingHearts[i];
+      h.life -= dt;
+      if (h.life <= 0) {
+        floatingHearts.splice(i, 1);
+        continue;
+      }
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+      h.alpha = h.life / h.maxLife;
+    }
   }
 
   function updatePlayerMovement(p, dt) {
@@ -504,15 +562,58 @@ import { escapeHtml } from './shared/chat.js';
         drawSpeechBubble(entity.player);
       }
     });
+
+    // Render floating emote heart particles
+    renderFloatingHearts();
+  }
+
+  function spawnEmoteHearts(gx, gy) {
+    const pt = toScreen(gx, gy);
+    for (let i = 0; i < 7; i++) {
+      floatingHearts.push({
+        x: pt.x + (Math.random() - 0.5) * 30,
+        y: pt.y - 40 + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 40,
+        vy: -40 - Math.random() * 50,
+        scale: 0.8 + Math.random() * 0.6,
+        alpha: 1.0,
+        life: 1.8 + Math.random() * 0.5,
+        maxLife: 1.8 + Math.random() * 0.5
+      });
+    }
+  }
+
+  function renderFloatingHearts() {
+    for (let i = floatingHearts.length - 1; i >= 0; i--) {
+      const h = floatingHearts[i];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, h.alpha);
+      ctx.font = `${Math.round(18 * h.scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💖', h.x, h.y);
+      ctx.restore();
+    }
   }
 
   // ==========================================================================
   // Isometric Drawing Helpers
   // ==========================================================================
+  const WALL_HEIGHT = 80;
+
   function drawIsometricFloor() {
     const isPlaza = currentRoom.id === 'plaza' || !currentRoom.id.startsWith('loft_');
     const isLoft = currentRoom.id.startsWith('loft_');
+    const flooring = currentRoom.flooring || (isLoft ? 'parquet' : 'marble');
+    const wallpaper = currentRoom.wallpaper || (isLoft ? 'cozy_wood' : 'slate');
 
+    // 1. Draw North-West Wall (y = 0 along x = 0..GRID_SIZE)
+    drawNorthWestWall(wallpaper);
+
+    // 2. Draw North-East Wall (x = 0 along y = 0..GRID_SIZE)
+    drawNorthEastWall(wallpaper);
+
+    // 3. Draw Floor Tiles
     for (let x = 0; x < GRID_SIZE; x++) {
       for (let y = 0; y < GRID_SIZE; y++) {
         const pt = toScreen(x, y);
@@ -524,15 +625,20 @@ import { escapeHtml } from './shared/chat.js';
         ctx.lineTo(pt.x - TILE_WIDTH / 2, pt.y + TILE_HEIGHT / 2);
         ctx.closePath();
 
-        // Floor styling
-        if (isPlaza) {
-          // Marble checkerboard
+        // Check if this tile is the interactive doorway
+        const isDoorTile = (x === Math.floor(GRID_SIZE / 2) && y === 0);
+
+        if (isDoorTile) {
+          ctx.fillStyle = '#f59e0b';
+        } else if (flooring === 'marble') {
           ctx.fillStyle = (x + y) % 2 === 0 ? '#1e293b' : '#334155';
-        } else if (isLoft) {
-          // Warm hardwood parquet (personal loft)
+        } else if (flooring === 'parquet') {
           ctx.fillStyle = (x + y) % 2 === 0 ? '#78350f' : '#92400e';
+        } else if (flooring === 'plush_carpet') {
+          ctx.fillStyle = (x + y) % 2 === 0 ? '#4c1d95' : '#581c87';
+        } else if (flooring === 'slate') {
+          ctx.fillStyle = (x + y) % 2 === 0 ? '#0f172a' : '#1e293b';
         } else {
-          // Default to plaza style
           ctx.fillStyle = (x + y) % 2 === 0 ? '#1e293b' : '#334155';
         }
         ctx.fill();
@@ -543,6 +649,161 @@ import { escapeHtml } from './shared/chat.js';
         ctx.stroke();
       }
     }
+
+    // 4. Draw Interactive Doorway Frame at (center, 0)
+    drawInteractiveDoorway();
+  }
+
+  function drawNorthWestWall(wallpaper) {
+    let topColor = '#3b4252';
+    let bottomColor = '#2e3440';
+    let baseboardColor = '#1e222a';
+
+    if (wallpaper === 'cozy_wood') {
+      topColor = '#451a03';
+      bottomColor = '#2d1102';
+      baseboardColor = '#1a0a01';
+    } else if (wallpaper === 'brick') {
+      topColor = '#7c2d12';
+      bottomColor = '#431407';
+      baseboardColor = '#270a04';
+    } else if (wallpaper === 'pastel') {
+      topColor = '#701a75';
+      bottomColor = '#4a044e';
+      baseboardColor = '#2e0231';
+    }
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const p0 = toScreen(x, 0);
+      const p1 = toScreen(x + 1, 0);
+
+      // Wall quad (vertical extrusion upwards)
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p1.x, p1.y - WALL_HEIGHT);
+      ctx.lineTo(p0.x, p0.y - WALL_HEIGHT);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(0, p0.y - WALL_HEIGHT, 0, p0.y);
+      grad.addColorStop(0, topColor);
+      grad.addColorStop(1, bottomColor);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Baseboard trim
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p1.x, p1.y - 8);
+      ctx.lineTo(p0.x, p0.y - 8);
+      ctx.closePath();
+      ctx.fillStyle = baseboardColor;
+      ctx.fill();
+    }
+  }
+
+  function drawNorthEastWall(wallpaper) {
+    let topColor = '#2e3440';
+    let bottomColor = '#1f232a';
+    let baseboardColor = '#15181d';
+
+    if (wallpaper === 'cozy_wood') {
+      topColor = '#361402';
+      bottomColor = '#200c01';
+      baseboardColor = '#120600';
+    } else if (wallpaper === 'brick') {
+      topColor = '#5c1d09';
+      bottomColor = '#310d05';
+      baseboardColor = '#1c0702';
+    } else if (wallpaper === 'pastel') {
+      topColor = '#551259';
+      bottomColor = '#340337';
+      baseboardColor = '#1f0121';
+    }
+
+    for (let y = 0; y < GRID_SIZE; y++) {
+      const p0 = toScreen(0, y);
+      const p1 = toScreen(0, y + 1);
+
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p1.x, p1.y - WALL_HEIGHT);
+      ctx.lineTo(p0.x, p0.y - WALL_HEIGHT);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(0, p0.y - WALL_HEIGHT, 0, p0.y);
+      grad.addColorStop(0, topColor);
+      grad.addColorStop(1, bottomColor);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Baseboard trim
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p1.x, p1.y - 8);
+      ctx.lineTo(p0.x, p0.y - 8);
+      ctx.closePath();
+      ctx.fillStyle = baseboardColor;
+      ctx.fill();
+    }
+  }
+
+  function drawInteractiveDoorway() {
+    const doorX = Math.floor(GRID_SIZE / 2);
+    const p0 = toScreen(doorX, 0);
+    const p1 = toScreen(doorX + 1, 0);
+    const doorHeight = 62;
+
+    // Doorway opening on North-West wall
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.lineTo(p1.x, p1.y - doorHeight);
+    ctx.lineTo(p0.x, p0.y - doorHeight);
+    ctx.closePath();
+
+    // Portal gradient glow
+    const portalGrad = ctx.createLinearGradient(0, p0.y - doorHeight, 0, p0.y);
+    portalGrad.addColorStop(0, '#0f172a');
+    portalGrad.addColorStop(1, '#6366f1');
+    ctx.fillStyle = portalGrad;
+    ctx.fill();
+
+    // Golden frame border
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Doorway sign badge
+    const midX = (p0.x + p1.x) / 2;
+    const midY = (p0.y + p1.y) / 2 - doorHeight - 12;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.beginPath();
+    ctx.roundRect(midX - 35, midY - 9, 70, 18, 9);
+    ctx.fill();
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = 'bold 9px Quicksand, sans-serif';
+    ctx.fillStyle = '#fbbf24';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const isLoft = currentRoom.id.startsWith('loft_');
+    ctx.fillText(isLoft ? '🚪 PLAZA' : '🚪 MY LOFT', midX, midY);
+    ctx.restore();
   }
 
   function drawTargetRipple(t) {
@@ -770,8 +1031,54 @@ import { escapeHtml } from './shared/chat.js';
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
-    const grid = toGrid(sx, sy);
 
+    // Close open context menu if clicking outside
+    if (!playerContextMenu.classList.contains('hidden')) {
+      playerContextMenu.classList.add('hidden');
+    }
+
+    // 1. Check if clicking on another player (Avatar Hit Test for Context Menu)
+    for (const [pId, p] of otherPlayers) {
+      const pt = toScreen(p.x, p.y);
+      const cx = pt.x;
+      const cy = pt.y + TILE_HEIGHT / 2 - 20; // center of avatar torso/head
+      const dx = sx - cx;
+      const dy = sy - cy;
+      if (Math.hypot(dx, dy) < 28) {
+        // Hit detected on other player!
+        openPlayerContextMenu(p, e.clientX, e.clientY);
+        return;
+      }
+    }
+
+    // 2. Check if clicking on the Interactive Doorway (at doorX = Math.floor(GRID_SIZE / 2), y = 0)
+    const doorX = Math.floor(GRID_SIZE / 2);
+    const doorPt0 = toScreen(doorX, 0);
+    const doorPt1 = toScreen(doorX + 1, 0);
+    const doorMidX = (doorPt0.x + doorPt1.x) / 2;
+    const doorMidY = (doorPt0.y + doorPt1.y) / 2 - 30; // middle of doorway frame
+    if (Math.hypot(sx - doorMidX, sy - doorMidY) < 36) {
+      // Toggle room: if in plaza, switch to personal loft; if in loft, switch to plaza
+      const isLoft = currentRoom.id.startsWith('loft_');
+      let targetRoomId = 'plaza';
+      if (!isLoft) {
+        // Find player's loft ID from room-select options or user's derived loft ID
+        const loftOption = Array.from(document.getElementById('room-select').options)
+          .find(opt => opt.value.startsWith('loft_'));
+        if (loftOption) {
+          targetRoomId = loftOption.value;
+        }
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'SWITCH_ROOM',
+          payload: { roomId: targetRoomId }
+        }));
+      }
+      return;
+    }
+
+    const grid = toGrid(sx, sy);
     if (grid.x < 0 || grid.x > GRID_SIZE || grid.y < 0 || grid.y > GRID_SIZE) return;
 
     const isPersonalLoft = currentRoom.id.startsWith('loft_');
@@ -947,6 +1254,38 @@ import { escapeHtml } from './shared/chat.js';
         }
       });
     }
+  });
+
+  // Flooring style selector chips
+  document.querySelectorAll('#flooring-options .style-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#flooring-options .style-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const flooring = chip.getAttribute('data-flooring');
+      currentRoom.flooring = flooring;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'UPDATE_ROOM_STYLE',
+          payload: { roomId: currentRoom.id, flooring }
+        }));
+      }
+    });
+  });
+
+  // Wallpaper style selector chips
+  document.querySelectorAll('#wallpaper-options .style-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#wallpaper-options .style-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const wallpaper = chip.getAttribute('data-wallpaper');
+      currentRoom.wallpaper = wallpaper;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'UPDATE_ROOM_STYLE',
+          payload: { roomId: currentRoom.id, wallpaper }
+        }));
+      }
+    });
   });
 
   // ==========================================================================
@@ -1375,13 +1714,139 @@ import { escapeHtml } from './shared/chat.js';
     pmTextInput.value = '';
   });
 
+  // ==========================================================================
+  // Player Context Menu Logic
+  // ==========================================================================
+  function openPlayerContextMenu(player, screenX, screenY) {
+    activeContextPlayer = player;
+    ctxPlayerName.textContent = player.name || 'Player';
+
+    // Position menu near the click coordinates, clamped within window bounds
+    const menuWidth = 180;
+    const menuHeight = 220;
+    const posX = Math.min(screenX + 10, window.innerWidth - menuWidth - 20);
+    const posY = Math.min(screenY + 10, window.innerHeight - menuHeight - 20);
+
+    playerContextMenu.style.left = `${Math.max(10, posX)}px`;
+    playerContextMenu.style.top = `${Math.max(10, posY)}px`;
+    playerContextMenu.classList.remove('hidden');
+  }
+
+  document.getElementById('btn-close-ctx-menu').addEventListener('click', () => {
+    playerContextMenu.classList.add('hidden');
+  });
+
+  document.getElementById('ctx-btn-hug').addEventListener('click', () => {
+    if (!activeContextPlayer) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'PLAYER_EMOTE',
+        payload: {
+          emote: 'hug',
+          targetPlayerId: activeContextPlayer.id,
+          targetPlayerName: activeContextPlayer.name
+        }
+      }));
+    }
+    playerContextMenu.classList.add('hidden');
+  });
+
+  document.getElementById('ctx-btn-wave').addEventListener('click', () => {
+    if (!activeContextPlayer) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'PLAYER_EMOTE',
+        payload: {
+          emote: 'wave',
+          targetPlayerId: activeContextPlayer.id,
+          targetPlayerName: activeContextPlayer.name
+        }
+      }));
+    }
+    playerContextMenu.classList.add('hidden');
+  });
+
+  document.getElementById('ctx-btn-friend').addEventListener('click', () => {
+    if (!activeContextPlayer) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'SEND_FRIEND_REQUEST',
+        payload: { targetPlayerName: activeContextPlayer.name }
+      }));
+      appendChatMessage('system', `Sent friend request to ${activeContextPlayer.name}!`);
+    }
+    playerContextMenu.classList.add('hidden');
+  });
+
+  document.getElementById('ctx-btn-visit').addEventListener('click', () => {
+    if (!activeContextPlayer) return;
+    // Loft IDs are derived as loft_<suffix> where suffix is id without usr_
+    const suffix = activeContextPlayer.id.replace(/^usr_/, '').substring(0, 12);
+    const loftRoomId = `loft_${suffix}`;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'SWITCH_ROOM',
+        payload: { roomId: loftRoomId }
+      }));
+    }
+    playerContextMenu.classList.add('hidden');
+  });
+
+  document.getElementById('ctx-btn-whisper').addEventListener('click', () => {
+    if (!activeContextPlayer) return;
+    chatInput.value = `/pm ${activeContextPlayer.name} `;
+    chatInput.focus();
+    playerContextMenu.classList.add('hidden');
+  });
+
+  // ==========================================================================
+  // Welcome / Auth Gate Modal Logic
+  // ==========================================================================
+  btnWelcomeGuest.addEventListener('click', () => {
+    welcomeOverlay.classList.add('hidden');
+    // Ensure stable guest ID in localStorage
+    let guestId = localStorage.getItem('haven_guest_id');
+    if (!guestId) {
+      guestId = 'usr_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem('haven_guest_id', guestId);
+    }
+    initWebSocket(null, guestId);
+  });
+
+  btnWelcomeSignin.addEventListener('click', () => {
+    welcomeOverlay.classList.add('hidden');
+    accountModal.classList.remove('hidden');
+    accountFormSignedOut.classList.remove('hidden');
+    accountFormLoggedIn.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    signupForm.classList.add('hidden');
+    loginUsernameInput.focus();
+  });
+
+  btnWelcomeSignup.addEventListener('click', () => {
+    welcomeOverlay.classList.add('hidden');
+    accountModal.classList.remove('hidden');
+    accountFormSignedOut.classList.remove('hidden');
+    accountFormLoggedIn.classList.add('hidden');
+    signupForm.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    signupUsernameInput.focus();
+  });
+
   // --- Start Client ---
-  // Check for persisted account token from localStorage
+  // Check for persisted account token or guest ID from localStorage
   const storedToken = localStorage.getItem('haven_token');
+  const storedGuestId = localStorage.getItem('haven_guest_id');
+
   if (storedToken) {
     authPlayerId = storedToken;
     selfId = storedToken;
+    initWebSocket(storedToken, null);
+  } else if (storedGuestId) {
+    initWebSocket(null, storedGuestId);
+  } else {
+    // Show Welcome / Auth Gate overlay
+    welcomeOverlay.classList.remove('hidden');
   }
 
-  initWebSocket(storedToken);
   requestAnimationFrame(gameLoop);

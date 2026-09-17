@@ -13,7 +13,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { RoomManager, serializePlayer, getUserLoftRoomId } from './rooms.ts';
+import { RoomManager, serializePlayer, serializeRoom, getUserLoftRoomId } from './rooms.ts';
 import { handleMessage } from './protocol.ts';
 import * as db from './db.ts';
 
@@ -116,6 +116,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   // unauthenticated players get a temporary guest ID (backward compatibility).
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const authToken = url.searchParams.get('token') || (req.headers['x-haven-token'] as string) || null;
+  const guestToken = url.searchParams.get('guestId') || null;
 
   let playerId: string;
   let authUserId: string | null = null;
@@ -124,8 +125,11 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     // The token is the player's persistent account ID
     playerId = authToken;
     authUserId = authToken;
+  } else if (guestToken && (guestToken.startsWith('usr_') || guestToken.startsWith('guest_'))) {
+    // Persistent guest session (stored in localStorage)
+    playerId = guestToken;
   } else {
-    // Guest / no-auth: generate a temporary session ID (not persisted between server restarts)
+    // New guest session
     playerId = 'usr_' + Math.random().toString(36).substring(2, 9);
   }
 
@@ -196,6 +200,9 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     if (dbLoftFurniture && dbLoftFurniture.length > 0) {
       rooms.setFurniture(loftRoom.id, dbLoftFurniture);
     }
+    if (dbLoft.flooring || dbLoft.wallpaper) {
+      rooms.setRoomStyle(loftRoom.id, dbLoft.flooring, dbLoft.wallpaper);
+    }
   }
 
   // Assign to initial room
@@ -209,7 +216,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     payload: {
       selfId: playerId,
       player: serializePlayer(player),
-      room: { id: plaza!.id, name: plaza!.name, furniture: plaza!.furniture },
+      room: serializeRoom(plaza!),
       otherPlayers: rooms.othersIn('plaza', playerId),
       // Inform the client about available personal lofts
       playerLoftRoomId: playerLoftId,

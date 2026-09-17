@@ -39,6 +39,13 @@ async function run() {
     await page.goto(LOCAL_URL, { waitUntil: 'networkidle' });
     const title = await page.title();
     assert.ok(title.includes('HavenWorld'), `title is "${title}"`);
+
+    // Dismiss welcome gate if visible
+    const guestBtn = await page.$('#btn-welcome-guest');
+    if (guestBtn) {
+      const isVisible = await guestBtn.isVisible().catch(() => false);
+      if (isVisible) await guestBtn.click();
+    }
   });
 
   // Test 2: Canvas has rendered floor

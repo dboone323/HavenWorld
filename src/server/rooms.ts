@@ -33,6 +33,8 @@ export interface Room {
   players: Map<string, Player>;
   furniture: PlacedFurniture[];
   ownerId: string | null; // for private per-user rooms
+  flooring: string;       // e.g. 'marble', 'parquet', 'plush_carpet', 'slate'
+  wallpaper: string;      // e.g. 'slate', 'cozy_wood', 'brick', 'pastel'
 }
 
 const plazaFurniture: PlacedFurniture[] = [
@@ -61,12 +63,25 @@ export function createDefaultRooms(): Record<string, Room> {
   return {
     plaza: {
       id: 'plaza', name: 'Central Plaza & Lounge', isPublic: true,
-      players: new Map(), furniture: cloneFurniture(plazaFurniture), ownerId: null
+      players: new Map(), furniture: cloneFurniture(plazaFurniture), ownerId: null,
+      flooring: 'marble', wallpaper: 'slate',
     },
     sanctuary_loft: {
       id: 'sanctuary_loft', name: 'Cozy Personal Loft', isPublic: false,
-      players: new Map(), furniture: cloneFurniture(loftFurniture), ownerId: null
+      players: new Map(), furniture: cloneFurniture(loftFurniture), ownerId: null,
+      flooring: 'parquet', wallpaper: 'cozy_wood',
     },
+  };
+}
+
+/** Project a room object into the shape transmitted to clients. */
+export function serializeRoom(room: Room): RoomInfo {
+  return {
+    id: room.id,
+    name: room.name,
+    furniture: room.furniture,
+    flooring: room.flooring || 'parquet',
+    wallpaper: room.wallpaper || 'cozy_wood',
   };
 }
 
@@ -126,6 +141,8 @@ export class RoomManager {
       players: new Map(),
       furniture: [],
       ownerId: playerId,
+      flooring: 'parquet',
+      wallpaper: 'cozy_wood',
     };
     return this.rooms[roomId];
   }
@@ -194,6 +211,14 @@ export class RoomManager {
     return room.furniture.splice(idx, 1)[0];
   }
 
+  setRoomStyle(roomId: string, flooring?: string, wallpaper?: string): void {
+    const room = this.rooms[roomId];
+    if (room) {
+      if (flooring) room.flooring = flooring;
+      if (wallpaper) room.wallpaper = wallpaper;
+    }
+  }
+
   clearFurniture(roomId: string): PlacedFurniture[] {
     const room = this.rooms[roomId];
     if (!room) return [];
@@ -203,4 +228,4 @@ export class RoomManager {
   }
 }
 
-export default { RoomManager, createDefaultRooms, serializePlayer, getUserLoftRoomId };
+export default { RoomManager, createDefaultRooms, serializePlayer, serializeRoom, getUserLoftRoomId };

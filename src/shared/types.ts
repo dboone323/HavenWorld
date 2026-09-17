@@ -87,6 +87,18 @@ export interface SendPrivateMessagePayload {
   text: string;
 }
 
+export interface PlayerEmotePayload {
+  emote: 'hug' | 'wave' | 'heart';
+  targetPlayerId?: string;
+  targetPlayerName?: string;
+}
+
+export interface UpdateRoomStylePayload {
+  roomId: string;
+  flooring?: string;
+  wallpaper?: string;
+}
+
 export type ClientMessage =
   | { type: 'JOIN_ROOM'; payload: JoinRoomPayload }
   | { type: 'MOVE_TO'; payload: MoveToPayload }
@@ -105,7 +117,9 @@ export type ClientMessage =
   | { type: 'SEND_FRIEND_REQUEST'; payload: SendFriendRequestPayload }
   | { type: 'ACCEPT_FRIEND_REQUEST'; payload: AcceptFriendRequestPayload }
   | { type: 'SEND_PRIVATE_MESSAGE'; payload: SendPrivateMessagePayload }
-  | { type: 'GET_PRIVATE_MESSAGES'; payload: null };
+  | { type: 'GET_PRIVATE_MESSAGES'; payload: null }
+  | { type: 'PLAYER_EMOTE'; payload: PlayerEmotePayload }
+  | { type: 'UPDATE_ROOM_STYLE'; payload: UpdateRoomStylePayload };
 
 /* ── Outbound (Server → Client) ───────────────────────────────── */
 
@@ -151,6 +165,8 @@ export interface RoomInfo {
   id: string;
   name: string;
   furniture: PlacedFurniture[];
+  flooring?: string;
+  wallpaper?: string;
 }
 
 /* ── Convenience types ── */
@@ -234,7 +250,10 @@ export type ServerMessage =
   | { type: 'DAILY_BONUS_ERROR'; payload: { message: string; lastClaim: number; nextClaimAvailable: number } }
   | { type: 'DAILY_COOLDOWN_UPDATE'; payload: { canClaim: boolean; lastClaim: number; nextClaimAvailable: number; timeRemainingMs: number } }
   // Furniture errors
-  | { type: 'FURNITURE_ERROR'; payload: { message: string } };
+  | { type: 'FURNITURE_ERROR'; payload: { message: string } }
+  // Social & Room Customization
+  | { type: 'PLAYER_EMOTED'; payload: { fromPlayerId: string; fromPlayerName: string; emote: string; targetPlayerId?: string; targetPlayerName?: string; text: string } }
+  | { type: 'ROOM_STYLE_UPDATED'; payload: { roomId: string; flooring: string; wallpaper: string } };
 
 /* ── Convenience: narrow a typed payload from a raw envelope ── */
 export type ClientMessageOf<T extends ClientMessage['type']> = Extract<ClientMessage, { type: T }>;

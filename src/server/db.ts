@@ -104,9 +104,13 @@ if (mode !== 'supabase') {
         name TEXT NOT NULL,
         is_public INTEGER DEFAULT 1,
         likes_count INTEGER DEFAULT 0,
+        flooring TEXT DEFAULT 'parquet',
+        wallpaper TEXT DEFAULT 'cozy_wood',
         created_at TEXT DEFAULT (datetime('now'))
       );
     `);
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN flooring TEXT DEFAULT 'parquet'"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN wallpaper TEXT DEFAULT 'cozy_wood'"); } catch {}
     console.log(`🗄️  Native Local SQLite Database active: ${dbPath}`);
     console.log(`✨ All room furniture, avatars, and coins will automatically save to disk!`);
   } catch (e) {
@@ -292,7 +296,7 @@ export async function loginAccount(username: string, password: string): Promise<
  * Get or create a personal sanctuary loft room for a given player.
  * Each user gets their own private loft so they can decorate independently.
  */
-export async function getUserSanctuaryRoom(userId: string, playerName: string): Promise<{ roomId: string; roomCode: string; name: string } | null> {
+export async function getUserSanctuaryRoom(userId: string, playerName: string): Promise<{ roomId: string; roomCode: string; name: string; flooring?: string; wallpaper?: string } | null> {
   // Derive room ID consistently with getUserLoftRoomId in rooms.ts
   const suffix = userId.replace(/^usr_/, '').substring(0, 12);
   const roomId = `loft_${suffix}`;
@@ -309,13 +313,14 @@ export async function getUserSanctuaryRoom(userId: string, playerName: string): 
     try {
       // Try to fetch existing room
       const { data: room, error: roomErr } = await supabase!
-        .from('rooms').select('id, room_code, name').eq('room_code', roomId).maybeSingle();
+        .from('rooms').select('id, room_code, name, flooring, wallpaper').eq('room_code', roomId).maybeSingle();
       if (roomErr) throw roomErr;
-      if (room) return { roomId: room.id, roomCode: room.room_code, name: room.name };
+      if (room) return { roomId: room.id, roomCode: room.room_code, name: room.name, flooring: room.flooring || 'parquet', wallpaper: room.wallpaper || 'cozy_wood' };
 
       // Create the room
       const { error: createErr } = await supabase!.from('rooms').insert({
-        id: roomId, owner_id: userId, room_code: roomId, name: roomName, is_public: false
+        id: roomId, owner_id: userId, room_code: roomId, name: roomName, is_public: false,
+        flooring: 'parquet', wallpaper: 'cozy_wood'
       });
       if (createErr) throw createErr;
 
@@ -327,7 +332,7 @@ export async function getUserSanctuaryRoom(userId: string, playerName: string): 
       const { error: furnErr } = await supabase!.from('placed_furniture').insert(furnitureRows);
       if (furnErr) throw furnErr;
 
-      return { roomId, roomCode: roomId, name: roomName };
+      return { roomId, roomCode: roomId, name: roomName, flooring: 'parquet', wallpaper: 'cozy_wood' };
     } catch (err) {
       console.warn('Supabase getUserSanctuaryRoom warning:', (err as Error).message);
       return null;
@@ -335,12 +340,12 @@ export async function getUserSanctuaryRoom(userId: string, playerName: string): 
   } else if (mode === 'sqlite') {
     try {
       // Create room table if not exists (for memory mode compatibility)
-      const checkStmt = sqliteDb!.prepare('SELECT id, name FROM rooms WHERE room_code = ?');
-      const existing = checkStmt.get(roomId) as { id: string; name: string } | undefined;
-      if (existing) return { roomId: existing.id, roomCode: roomId, name: existing.name };
+      const checkStmt = sqliteDb!.prepare('SELECT id, name, flooring, wallpaper FROM rooms WHERE room_code = ?');
+      const existing = checkStmt.get(roomId) as { id: string; name: string; flooring?: string; wallpaper?: string } | undefined;
+      if (existing) return { roomId: existing.id, roomCode: roomId, name: existing.name, flooring: existing.flooring || 'parquet', wallpaper: existing.wallpaper || 'cozy_wood' };
 
       const insertRoomStmt = sqliteDb!.prepare(`
-        INSERT INTO rooms (id, owner_id, room_code, name, is_public) VALUES (?, ?, ?, ?, 0)
+        INSERT INTO rooms (id, owner_id, room_code, name, is_public, flooring, wallpaper) VALUES (?, ?, ?, ?, 0, 'parquet', 'cozy_wood')
       `);
       insertRoomStmt.run(roomId, userId, roomId, roomName);
 
@@ -353,9 +358,70 @@ export async function getUserSanctuaryRoom(userId: string, playerName: string): 
         insertFurnStmt.run(f.id, roomId, f.itemType, f.x, f.y);
       }
 
-      return { roomId, roomCode: roomId, name: roomName };
+      return { roomId, roomCode: roomId, name: roomName, flooring: 'parquet', wallpaper: 'cozy_wood' };
     } catch (e: any) {
       console.warn('SQLite getUserSanctuaryRoom warning:', e.message);
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Save room flooring and wallpaper styles.
+ */
+export async function saveRoomStyle(roomId: string, flooring?: string, wallpaper?: string): Promise<void> {
+  if (!flooring && !wallpaper) return;
+  if (mode === 'supabase') {
+    try {
+      const updates: Record<string, string> = {};
+      if (flooring) updates.flooring = flooring;
+      if (wallpaper) updates.wallpaper = wallpaper;
+      await supabase!.from('rooms').update(updates).eq('id', roomId);
+    } catch (err) {
+      console.warn('Supabase saveRoomStyle warning:', (err as Error).message);
+    }
+    return;
+  }
+  if (mode === 'sqlite') {
+    try {
+      if (flooring && wallpaper) {
+        const stmt = sqliteDb!.prepare('UPDATE rooms SET flooring = ?, wallpaper = ? WHERE id = ?');
+        stmt.run(flooring, wallpaper, roomId);
+      } else if (flooring) {
+        const stmt = sqliteDb!.prepare('UPDATE rooms SET flooring = ? WHERE id = ?');
+        stmt.run(flooring, roomId);
+      } else if (wallpaper) {
+        const stmt = sqliteDb!.prepare('UPDATE rooms SET wallpaper = ? WHERE id = ?');
+        stmt.run(wallpaper, roomId);
+      }
+    } catch (e: any) {
+      console.warn('SQLite saveRoomStyle warning:', e.message);
+    }
+  }
+}
+
+/**
+ * Get room flooring and wallpaper styles.
+ */
+export async function getRoomStyle(roomId: string): Promise<{ flooring: string; wallpaper: string } | null> {
+  if (mode === 'supabase') {
+    try {
+      const { data, error } = await supabase!
+        .from('rooms').select('flooring, wallpaper').eq('id', roomId).maybeSingle();
+      if (error || !data) return null;
+      return { flooring: data.flooring || 'parquet', wallpaper: data.wallpaper || 'cozy_wood' };
+    } catch {
+      return null;
+    }
+  }
+  if (mode === 'sqlite') {
+    try {
+      const stmt = sqliteDb!.prepare('SELECT flooring, wallpaper FROM rooms WHERE id = ?');
+      const row = stmt.get(roomId) as { flooring?: string; wallpaper?: string } | undefined;
+      if (!row) return null;
+      return { flooring: row.flooring || 'parquet', wallpaper: row.wallpaper || 'cozy_wood' };
+    } catch {
       return null;
     }
   }
@@ -883,5 +949,6 @@ export default {
   saveMessage, getMessages,
   signupAccount, loginAccount,
   getUserSanctuaryRoom, getLoftFurniture, getLastDailyClaim,
+  saveRoomStyle, getRoomStyle,
   DAILY_COOLDOWN,
 };
