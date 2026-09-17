@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>HavenWorld — Your Escape from Reality</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -116,6 +121,7 @@
           <span id="ctx-player-name">Player</span>
           <button id="btn-close-ctx-menu" class="close-btn">✕</button>
         </div>
+        <div id="ctx-player-status" class="context-menu-status hidden"></div>
         <div class="context-menu-actions">
           <button id="ctx-btn-trade" class="ctx-action-btn">🤝 Trade</button>
           <button id="ctx-btn-hug" class="ctx-action-btn">🫂 Hug</button>
@@ -465,6 +471,16 @@
                 <div class="passport-progress-bar" id="passport-progress-fill" style="width: 0%;"></div>
               </div>
               <span class="passport-progress-label" id="passport-progress-label">0 / 7 Stamps Unlocked (0%)</span>
+            </div>
+          </div>
+          <div class="passport-status-section" style="margin: 12px 0 16px; padding: 12px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;">
+            <label for="status-message-input" style="display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 6px;">
+              💭 Custom Status
+            </label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="status-message-input" maxlength="80" placeholder="What are you up to? (e.g. Baking pizzas 🍕)"
+                style="flex: 1; background: rgba(30,41,59,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px 12px; color: #f8fafc; font-family: inherit; font-size: 13px;">
+              <button id="btn-save-status" class="primary-btn" style="padding: 8px 16px; font-size: 12px; white-space: nowrap;">Save</button>
             </div>
           </div>
           <h4 class="passport-section-title">Achievement Stamps</h4>

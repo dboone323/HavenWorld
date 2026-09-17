@@ -65,7 +65,7 @@ const loftFurniture: PlacedFurniture[] = [
   { id: 'f_neon', type: 'neon', x: 7, y: 1, rotation: 0, elevation: 0, parentSurfaceId: null },
 ];
 
-function cloneFurniture(arr: PlacedFurniture[]): PlacedFurniture[] {
+export function cloneFurniture(arr: PlacedFurniture[]): PlacedFurniture[] {
   return arr.map((f) => ({ ...f }));
 }
 
@@ -192,12 +192,17 @@ export class RoomManager {
     if (room) room.players.delete(player.id);
   }
 
-  broadcast(roomId: string, message: Record<string, unknown>, exclude: WebSocket | null = null): void {
+  broadcast(
+    roomId: string,
+    message: Record<string, unknown>,
+    exclude: WebSocket | null = null,
+    filter: ((p: Player) => boolean) | null = null,
+  ): void {
     const room = this.rooms[roomId];
     if (!room) return;
     const data = JSON.stringify(message);
     for (const p of room.players.values()) {
-      if (p.ws !== exclude && p.ws.readyState === WS_OPEN) {
+      if (p.ws !== exclude && p.ws.readyState === WS_OPEN && (!filter || filter(p))) {
         p.ws.send(data);
       }
     }

@@ -125,6 +125,8 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   const TILE_WIDTH = 64;
   const TILE_HEIGHT = 32;
   const GRID_SIZE = 12;
+  // Emotes whose animation replaces the locomotion pose in the world renderer.
+  const POSE_EMOTES = ['dance', 'run', 'lie'];
 
     // Bind canvas-derived origin to the shared pure isometric converters.
   function origin() { return { x: canvas.width / 2, y: Math.max(120, canvas.height * 0.22) }; }
@@ -1475,7 +1477,10 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
 
     ctx.save();
 
-    const pose = p.pose || (isSitting ? 'sit' : p.activeEmote?.type === 'dance' ? 'dance' : p.isWalking ? 'walk' : 'idle');
+    // Emote poses (dance/run/lie) override locomotion so every documented frame
+    // set is reachable in-world; explicit p.pose still wins for forced poses.
+    const emotePose = p.activeEmote && POSE_EMOTES.includes(p.activeEmote.type) ? p.activeEmote.type : null;
+    const pose = p.pose || emotePose || (isSitting ? 'sit' : p.isWalking ? 'walk' : 'idle');
     drawModularAvatar(ctx, av, charX, baseY, { pose, facing, time: performance.now(), wave: waveAngle });
     p.auraState ||= {};
     const auraNow = performance.now();
@@ -1750,13 +1755,15 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       const cx = pt.x;
       const cy = pt.y + TILE_HEIGHT / 2 - 20;
       if (Math.hypot(sx - cx, sy - cy) < 28) {
+        const titleLabel = TITLES[p.title]?.label;
+        const statusText = p.statusMessage || p.identity?.statusMessage;
         hoveredEntity = {
           type: 'player',
           screenX: cx,
           screenY: cy - 36,
           icon: '👤',
-          title: p.name || 'Traveler',
-          hint: 'Click to open player menu'
+          title: `${titleLabel ? `[${titleLabel}] ` : ''}${p.name || 'Traveler'}`,
+          hint: statusText ? `“${statusText}”` : 'Click to open player menu'
         };
         canvas.style.cursor = 'pointer';
         return;
@@ -2292,7 +2299,8 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     } else {
       friendsListEl.innerHTML = friendsData.friends.map(f => `
         <li class="friend-item" data-friendid="${f.friendId}">
-          <span class="friend-name">${f.friendId}</span>
+          <span class="friend-name">${escapeHtml(f.name || f.friendId)}</span>
+          ${f.statusMessage ? `<span class="friend-message">${escapeHtml(f.statusMessage)}</span>` : ''}
           <span class="friend-status ${f.status}">${f.status}</span>
           <button class="pm-btn" title="Send private message">💬</button>
         </li>
@@ -2400,6 +2408,14 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   function openPlayerContextMenu(player, screenX, screenY) {
     activeContextPlayer = player;
     ctxPlayerName.textContent = player.name || 'Player';
+    const ctxStatus = document.getElementById('ctx-player-status');
+    if (player.statusMessage) {
+      ctxStatus.textContent = `“${player.statusMessage}”`;
+      ctxStatus.classList.remove('hidden');
+    } else {
+      ctxStatus.textContent = '';
+      ctxStatus.classList.add('hidden');
+    }
 
     // Position menu near the click coordinates, clamped within window bounds
     const menuWidth = 180;
@@ -2590,6 +2606,12 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
       }
       grid.appendChild(card);
     }
+
+    // Populate and wire custom status input
+    const statusInput = document.getElementById('status-message-input');
+    if (statusInput) {
+      statusInput.value = identityState?.statusMessage || '';
+    }
   }
 
   const passportModal = document.getElementById('passport-modal');
@@ -2604,6 +2626,22 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
   if (btnClosePassport) {
     btnClosePassport.addEventListener('click', () => {
       passportModal.classList.add('hidden');
+    });
+  }
+
+  const btnSaveStatus = document.getElementById('btn-save-status');
+  const statusInput = document.getElementById('status-message-input');
+  if (btnSaveStatus && statusInput) {
+    btnSaveStatus.addEventListener('click', () => {
+      const text = statusInput.value.trim();
+      sendWs({ type: 'UPDATE_IDENTITY', payload: { statusMessage: text } });
+      showToast('💭 Status message updated!', 'info');
+    });
+    statusInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSaveStatus.click();
+      }
     });
   }
 
@@ -2696,6 +2734,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
           <div class="room-card-info">
             <div class="room-card-title">🏠 ${escapeHtml(r.name)}</div>
             <div class="room-card-desc">Owner: ${escapeHtml(r.ownerName)}</div>
+            ${r.statusMessage ? `<div class="room-card-desc friend-message">“${escapeHtml(r.statusMessage)}”</div>` : ''}
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
             <span class="room-occupancy-badge">👥 ${r.count} online</span>
@@ -2865,5 +2904,11 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
     getSelfPlayer: () => selfPlayer,
     get selfPlayer() { return selfPlayer; },
   };
+
+  if ('serviceWorker' in navigator && typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
 
   requestAnimationFrame(gameLoop);

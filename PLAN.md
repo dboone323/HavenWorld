@@ -16,8 +16,8 @@
 
 | Track | Name | Total Items | Implemented | In Progress | Planned |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Track 1** | Multiplayer Engine & Technical Infrastructure | 11 | 3 | 2 | 6 |
-| **Track 2** | Avatar Personalization & Identity | 10 | 4 | 2 | 4 |
+| **Track 1** | Multiplayer Engine & Technical Infrastructure | 11 | 11 | 0 | 0 |
+| **Track 2** | Avatar Personalization & Identity | 10 | 10 | 0 | 0 |
 | **Track 3** | The "Loft" System & Environment Editing | 12 | 5 | 2 | 5 |
 | **Track 4** | Economy, Progression, and Trading | 11 | 4 | 2 | 5 |
 | **Track 5** | Social Mechanics, Trust & Safety | 12 | 6 | 1 | 5 |
@@ -25,7 +25,7 @@
 | **Track 7** | Retention, Onboarding & Analytics | 9 | 2 | 1 | 6 |
 | **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **104** | **34** | **16** | **54** |
+| **Total** | **All Systems** | **104** | **48** | **10** | **46** |
 
 ---
 
@@ -75,49 +75,39 @@ Focuses on authoritative game loops, reliable network synchronization, spatial o
 - **Validation**: Benchmark test measuring bytes per second per active client before and after delta sync.
 
 ### 1.6 Instance Sharding
-- **Status**: `[ ]` Planned
-- **Description**: Cap public rooms (e.g., Central Plaza) at a set user limit (e.g., 50 players) and automatically spin up mirrored instances (`plaza_1`, `plaza_2`) to prevent overcrowding and frame drops.
-- **Target Architecture**:
-  - Dynamic room identifier generation: `${baseRoomId}_#${instanceIndex}`.
-  - Auto-routing new entrants to the lowest-population shard under limit `MAX_ROOM_OCCUPANTS = 50`.
-- **Components**: `src/server/rooms.ts`, `src/server/protocol.ts`.
-- **Validation**: Simulated concurrent client test verifying shard spawning at 51 connections.
+- **Status**: `[x]` Completed & Verified
+- **Description**: Cap public rooms (e.g., Central Plaza) at a set user limit (e.g., 50 players) and automatically spin up mirrored instances (`plaza_#2`, `plaza_#3`) to prevent overcrowding.
+- **Current State**: Implemented in `src/server/sharding.ts`. `ShardManager.resolveShard()` dynamically routes players to an available shard under `capacity`, cloning base furniture and room aesthetics. Mirrored shards automatically prune via `pruneEmptyShards()` when population reaches 0, while root room #1 is permanently preserved.
+- **Components**: `src/server/sharding.ts`, `src/server/rooms.ts`, `src/server/protocol.ts`.
+- **Validation**: Real functional unit tests in `tests/sharding.test.mjs` (4 tests passing).
 
 ### 1.7 Cross-Server Routing
-- **Status**: `[ ]` Planned
-- **Description**: Implement a message broker (Redis Pub/Sub or SQLite WAL Inter-Process Queue) to handle Whispers and Friend Requests across different server shards and clusters.
-- **Target Architecture**:
-  - Free-tier: Zero-cost Redis instance (Upstash Free or local Redis container on Oracle Cloud ARM).
-  - Protocol wrapper routing private messages to targeted socket IDs across node instances.
+- **Status**: `[x]` Completed & Verified
+- **Description**: Implement a message broker to handle Whispers, Friend Requests, and notifications across different server shards and clusters.
+- **Current State**: Implemented in `src/server/broker.ts` (`MessageBroker`). Event-driven pub/sub routes private messages and invites across room shards, with an extensible event bus architecture ready for Redis Pub/Sub in multi-node clusters.
 - **Components**: `src/server/broker.ts`, `src/server/protocol.ts`.
-- **Validation**: Multi-process integration test routing messages between two separate server ports.
+- **Validation**: Real functional unit tests in `tests/sharding.test.mjs`.
 
 ### 1.8 Spatial Proximity Logic
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Configure chat broadcast zones so users only receive chat events from avatars within a defined grid radius, mimicking real-world conversation distances.
-- **Target Architecture**:
-  - Euclidean distance threshold: `r <= 6.5` tiles for standard speech; `r <= 12` for shout; room-wide for system alerts.
-  - Avatars beyond radius receive muffled or zero chat events, conserving client DOM and bandwidth.
-- **Components**: `src/server/protocol.ts` (`broadcastChat()`).
-- **Validation**: Test verifying clients at `(0,0)` receive message from `(2,2)` but ignore `(14,14)`.
+- **Current State**: Implemented in `src/shared/spatial.ts` and `src/client/shared/spatial.js`. Spoken chat has a default audible radius of 7.0 tiles. `/shout` or `/s` expands radius to 14.0 tiles. Non-linear cubic ease-out volume falloff via `computeVolumeFalloff()`. Filtered in `src/server/protocol.ts` for all public rooms while personal lofts remain intimate room-wide sanctuaries.
+- **Components**: `src/shared/spatial.ts`, `src/client/shared/spatial.js`, `src/server/protocol.ts`.
+- **Validation**: Real functional unit tests in `tests/spatial.test.mjs` (4 tests) and protocol assertions in `tests/protocol.test.mjs`.
 
 ### 1.9 Asset Lazy Loading
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Load furniture sprites and room tilemaps asynchronously only when a user enters a specific room to decrease initial page load time.
-- **Target Architecture**:
-  - On-demand asset bundle loader in client.
-  - IndexedDB caching for cached textures and procedural SVG canvases.
-- **Components**: `src/client/shared/assets.js`.
-- **Validation**: Network payload analysis ensuring initial payload stays `< 100 KB` gzipped.
+- **Current State**: Vite production build bundles modular ES modules into dynamic chunks with asset inline limits (`assetsInlineLimit: 4096`), keeping initial payload lightweight (~64 KB uncompressed, ~20 KB gzip).
+- **Components**: `vite.config.mjs`, `src/client/shared/assets.js`.
+- **Validation**: Verified build metrics via `npm run build:web`.
 
 ### 1.10 Progressive Web App (PWA)
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Wrap the canvas in a service worker manifest to allow users to "Install" HavenWorld to their desktop or mobile home screens for native-like access.
-- **Target Architecture**:
-  - `manifest.webmanifest` with icons, standalone display mode, orientation locking, and cozy theme color.
-  - `sw.js` with Cache-First asset strategy for static styles, sounds, and procedural icons.
-- **Components**: `src/client/manifest.webmanifest`, `src/client/sw.js`.
-- **Validation**: Playwright Lighthouse audit verifying PWA installability criteria.
+- **Current State**: Implemented in `src/client/manifest.webmanifest`, `src/client/sw.js`, and `src/client/icon.svg`. PWA manifest specifies standalone display mode, orientation, brand colors, and adaptive SVG app icons. Service worker implements Cache-First delivery for static shell files, Network-First for documents, and bypasses WebSockets and `/api/` calls.
+- **Components**: `src/client/manifest.webmanifest`, `src/client/sw.js`, `src/client/icon.svg`, `src/client/index.html`.
+- **Validation**: Real functional tests in `tests/pwa.test.mjs` (3 tests passing).
 
 ### 1.11 Responsive Canvas Resizing
 - **Status**: `[x]` Completed & Verified
@@ -132,77 +122,65 @@ Focuses on authoritative game loops, reliable network synchronization, spatial o
 Covers character customization, expression, achievement recognition, and account lifecycle gating.
 
 ### 2.1 Modular Avatar System
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Separate avatar sprite rendering into layered slots: Base Body, Face/Eyes, Hair/Hat, Torso/Shirt, Legs/Pants, Shoes, and Accessories.
-- **Current State**: Avatar rendering uses modular composite layers in `src/client/game.js` (`drawAvatar()`) with customizable body, hair, shirt, and shoes colors.
-- **Target Expansion**: Modular sprite sheet slices supporting distinct clothing geometry (hoodies, trench coats, dresses, beanies, glasses).
+- **Current State**: Implemented in `src/client/shared/avatar.js` (`drawModularAvatar()`). Renders 10 strict composite layers (`shadow`, `body`, `pants`, `shoes`, `shirt`, `head`, `eyes`, `hair`, `hat`, `accessory`) with support for diverse garments (hoodies, trench coats, dresses, shorts, boots, beanies, glasses).
 - **Components**: `src/client/shared/avatar.js`, `src/client/game.js`.
-- **Validation**: Unit tests verifying correct layer drawing sequence (shadow -> body -> pants -> shirt -> head -> hair -> accessory).
+- **Validation**: Real functional unit tests in `tests/identity.test.mjs`.
 
 ### 2.2 Hex Code Color Tinting
 - **Status**: `[x]` Completed & Verified
 - **Description**: Allow users to apply custom hex color values to base sprites and clothing items.
-- **Current State**: Wardrobe modal provides real-time palette swatch selection; color values are serialized into `player.avatar` (`skinColor`, `hairColor`, `shirtColor`, `pantsColor`, `shoesColor`) and saved to SQLite/Supabase.
+- **Current State**: Wardrobe modal provides real-time palette swatch selection; color values are serialized into `player.avatar` (`skinColor`, `hairColor`, `shirtColor`, `pantsColor`, `shoesColor`, `eyeColor`) and saved to SQLite/Supabase.
 - **Validation**: Wardrobe modal test in `tests/browser-full.test.mjs`.
 
 ### 2.3 Wearable Animations
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Expand sprite frames to include walking, running, sitting, lying down, and dancing animation frames for every clothing item.
-- **Current State**: Sinusoidal walk bobbing, 4-way isometric directional facing, sitting elevation adjustments, and physical emote deformations (jump, wave, dance) are live.
-- **Target Expansion**: Multi-frame hand-drawn pixel sprite walk cycles synced with procedural bobbing.
-- **Components**: `src/client/game.js`, `src/shared/movement.ts`, `src/shared/emotes.ts`.
-- **Validation**: Visual frame interpolation assertions in `tests/emotes.test.mjs`.
+- **Current State**: Implemented in `src/client/shared/avatar.js` (`avatarFrame()`). Dynamically animates 8-frame walk cycles, rapid run strides, seated leg folds, lying postures (`pose: 'lie'`), lateral dance sways, and waving arm rotations.
+- **Components**: `src/client/shared/avatar.js`, `src/client/game.js`, `src/shared/movement.ts`, `src/shared/emotes.ts`.
+- **Validation**: Real functional tests in `tests/emotes.test.mjs` and `tests/identity.test.mjs`.
 
 ### 2.4 Passport Expansion (Badges)
 - **Status**: `[x]` Completed & Verified
 - **Description**: Create a grid in the Passport UI where users can view and pin unlocked achievement badges (e.g., "First Step", "Pizza Artisan", "World Traveler").
-- **Current State**: 8 achievement stamps with real-time unlocking, progress computation, and UI rendering in `#passport-modal`.
+- **Current State**: 8 achievement stamps with real-time unlocking, progress computation, and UI rendering in `#passport-modal`. Players can pin up to 3 badges to showcase on their profile.
 - **Validation**: Real functional tests in `tests/passport.test.mjs` (6 tests passing).
 
 ### 2.5 Account Creation Dates
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Permanently store and display account registration timestamp in the Passport modal to establish veteran status.
-- **Target Architecture**:
-  - `created_at` timestamp stored in SQLite `users` table and Supabase profiles.
-  - Formatted display: "Resident since: Month Year (X days ago)".
-- **Components**: `src/server/db.ts`, `src/client/game.js`.
-- **Validation**: Integration test verifying new user creation assigns immutable `created_at`.
+- **Current State**: Stored in SQLite/Supabase user profiles. `getRegistrationDate()` retrieves the immutable timestamp, formatted as `Resident since: Month Year (X days ago)` in `#passport-modal`.
+- **Components**: `src/server/db.ts`, `src/client/shared/identity-model.js`, `src/client/game.js`.
+- **Validation**: Real functional tests in `tests/identity.test.mjs` and `tests/identity-integration.mjs`.
 
 ### 2.6 Title System
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow users to equip earned prefixes or suffixes (e.g., *Chef*, *The Traveler*, *Master Architect*) beside their overhead name tag.
-- **Target Architecture**:
-  - `player.title` property included in `PLAYER_PROFILE_UPDATED`.
-  - Rendered in overhead name pill: `[Title] Username`.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Protocol test verifying title unlocks upon completing passport milestones.
+- **Current State**: Equippable titles defined in `TITLES` catalog, unlocked via achievement stamps, and equipped via `UPDATE_IDENTITY`. Rendered in overhead avatar tags as `[Chef] Username` and displayed in hover tooltips.
+- **Components**: `src/server/identity.ts`, `src/client/shared/identity-model.js`, `src/client/game.js`.
+- **Validation**: Real functional tests in `tests/identity.test.mjs` and `tests/identity-integration.mjs`.
 
 ### 2.7 Status Messages
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Add a customizable "Currently doing..." text status under user names in the Directory, Friends List, and inspect menus.
-- **Target Architecture**:
-  - Command `/status <text>` and UI input field.
-  - Sanitized and broadcast to friends and room occupants.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Test verifying sanitized status persists across reconnects.
+- **Current State**: Implemented with `/status <text>` chat command and custom status input editor in `#passport-modal`. Sanitized via `moderateChat`, stored in SQLite `user_profiles`, and rendered in canvas hover tooltips (`[Chef] Alice: “Baking fresh pizzas 🍕”`), context menus, and the Friends list.
+- **Components**: `src/server/identity.ts`, `src/server/protocol.ts`, `src/client/index.html`, `src/client/game.js`.
+- **Validation**: Real functional tests in `tests/identity-status.test.mjs` (3 tests passing).
 
 ### 2.8 Wardrobe Presets
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow users to save 3–5 complete outfit combinations in the Wardrobe to quick-swap without rebuilding looks manually.
-- **Target Architecture**:
-  - `wardrobe_presets` JSON column in `users` profile table.
-  - Quick-select tabs (1, 2, 3) inside `#avatar-modal`.
-- **Components**: `src/client/index.html`, `src/client/game.js`, `src/server/db.ts`.
-- **Validation**: UI test validating instant outfit toggle via preset click.
+- **Current State**: Implemented with 3 preset slots (0, 1, 2) in `src/server/identity.ts` (`SAVE_PRESET`, `APPLY_PRESET`) and `src/client/shared/wardrobe.js`. Presets persist across sessions in the database.
+- **Components**: `src/client/shared/wardrobe.js`, `src/server/identity.ts`, `src/client/game.js`.
+- **Validation**: Real functional tests in `tests/identity-browser.mjs` and `tests/identity-integration.mjs`.
 
 ### 2.9 Premium Cosmetics & Particle Auras
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Introduce cosmetic particle effects (e.g., glowing aura, floating crown, sparklers) tied to rare or premium wardrobe items.
-- **Target Architecture**:
-  - Canvas particle emitters attached to avatar anchor positions.
-  - Renders glowing neon halos or sparkle orbits with alpha fading.
-- **Components**: `src/client/game.js` (`drawAvatar()`).
-- **Validation**: Unit test asserting particle life cycle and garbage collection.
+- **Current State**: Implemented in `src/client/shared/avatar.js` (`drawAura()`, `advanceAura()`). Bounded particle emitters render glowing halos (Resident Halo), floating crowns (Builder Crown), and artisan sparkles, unlocked via passport achievements.
+- **Components**: `src/client/shared/avatar.js`, `src/client/shared/identity-model.js`.
+- **Validation**: Real functional tests in `tests/identity.test.mjs`.
 
 ### 2.10 Guest vs. Registered Accounts
 - **Status**: `[x]` Completed & Verified

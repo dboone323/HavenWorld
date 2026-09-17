@@ -645,3 +645,42 @@ test('Full direct trade lifecycle: request -> accept -> update -> lock -> confir
   assert.ok(completed);
 });
 
+test('CHAT respects spatial proximity in public rooms and delivers to nearby occupants', async () => {
+  const rooms = new RoomManager();
+  const alice = makePlayer('a1'); alice.name = 'Alice'; alice.x = 2; alice.y = 2;
+  const bob = makePlayer('b1'); bob.name = 'Bob'; bob.x = 4; bob.y = 2; // distance = 2 (audible <= 7)
+  const charlie = makePlayer('c1'); charlie.name = 'Charlie'; charlie.x = 18; charlie.y = 18; // distance = 22.6 (> 7)
+
+  rooms.join('plaza', alice);
+  rooms.join('plaza', bob);
+  rooms.join('plaza', charlie);
+
+  const { api } = mockDb();
+  await handleMessage({ type: 'CHAT', payload: { text: 'Hey Bob!' } }, alice, C(rooms, api, alice));
+
+  const bobChat = bob.ws.sent.map(s => JSON.parse(s)).find(m => m.type === 'CHAT_MESSAGE');
+  assert.ok(bobChat, 'Bob within radius received CHAT_MESSAGE');
+  assert.equal(bobChat.payload.text, 'Hey Bob!');
+
+  const charlieChat = charlie.ws.sent.map(s => JSON.parse(s)).find(m => m.type === 'CHAT_MESSAGE');
+  assert.equal(charlieChat, undefined, 'Charlie outside radius did not receive standard CHAT_MESSAGE');
+});
+
+test('CHAT /shout expands audible radius in public rooms', async () => {
+  const rooms = new RoomManager();
+  const alice = makePlayer('a1'); alice.name = 'Alice'; alice.x = 2; alice.y = 2;
+  const charlie = makePlayer('c1'); charlie.name = 'Charlie'; charlie.x = 12; charlie.y = 2; // distance = 10 (audible for shout <= 14)
+
+  rooms.join('plaza', alice);
+  rooms.join('plaza', charlie);
+
+  const { api } = mockDb();
+  await handleMessage({ type: 'CHAT', payload: { text: '/shout Attention Plaza!' } }, alice, C(rooms, api, alice));
+
+  const charlieChat = charlie.ws.sent.map(s => JSON.parse(s)).find(m => m.type === 'CHAT_MESSAGE');
+  assert.ok(charlieChat, 'Charlie received shout message');
+  assert.equal(charlieChat.payload.text, 'Attention Plaza!');
+  assert.equal(charlieChat.payload.isShout, true);
+});
+
+

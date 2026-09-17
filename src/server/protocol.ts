@@ -8,12 +8,16 @@ import type { IdentityState } from '../shared/types.ts';
  */
 import { calculateFacing } from '../shared/movement.ts';
 import { validateMoveRequest, needsReconcile, RECONCILE_EPSILON } from '../shared/authority.ts';
+import { isWithinAudibleDistance, DEFAULT_AUDIBLE_RADIUS, DEFAULT_SHOUT_RADIUS } from '../shared/spatial.ts';
+import { ShardManager } from './sharding.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
 import { serializePlayer, serializeRoom, RoomManager, getUserLoftRoomId } from './rooms.ts';
 import { TradeManager } from './trade.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
+
+export const shardManager = new ShardManager();
 
 // --- Shop Catalog (Phase 1 furniture + clothing items) ---
 const SHOP_ITEMS: Record<string, ShopItem> = {
@@ -158,14 +162,19 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const { text } = moderateChat(raw);
       if (!text) return;
 
-      // In-game commands: /name <n>, /jump, /wave, /dance, /hug
+      let chatText = text;
+      let radius = DEFAULT_AUDIBLE_RADIUS;
+
+      // In-game commands: /name <n>, /status <text>, /jump, /wave, /dance, /hug, /run, /lie, /shout <text>
       if (text.startsWith('/')) {
         const cmd = parseCommand(text);
-        if (cmd?.command === 'status') {
+        if (cmd && (cmd.command === 'shout' || cmd.command === 's')) {
+          chatText = cmd.args;
+          radius = DEFAULT_SHOUT_RADIUS;
+        } else if (cmd?.command === 'status') {
           await handleIdentity('UPDATE_IDENTITY', { statusMessage: cmd.args || '' }, player, ctx);
           return;
-        }
-        if (cmd && cmd.command === 'name' && cmd.args) {
+        } else if (cmd && cmd.command === 'name' && cmd.args) {
           player.name = cmd.args.slice(0, 18).trim();
           if (ctx.globalPlayers) {
             const gp = ctx.globalPlayers.get(player.id);
@@ -186,27 +195,45 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
             payload: { text: `Name updated to "${player.name}".`, type: 'system' }
           });
           return;
-        }
-
-        if (cmd && (cmd.command === 'jump' || cmd.command === 'wave' || cmd.command === 'dance' || cmd.command === 'hug')) {
-          rooms.broadcast(room, {
-            type: 'PLAYER_EMOTE',
-            payload: {
-              playerId: player.id,
-              emote: cmd.command,
-              sender: player.name
-            }
-          });
+        } else {
+          const EMOTE_COMMANDS = ['jump', 'wave', 'dance', 'hug', 'run', 'lie'];
+          if (cmd && EMOTE_COMMANDS.includes(cmd.command)) {
+            rooms.broadcast(room, {
+              type: 'PLAYER_EMOTE',
+              payload: {
+                playerId: player.id,
+                emote: cmd.command,
+                sender: player.name
+              }
+            });
+            return;
+          }
           return;
         }
-        return;
       }
 
-      player.lastChat = { text, timestamp: Date.now() };
-      rooms.broadcast(room, {
-        type: 'CHAT_MESSAGE',
-        payload: { playerId: player.id, sender: player.name, text, timestamp: Date.now() }
-      });
+      if (!chatText) return;
+      player.lastChat = { text: chatText, timestamp: Date.now() };
+
+      const chatPayload = {
+        playerId: player.id,
+        sender: player.name,
+        text: chatText,
+        timestamp: Date.now(),
+        isShout: radius > DEFAULT_AUDIBLE_RADIUS,
+      };
+
+      const currentRoomObj = rooms.get(room);
+      if (currentRoomObj && currentRoomObj.isPublic) {
+        rooms.broadcast(
+          room,
+          { type: 'CHAT_MESSAGE', payload: chatPayload },
+          null,
+          (listener) => isWithinAudibleDistance(player, listener, radius)
+        );
+      } else {
+        rooms.broadcast(room, { type: 'CHAT_MESSAGE', payload: chatPayload });
+      }
       break;
     }
 
@@ -270,24 +297,26 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
         break;
       }
 
-      // Standard room switch
-      if (!rooms.get(targetRoomId)) return;
+      // Standard room switch (supports automatic instance sharding)
+      const targetRoom = shardManager.resolveShard(targetRoomId, rooms);
+      if (!rooms.get(targetRoom)) return;
       rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } }, player.ws);
       rooms.leave(player);
-      player.room = targetRoomId;
+      shardManager.pruneEmptyShards(rooms);
+      player.room = targetRoom;
       player.x = 5; player.y = 8; player.targetX = 5; player.targetY = 8;
-      rooms.join(targetRoomId, player);
-      const target = rooms.get(targetRoomId);
+      rooms.join(targetRoom, player);
+      const target = rooms.get(targetRoom);
       rooms.send(player.ws, {
         type: 'ROOM_CHANGED',
         payload: {
           room: serializeRoom(target!),
           player: serializePlayer(player),
-          otherPlayers: rooms.othersIn(targetRoomId, player.id)
+          otherPlayers: rooms.othersIn(targetRoom, player.id)
         }
       });
-      rooms.broadcast(targetRoomId, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
-      await awardIdentity(player, ctx, 'ENTER_ROOM', { roomId: targetRoomId });
+      rooms.broadcast(targetRoom, { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, player.ws);
+      await awardIdentity(player, ctx, 'ENTER_ROOM', { roomId: targetRoom });
       break;
     }
 

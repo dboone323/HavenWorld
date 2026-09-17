@@ -239,6 +239,10 @@ export interface ShopItem {
 
 export interface FriendEntry {
   friendId: string;
+  /** Display name when the friend is known online; falls back to friendId. */
+  name?: string;
+  /** Sanitized "Currently doing..." status, empty when unset. */
+  statusMessage?: string;
   status: string;
   createdAt: string;
 }
@@ -313,7 +317,7 @@ export type ServerMessage =
   | { type: 'PLAYER_EMOTED'; payload: { fromPlayerId: string; fromPlayerName: string; emote: string; targetPlayerId?: string; targetPlayerName?: string; text: string } }
   | { type: 'ROOM_STYLE_UPDATED'; payload: { roomId: string; flooring: string; wallpaper: string } }
   // Room Directory
-  | { type: 'ROOM_DIRECTORY_UPDATE'; payload: { publicRooms: { id: string; name: string; description: string; count: number }[]; personalLofts: { id: string; ownerId: string; ownerName: string; name: string; count: number }[] } }
+  | { type: 'ROOM_DIRECTORY_UPDATE'; payload: { publicRooms: { id: string; name: string; description: string; count: number }[]; personalLofts: { id: string; ownerId: string; ownerName: string; name: string; statusMessage?: string; count: number }[] } }
   // Trading
   | { type: 'TRADE_REQUEST_RECEIVED'; payload: { tradeId: string; fromPlayerId: string; fromPlayerName: string } }
   | { type: 'TRADE_REQUEST_SENT'; payload: { tradeId: string; targetPlayerId: string; targetPlayerName: string } }

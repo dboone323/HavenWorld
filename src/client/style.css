@@ -727,6 +727,18 @@ body, html {
   color: var(--text-main);
 }
 
+.friend-message {
+  flex: 1;
+  min-width: 0;
+  padding-left: 8px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .friend-status {
   font-size: 11px;
   padding: 2px 6px;
@@ -912,6 +924,14 @@ body, html {
   color: #c084fc;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border-glass);
+}
+
+.context-menu-status {
+  padding: 6px 0 2px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .context-menu-actions {

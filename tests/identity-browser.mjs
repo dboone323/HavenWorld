@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { formatResidency } from '../src/client/shared/identity.js';
+import { formatResidency } from '../src/client/shared/identity-model.js';
 
 process.env.DB_FORCE_SQLITE = '1';
 process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'haven-identity-')), 'test.db');

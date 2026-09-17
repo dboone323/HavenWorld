@@ -1,0 +1,20 @@
+{
+  "name": "HavenWorld — Cozy Isometric Sanctuary",
+  "short_name": "HavenWorld",
+  "description": "A cozy 2.5D multiplayer virtual world with personal lofts, trading, and real-time social experiences.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0f1d",
+  "theme_color": "#0f172a",
+  "categories": ["games", "entertainment", "social"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
