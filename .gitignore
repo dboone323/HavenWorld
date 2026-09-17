@@ -7,6 +7,12 @@
 .env*.local
 *.env
 !.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
 
 # Node dependencies
 node_modules/

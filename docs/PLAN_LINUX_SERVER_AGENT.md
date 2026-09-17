@@ -1,7 +1,7 @@
 # Execution Plan for Linux Server Agent (Oracle Cloud via VS Code Remote-SSH)
 
 > **Target Environment**: Oracle Cloud Infrastructure (OCI) Ampere A1 (Ubuntu 22.04/24.04 ARM64 / `aarch64`)  
-> **SSH Target**: `oracle-cloud` (`ubuntu@147.224.164.228`)  
+> **SSH Target**: `oracle-cloud` (`ubuntu@<oracle-vm-ip>`)  
 > **Repository**: `https://github.com/dboone323/HavenWorld.git`  
 > **Working Directory**: `/home/ubuntu/Developer/HavenWorld`
 
