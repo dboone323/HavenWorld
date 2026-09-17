@@ -38,6 +38,9 @@ export interface Player {
   isVip?: boolean;
   vipExpiresAt?: string | null;
   materials?: { scrap_metal: number; timber: number };
+  isMuted?: boolean;
+  mutedUntil?: string | null;
+  isBanned?: boolean;
 }
 
 export interface Room {

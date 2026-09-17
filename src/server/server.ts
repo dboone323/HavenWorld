@@ -11,6 +11,7 @@
 import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { RoomManager, serializePlayer, serializeRoom, getUserLoftRoomId } from './rooms.ts';
@@ -44,8 +45,8 @@ let nextPlayerNumber = 101;
 
 const PORT = process.env.PORT || 3000;
 
-// Express middleware for JSON bodies (used by auth API endpoints)
-app.use(express.json({ limit: '1kb' }));
+// Express middleware for JSON bodies
+app.use(express.json({ limit: '64kb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Client assets (Vite dist/ in prod, src/client/ in dev)
@@ -67,7 +68,24 @@ app.use('/shared', express.static(path.join(__dirname, '../shared'), {
   }
 }));
 
+// --- Legal & Compliance Pages ---
+app.get('/terms', (req, res) => {
+  const prodTerms = path.join(clientDir, 'terms.html');
+  const devTerms = path.join(fallbackClientDir, 'terms.html');
+  res.sendFile(fs.existsSync(prodTerms) ? prodTerms : devTerms);
+});
+
+app.get('/privacy', (req, res) => {
+  const prodPrivacy = path.join(clientDir, 'privacy.html');
+  const devPrivacy = path.join(fallbackClientDir, 'privacy.html');
+  res.sendFile(fs.existsSync(prodPrivacy) ? prodPrivacy : devPrivacy);
+});
+
 // --- Diagnostics & Health Endpoints ---
+app.get('/health', (req, res) => {
+  res.redirect(301, '/api/health');
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -91,24 +109,174 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// --- Admin & Moderation Endpoints ---
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'haven_admin_secret_2026';
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization || '';
+  const tokenHeader = req.headers['x-admin-secret'] as string || '';
+  const querySecret = req.query.secret as string || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+
+  if (querySecret === ADMIN_SECRET || tokenHeader === ADMIN_SECRET || token === ADMIN_SECRET) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized: invalid or missing admin secret.' });
+  }
+}
+
+// Serve Admin Dashboard HTML
+app.get('/admin', (req, res) => {
+  const adminHtmlPath = path.join(__dirname, 'admin.html');
+  if (fs.existsSync(adminHtmlPath)) {
+    res.sendFile(adminHtmlPath);
+  } else {
+    res.status(404).send('Admin dashboard not found.');
+  }
+});
+
+app.get('/api/admin/overview', requireAdmin, (req, res) => {
+  const roomList = rooms.list().map(id => {
+    const r = rooms.get(id);
+    return {
+      id,
+      name: r?.name || id,
+      playerCount: r?.players.size || 0,
+      isPublic: r?.isPublic ?? true
+    };
+  });
+  res.json({
+    onlinePlayers: globalPlayers.size,
+    totalRooms: rooms.list().length,
+    rooms: roomList,
+    uptime: Math.floor(process.uptime()),
+    memory: process.memoryUsage(),
+    dbMode: db.getMode()
+  });
+});
+
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  const users = await db.listUsersForAdmin();
+  res.json({ users });
+});
+
+app.post('/api/admin/users/:id/ban', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { banned, reason } = req.body;
+  await db.setPlayerBan(id, Boolean(banned), reason);
+  if (banned) {
+    const activePlayer = globalPlayers.get(id);
+    if (activePlayer && activePlayer.ws) {
+      try {
+        activePlayer.ws.send(JSON.stringify({
+          type: 'banned',
+          reason: reason || 'Suspended by admin.'
+        }));
+        activePlayer.ws.close(4003, 'Account suspended');
+      } catch {}
+    }
+  }
+  res.json({ success: true, playerId: id, banned: Boolean(banned) });
+});
+
+app.post('/api/admin/users/:id/mute', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { muted, durationMinutes } = req.body;
+  const mutedUntil = (muted && durationMinutes)
+    ? new Date(Date.now() + durationMinutes * 60 * 1000).toISOString()
+    : null;
+  await db.setPlayerMute(id, Boolean(muted), mutedUntil);
+  const activePlayer = globalPlayers.get(id);
+  if (activePlayer) {
+    activePlayer.isMuted = Boolean(muted);
+    activePlayer.mutedUntil = mutedUntil;
+  }
+  res.json({ success: true, playerId: id, muted: Boolean(muted), mutedUntil });
+});
+
+app.get('/api/admin/reports', requireAdmin, async (req, res) => {
+  const status = req.query.status as string || undefined;
+  const reports = await db.listPlayerReports(status);
+  res.json({ reports });
+});
+
+app.post('/api/admin/reports/:id/resolve', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  await db.resolvePlayerReport(id);
+  res.json({ success: true, reportId: id, status: 'resolved' });
+});
+
+app.get('/api/admin/invites', requireAdmin, async (req, res) => {
+  const invites = await db.listInviteCodes();
+  res.json({ invites });
+});
+
+app.post('/api/admin/invites/generate', requireAdmin, async (req, res) => {
+  const count = Math.min(Math.max(Number(req.body.count || 1), 1), 50);
+  const maxUses = Math.max(Number(req.body.maxUses || 1), 1);
+  const expiresDays = req.body.expiresDays ? Number(req.body.expiresDays) : null;
+  const expiresAt = expiresDays ? new Date(Date.now() + expiresDays * 86400000).toISOString() : null;
+
+  const generated = [];
+  for (let i = 0; i < count; i++) {
+    const inv = await db.createInviteCode({
+      createdBy: 'admin_dashboard',
+      expiresAt,
+      maxUses
+    });
+    generated.push(inv);
+  }
+  res.json({ success: true, invites: generated });
+});
+
+// Player report submission endpoint (from client or API)
+app.post('/api/report', async (req, res) => {
+  const { reporterId, reportedId, reason, roomId } = req.body;
+  if (!reporterId || !reportedId || !reason) {
+    res.status(400).json({ success: false, error: 'reporterId, reportedId, and reason are required.' });
+    return;
+  }
+  const report = await db.createPlayerReport(reporterId, reportedId, reason, roomId);
+  res.json({ success: true, report });
+});
+
 // --- Auth API Endpoints ---
 
 /**
  * POST /api/auth/signup
- * Body: { username: string, password: string }
+ * Body: { username: string, password: string, inviteCode?: string }
  * Returns: { success: true, playerId: string, name: string } | { success: false, error: string }
  */
 app.post('/api/auth/signup', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, inviteCode } = req.body;
   if (!username || !password) {
     res.status(400).json({ success: false, error: 'Username and password are required.' });
     return;
   }
+
+  const isInviteOnly = process.env.ALPHA_INVITE_ONLY === 'true' || process.env.ALPHA_INVITE_ONLY === '1';
+  if (isInviteOnly || inviteCode) {
+    if (!inviteCode) {
+      res.status(400).json({ success: false, error: 'Alpha invite code is required to register during closed alpha.' });
+      return;
+    }
+    const validation = await db.validateInviteCode(inviteCode);
+    if (!validation.valid) {
+      res.status(400).json({ success: false, error: validation.reason || 'Invalid alpha invite code.' });
+      return;
+    }
+  }
+
   const result = await db.signupAccount(username, password);
   if ('error' in result) {
     res.status(409).json({ success: false, error: result.error });
     return;
   }
+
+  if (inviteCode) {
+    await db.consumeInviteCode(inviteCode, result.id);
+  }
+
   // Create the player profile and avatar in DB
   await db.initPlayerProfile(result.id, result.name);
   res.json({ success: true, playerId: result.id, name: result.name });
@@ -190,6 +358,17 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
     playerId = 'usr_' + Math.random().toString(36).substring(2, 9);
   }
 
+  // Verify player moderation status (banned accounts are disconnected immediately)
+  const modStatus = await db.getUserModerationStatus(playerId);
+  if (modStatus.isBanned) {
+    ws.send(JSON.stringify({
+      type: 'banned',
+      reason: modStatus.banReason || 'Your account has been suspended.'
+    }));
+    ws.close(4003, 'Account suspended');
+    return;
+  }
+
   const defaultName = nameParam || ('Traveler #' + (nextPlayerNumber++));
 
   // Try to load existing player profile from DB (works with account IDs)
@@ -242,6 +421,9 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
     isVip: false,
     vipExpiresAt: null,
     materials: { scrap_metal: 0, timber: 0 },
+    isMuted: modStatus.isMuted,
+    mutedUntil: modStatus.mutedUntil,
+    isBanned: false,
   };
   // Hydrate persisted room furniture for public/lobby rooms
   for (const roomId of rooms.list()) {

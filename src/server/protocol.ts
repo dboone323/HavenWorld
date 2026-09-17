@@ -159,6 +159,17 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
     }
 
     case 'CHAT': {
+      if (player.isMuted) {
+        if (player.mutedUntil && new Date(player.mutedUntil).getTime() < Date.now()) {
+          player.isMuted = false;
+        } else {
+          rooms.send(player.ws, {
+            type: 'SYSTEM_MESSAGE',
+            payload: { text: 'You are muted by moderation and cannot send messages.', type: 'warning' }
+          });
+          return;
+        }
+      }
       const raw = (msg.payload && msg.payload.text) || '';
       const { text } = moderateChat(raw);
       if (!text) return;
@@ -235,6 +246,23 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       } else {
         rooms.broadcast(room, { type: 'CHAT_MESSAGE', payload: chatPayload });
       }
+      break;
+    }
+
+    case 'REPORT_PLAYER': {
+      const { targetId, reason } = (msg.payload || {}) as { targetId?: string; reason?: string };
+      if (!targetId || !reason) {
+        rooms.send(player.ws, {
+          type: 'SYSTEM_MESSAGE',
+          payload: { text: 'Invalid report details.', type: 'warning' }
+        });
+        break;
+      }
+      await db.createPlayerReport(player.id, String(targetId), String(reason).slice(0, 500), room.id);
+      rooms.send(player.ws, {
+        type: 'SYSTEM_MESSAGE',
+        payload: { text: 'Report received. Our moderation team has been alerted.', type: 'info' }
+      });
       break;
     }
 

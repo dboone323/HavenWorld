@@ -216,8 +216,16 @@
                   <input type="password" id="signup-password" maxlength="64" autocomplete="off"
                     style="width: 100%; background: var(--bg-glass); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; font-family: var(--font-body); font-size: 14px; margin-top: 4px;">
                 </div>
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Alpha Invite Code <span style="font-size: 10px; color: #a78bfa;">(if required)</span></label>
+                  <input type="text" id="signup-invite-code" maxlength="16" autocomplete="off" placeholder="e.g. HAVEN-ALPHA"
+                    style="width: 100%; background: var(--bg-glass); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fbbf24; font-family: monospace; font-size: 13px; margin-top: 4px; text-transform: uppercase;">
+                </div>
                 <div id="signup-error" class="panel-tip" style="color: #f87171; display: none;"></div>
                 <button type="submit" class="primary-btn" style="width: 100%;">Create Account</button>
+                <div style="font-size: 11px; text-align: center; color: var(--text-muted); margin-top: 12px;">
+                  By joining, you agree to our <a href="/terms" target="_blank" style="color: #c084fc; text-decoration: underline;">Terms of Service</a> &amp; <a href="/privacy" target="_blank" style="color: #c084fc; text-decoration: underline;">Privacy Policy</a>.
+                </div>
               </form>
             </div>
             <div id="account-form-logged-in" style="display: none;">
@@ -746,6 +754,9 @@
           <div class="welcome-auth-actions">
             <button id="btn-welcome-signin" class="action-btn">🔐 Sign In</button>
             <button id="btn-welcome-signup" class="action-btn">📝 Create Account</button>
+          </div>
+          <div style="font-size: 11px; text-align: center; color: var(--text-muted); margin-top: 16px;">
+            Alpha Build v1.0 • <a href="/terms" target="_blank" style="color: #c084fc; text-decoration: underline;">Terms of Service</a> • <a href="/privacy" target="_blank" style="color: #c084fc; text-decoration: underline;">Privacy Policy</a>
           </div>
         </div>
       </div>

@@ -45,6 +45,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, 'src/client/index.html'),
+        terms: resolve(import.meta.dirname, 'src/client/terms.html'),
+        privacy: resolve(import.meta.dirname, 'src/client/privacy.html'),
       },
     },
     // Optimize for canvas rendering performance

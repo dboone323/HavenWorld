@@ -95,6 +95,7 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
   const loginPasswordInput = document.getElementById('login-password');
   const signupUsernameInput = document.getElementById('signup-username');
   const signupPasswordInput = document.getElementById('signup-password');
+  const signupInviteCodeInput = document.getElementById('signup-invite-code');
 
   // Daily bonus popup DOM
   const dailyPopup = document.getElementById('daily-popup');
@@ -2874,13 +2875,14 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
     e.preventDefault();
     const username = signupUsernameInput.value.trim();
     const password = signupPasswordInput.value;
+    const inviteCode = signupInviteCodeInput ? signupInviteCodeInput.value.trim() : '';
     if (!username || !password) return;
 
     try {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password, inviteCode })
       });
       const data = await response.json();
       if (data.success) {

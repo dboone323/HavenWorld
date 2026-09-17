@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HavenWorld — Privacy Policy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    body {
+      background: radial-gradient(circle at 50% 20%, #1e1b4b 0%, #090d16 100%);
+      color: #cbd5e1;
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .legal-container {
+      max-width: 800px;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    h1, h2, h3 {
+      font-family: 'Quicksand', sans-serif;
+      color: #f8fafc;
+      font-weight: 700;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin-top: 0;
+      background: linear-gradient(135deg, #c084fc, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+      padding-bottom: 16px;
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin-top: 28px;
+      color: #a78bfa;
+    }
+    p, li {
+      font-size: 0.98rem;
+      line-height: 1.65;
+      color: #94a3b8;
+    }
+    a {
+      color: #c084fc;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding: 8px 16px;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 10px;
+      color: #e2e8f0;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .back-btn:hover {
+      background: rgba(139, 92, 246, 0.3);
+      text-decoration: none;
+      transform: translateX(-2px);
+    }
+  </style>
+</head>
+<body>
+  <div class="legal-container">
+    <a href="/" class="back-btn">← Back to HavenWorld</a>
+    <h1>HavenWorld Privacy Policy</h1>
+    <p><em>Effective Date: September 17, 2026 | Version 1.0 (Closed Alpha)</em></p>
+
+    <p>HavenWorld ("we", "us", or "our") is dedicated to protecting your personal privacy while providing a rich, social virtual world experience. This Privacy Policy outlines what information we collect, how it is used, and your rights under GDPR and CCPA.</p>
+
+    <h2>1. Information We Collect</h2>
+    <ul>
+      <li><strong>Account Information:</strong> When you register, we store your chosen username and a securely salted bcrypt hash of your password. We never store plaintext passwords.</li>
+      <li><strong>Game Activity & World State:</strong> In-game avatar coordinates, room decorations, inventory items, virtual currency transactions, and chat messages are processed to maintain real-time multiplayer synchronization.</li>
+      <li><strong>Technical & Network Logs:</strong> IP addresses, browser client user-agent strings, and request timestamps are logged temporarily for rate limiting, DDoS protection, and safety moderation.</li>
+    </ul>
+
+    <h2>2. How We Use Your Information</h2>
+    <p>We use the collected information exclusively to:</p>
+    <ul>
+      <li>Authenticate your account and maintain persistent lofts and avatars across sessions.</li>
+      <li>Relay real-time position updates, emotes, and chat between players via WebSockets.</li>
+      <li>Enforce community guidelines, prevent harassment, and block automated spambots.</li>
+      <li>Analyze server performance, tick rates, and crash reports.</li>
+    </ul>
+
+    <h2>3. Third-Party Infrastructure Services</h2>
+    <p>We work with trusted infrastructure providers to securely host HavenWorld:</p>
+    <ul>
+      <li><strong>Cloudflare:</strong> Provides network-level DDoS shielding, CDN asset delivery, and encrypted tunnel routing.</li>
+      <li><strong>Supabase / PostgreSQL:</strong> Provides encrypted relational database storage when cloud persistence is configured.</li>
+      <li><strong>Sentry / Uptime Monitoring:</strong> Collects anonymous application error stack traces to fix bugs promptly.</li>
+    </ul>
+    <p>We do <strong>not</strong> sell, rent, or monetize player data to third-party advertising networks.</p>
+
+    <h2>4. Your Data Rights (GDPR & CCPA)</h2>
+    <p>Regardless of your location, HavenWorld respects your personal data rights:</p>
+    <ul>
+      <li><strong>Right to Access:</strong> You can request a copy of your stored player profile and inventory data.</li>
+      <li><strong>Right to Deletion:</strong> You can request the permanent deletion of your account and all associated room/furniture data at any time.</li>
+    </ul>
+
+    <h2>5. Contact Us</h2>
+    <p>For any privacy-related inquiries, data export, or account deletion requests, please contact our data team at <a href="mailto:privacy@havenworld.me">privacy@havenworld.me</a>.</p>
+  </div>
+</body>
+</html>

@@ -134,6 +134,25 @@ if (mode !== 'supabase') {
         status TEXT DEFAULT 'active',
         created_at TEXT DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS invite_codes (
+        code TEXT PRIMARY KEY,
+        created_by TEXT DEFAULT 'admin',
+        created_at TEXT DEFAULT (datetime('now')),
+        expires_at TEXT,
+        max_uses INTEGER DEFAULT 1,
+        uses INTEGER DEFAULT 0,
+        used_by TEXT DEFAULT '[]'
+      );
+      CREATE TABLE IF NOT EXISTS player_reports (
+        id TEXT PRIMARY KEY,
+        reporter_id TEXT NOT NULL,
+        reported_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        room_id TEXT,
+        status TEXT DEFAULT 'open',
+        created_at TEXT DEFAULT (datetime('now')),
+        resolved_at TEXT
+      );
     `);
     try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN flooring TEXT DEFAULT 'parquet'"); } catch {}
     try { sqliteDb.exec("ALTER TABLE rooms ADD COLUMN wallpaper TEXT DEFAULT 'cozy_wood'"); } catch {}
@@ -149,6 +168,10 @@ if (mode !== 'supabase') {
     try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN materials_json TEXT DEFAULT '{\"scrap_metal\":0,\"timber\":0}'"); } catch {}
     try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN is_vip INTEGER DEFAULT 0"); } catch {}
     try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN vip_expires_at TEXT"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN is_banned INTEGER DEFAULT 0"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN ban_reason TEXT"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN is_muted INTEGER DEFAULT 0"); } catch {}
+    try { sqliteDb.exec("ALTER TABLE profiles ADD COLUMN muted_until TEXT"); } catch {}
     sqliteDb.exec(`
       CREATE TRIGGER IF NOT EXISTS profiles_registered_at_immutable
       BEFORE UPDATE OF registered_at ON profiles
@@ -374,9 +397,12 @@ export async function loginAccount(username: string, password: string): Promise<
     }
   } else if (mode === 'sqlite') {
     try {
-      const stmt = sqliteDb!.prepare('SELECT id, username, password_hash FROM profiles WHERE username = ?');
-      const row = stmt.get(cleanName) as { id: string; username: string; password_hash: string } | undefined;
+      const stmt = sqliteDb!.prepare('SELECT id, username, password_hash, is_banned, ban_reason FROM profiles WHERE username = ?');
+      const row = stmt.get(cleanName) as { id: string; username: string; password_hash: string; is_banned?: number; ban_reason?: string } | undefined;
       if (!row) return { error: 'Account not found. Did you sign up?' };
+      if (row.is_banned === 1) {
+        return { error: `Account is suspended: ${row.ban_reason || 'Violation of terms of service.'}` };
+      }
       if (!row.password_hash || !verifyPassword(password, row.password_hash)) {
         return { error: 'Incorrect password.' };
       }
@@ -1445,6 +1471,302 @@ export async function cancelMarketplaceListing(
   return { success: false, message: 'Database not available' };
 }
 
+// --- Alpha Invite Codes & Moderation System ---
+
+export interface InviteCodeRecord {
+  code: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+  max_uses: number;
+  uses: number;
+  used_by: string;
+}
+
+export interface PlayerReportRecord {
+  id: string;
+  reporter_id: string;
+  reported_id: string;
+  reason: string;
+  room_id: string | null;
+  status: 'open' | 'resolved';
+  created_at: string;
+  resolved_at: string | null;
+}
+
+const memoryInviteCodes = new Map<string, InviteCodeRecord>();
+const memoryReports = new Map<string, PlayerReportRecord>();
+const memoryModeration = new Map<string, { is_banned: number; ban_reason: string | null; is_muted: number; muted_until: string | null }>();
+
+export async function createInviteCode(opts: {
+  code?: string;
+  createdBy?: string;
+  expiresAt?: string | null;
+  maxUses?: number;
+} = {}): Promise<InviteCodeRecord> {
+  const code = (opts.code || ('HAVEN-' + crypto.randomBytes(4).toString('hex'))).toUpperCase().trim();
+  const createdBy = opts.createdBy || 'admin';
+  const expiresAt = opts.expiresAt || null;
+  const maxUses = typeof opts.maxUses === 'number' && opts.maxUses > 0 ? opts.maxUses : 1;
+  const createdAt = new Date().toISOString();
+  const record: InviteCodeRecord = {
+    code,
+    created_by: createdBy,
+    created_at: createdAt,
+    expires_at: expiresAt,
+    max_uses: maxUses,
+    uses: 0,
+    used_by: '[]'
+  };
+
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO invite_codes (code, created_by, created_at, expires_at, max_uses, uses, used_by)
+      VALUES (?, ?, ?, ?, ?, 0, '[]')
+      ON CONFLICT(code) DO UPDATE SET
+        expires_at = excluded.expires_at,
+        max_uses = excluded.max_uses
+    `);
+    stmt.run(code, createdBy, createdAt, expiresAt, maxUses);
+  } else if (mode === 'supabase' && supabase) {
+    try {
+      await supabase.from('invite_codes').upsert(record, { onConflict: 'code' });
+    } catch (e) {
+      console.warn('Supabase createInviteCode warning:', (e as Error).message);
+    }
+  }
+  memoryInviteCodes.set(code, record);
+  return record;
+}
+
+export async function validateInviteCode(rawCode: string): Promise<{ valid: boolean; reason?: string; invite?: InviteCodeRecord }> {
+  if (!rawCode) return { valid: false, reason: 'Invite code is required.' };
+  const code = rawCode.trim().toUpperCase();
+
+  let invite: InviteCodeRecord | undefined;
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare('SELECT * FROM invite_codes WHERE code = ?');
+    const row = stmt.get(code) as any;
+    if (row) {
+      invite = {
+        code: row.code,
+        created_by: row.created_by,
+        created_at: row.created_at,
+        expires_at: row.expires_at,
+        max_uses: Number(row.max_uses),
+        uses: Number(row.uses),
+        used_by: row.used_by || '[]'
+      };
+    }
+  } else if (mode === 'supabase' && supabase) {
+    try {
+      const { data } = await supabase.from('invite_codes').select('*').eq('code', code).maybeSingle();
+      if (data) invite = data;
+    } catch {}
+  } else {
+    invite = memoryInviteCodes.get(code);
+  }
+
+  if (!invite) {
+    return { valid: false, reason: 'Invalid invite code.' };
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+    return { valid: false, reason: 'Invite code has expired.' };
+  }
+
+  if (invite.uses >= invite.max_uses) {
+    return { valid: false, reason: 'Invite code has reached its maximum usage limit.' };
+  }
+
+  return { valid: true, invite };
+}
+
+export async function consumeInviteCode(rawCode: string, userId: string): Promise<{ success: boolean; message?: string }> {
+  const check = await validateInviteCode(rawCode);
+  if (!check.valid || !check.invite) {
+    return { success: false, message: check.reason || 'Invalid code.' };
+  }
+
+  const code = check.invite.code;
+  let usedByList: string[] = [];
+  try {
+    usedByList = JSON.parse(check.invite.used_by || '[]');
+  } catch {
+    usedByList = [];
+  }
+  usedByList.push(userId);
+  const newUses = check.invite.uses + 1;
+  const usedByStr = JSON.stringify(usedByList);
+
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare('UPDATE invite_codes SET uses = ?, used_by = ? WHERE code = ?');
+    stmt.run(newUses, usedByStr, code);
+  } else if (mode === 'supabase' && supabase) {
+    try {
+      await supabase.from('invite_codes').update({ uses: newUses, used_by: usedByStr }).eq('code', code);
+    } catch {}
+  }
+  const mem = memoryInviteCodes.get(code) || check.invite;
+  mem.uses = newUses;
+  mem.used_by = usedByStr;
+  memoryInviteCodes.set(code, mem);
+
+  return { success: true };
+}
+
+export async function listInviteCodes(): Promise<InviteCodeRecord[]> {
+  if (mode === 'sqlite' && sqliteDb) {
+    const rows = sqliteDb.prepare('SELECT * FROM invite_codes ORDER BY created_at DESC').all() as any[];
+    return rows.map(r => ({
+      code: r.code,
+      created_by: r.created_by,
+      created_at: r.created_at,
+      expires_at: r.expires_at,
+      max_uses: Number(r.max_uses),
+      uses: Number(r.uses),
+      used_by: r.used_by || '[]'
+    }));
+  }
+  return Array.from(memoryInviteCodes.values()).reverse();
+}
+
+export async function createPlayerReport(reporterId: string, reportedId: string, reason: string, roomId?: string): Promise<PlayerReportRecord> {
+  const id = 'rep_' + crypto.randomBytes(6).toString('hex');
+  const now = new Date().toISOString();
+  const record: PlayerReportRecord = {
+    id,
+    reporter_id: reporterId,
+    reported_id: reportedId,
+    reason,
+    room_id: roomId || null,
+    status: 'open',
+    created_at: now,
+    resolved_at: null
+  };
+
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO player_reports (id, reporter_id, reported_id, reason, room_id, status, created_at, resolved_at)
+      VALUES (?, ?, ?, ?, ?, 'open', ?, NULL)
+    `);
+    stmt.run(id, reporterId, reportedId, reason, roomId || null, now);
+  }
+  memoryReports.set(id, record);
+  return record;
+}
+
+export async function listPlayerReports(status?: string): Promise<PlayerReportRecord[]> {
+  if (mode === 'sqlite' && sqliteDb) {
+    let sql = 'SELECT * FROM player_reports';
+    const params: any[] = [];
+    if (status) {
+      sql += ' WHERE status = ?';
+      params.push(status);
+    }
+    sql += ' ORDER BY created_at DESC';
+    const rows = sqliteDb.prepare(sql).all(...params) as any[];
+    return rows.map(r => ({
+      id: r.id,
+      reporter_id: r.reporter_id,
+      reported_id: r.reported_id,
+      reason: r.reason,
+      room_id: r.room_id,
+      status: r.status,
+      created_at: r.created_at,
+      resolved_at: r.resolved_at
+    }));
+  }
+  return Array.from(memoryReports.values()).filter(r => !status || r.status === status).reverse();
+}
+
+export async function resolvePlayerReport(reportId: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare("UPDATE player_reports SET status = 'resolved', resolved_at = ? WHERE id = ?");
+    stmt.run(now, reportId);
+  }
+  const r = memoryReports.get(reportId);
+  if (r) {
+    r.status = 'resolved';
+    r.resolved_at = now;
+  }
+  return true;
+}
+
+export async function setPlayerBan(userId: string, isBanned: boolean, reason?: string): Promise<boolean> {
+  const bannedInt = isBanned ? 1 : 0;
+  const reasonStr = isBanned ? (reason || 'Violated community guidelines.') : null;
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare('UPDATE profiles SET is_banned = ?, ban_reason = ? WHERE id = ?');
+    stmt.run(bannedInt, reasonStr, userId);
+  }
+  const mem = memoryModeration.get(userId) || { is_banned: 0, ban_reason: null, is_muted: 0, muted_until: null };
+  mem.is_banned = bannedInt;
+  mem.ban_reason = reasonStr;
+  memoryModeration.set(userId, mem);
+  return true;
+}
+
+export async function setPlayerMute(userId: string, isMuted: boolean, mutedUntil?: string | null): Promise<boolean> {
+  const mutedInt = isMuted ? 1 : 0;
+  const until = isMuted ? (mutedUntil || null) : null;
+  if (mode === 'sqlite' && sqliteDb) {
+    const stmt = sqliteDb.prepare('UPDATE profiles SET is_muted = ?, muted_until = ? WHERE id = ?');
+    stmt.run(mutedInt, until, userId);
+  }
+  const mem = memoryModeration.get(userId) || { is_banned: 0, ban_reason: null, is_muted: 0, muted_until: null };
+  mem.is_muted = mutedInt;
+  mem.muted_until = until;
+  memoryModeration.set(userId, mem);
+  return true;
+}
+
+export async function getUserModerationStatus(userId: string): Promise<{ isBanned: boolean; banReason?: string; isMuted: boolean; mutedUntil?: string }> {
+  if (mode === 'sqlite' && sqliteDb) {
+    const row = sqliteDb.prepare('SELECT is_banned, ban_reason, is_muted, muted_until FROM profiles WHERE id = ?').get(userId) as any;
+    if (row) {
+      let isMuted = row.is_muted === 1;
+      if (isMuted && row.muted_until && new Date(row.muted_until).getTime() < Date.now()) {
+        isMuted = false;
+      }
+      return {
+        isBanned: row.is_banned === 1,
+        banReason: row.ban_reason || undefined,
+        isMuted,
+        mutedUntil: row.muted_until || undefined
+      };
+    }
+  }
+  const mem = memoryModeration.get(userId);
+  if (mem) {
+    let isMuted = mem.is_muted === 1;
+    if (isMuted && mem.muted_until && new Date(mem.muted_until).getTime() < Date.now()) {
+      isMuted = false;
+    }
+    return {
+      isBanned: mem.is_banned === 1,
+      banReason: mem.ban_reason || undefined,
+      isMuted,
+      mutedUntil: mem.muted_until || undefined
+    };
+  }
+  return { isBanned: false, isMuted: false };
+}
+
+export async function listUsersForAdmin(): Promise<any[]> {
+  if (mode === 'sqlite' && sqliteDb) {
+    const rows = sqliteDb.prepare(`
+      SELECT id, username, coins, gems, is_banned, ban_reason, is_muted, muted_until, registered_at
+      FROM profiles
+      ORDER BY registered_at DESC
+      LIMIT 100
+    `).all() as any[];
+    return rows;
+  }
+  return [];
+}
+
 // Export the cooldown constant for protocol.ts
 export const DAILY_COOLDOWN = DAILY_COOLDOWN_MS;
 
@@ -1466,6 +1788,9 @@ export default {
   getPlayerMaterials, savePlayerMaterials,
   setVipMembership, getVipStatus,
   createMarketplaceListing, getMarketplaceListings, buyMarketplaceListing, cancelMarketplaceListing,
+  createInviteCode, validateInviteCode, consumeInviteCode, listInviteCodes,
+  createPlayerReport, listPlayerReports, resolvePlayerReport,
+  setPlayerBan, setPlayerMute, getUserModerationStatus, listUsersForAdmin,
   DAILY_COOLDOWN,
 };
 

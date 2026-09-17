@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HavenWorld Admin &amp; Moderation Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(18, 24, 38, 0.75);
+      --bg-card-border: rgba(255, 255, 255, 0.08);
+      --purple-accent: #a855f7;
+      --purple-glow: rgba(168, 85, 247, 0.25);
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #ef4444;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      background-image: radial-gradient(circle at 15% 15%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
+                        radial-gradient(circle at 85% 85%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--bg-card-border);
+      margin-bottom: 24px;
+    }
+    .logo-area { display: flex; align-items: center; gap: 12px; }
+    .logo-badge {
+      font-size: 28px;
+      background: rgba(168, 85, 247, 0.15);
+      padding: 6px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--purple-accent);
+    }
+    h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .subtitle { font-size: 13px; color: var(--text-muted); }
+    .auth-bar { display: flex; align-items: center; gap: 8px; }
+    input, select, button {
+      font-family: inherit;
+      border-radius: 8px;
+      border: 1px solid var(--bg-card-border);
+      background: rgba(15, 23, 42, 0.8);
+      color: #fff;
+      padding: 8px 14px;
+      font-size: 13px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--purple-accent); }
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    button.primary {
+      background: var(--purple-accent);
+      color: #fff;
+      border: none;
+    }
+    button.primary:hover { background: #9333ea; box-shadow: 0 0 12px var(--purple-glow); }
+    button.danger { background: rgba(239, 68, 68, 0.15); border: 1px solid var(--rose); color: var(--rose); }
+    button.danger:hover { background: var(--rose); color: #fff; }
+    button.warning { background: rgba(245, 158, 11, 0.15); border: 1px solid var(--amber); color: var(--amber); }
+    button.warning:hover { background: var(--amber); color: #fff; }
+    button.success { background: rgba(16, 185, 129, 0.15); border: 1px solid var(--emerald); color: var(--emerald); }
+    button.success:hover { background: var(--emerald); color: #fff; }
+    button.small { padding: 4px 8px; font-size: 11px; }
+
+    /* Nav Tabs */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      color: #fff;
+      border-color: var(--purple-accent);
+      background: rgba(168, 85, 247, 0.15);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(12px);
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-box {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .stat-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .stat-val { font-size: 24px; font-weight: 700; color: #fff; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--bg-card-border);
+      font-weight: 600;
+      font-size: 12px;
+    }
+    td {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      vertical-align: middle;
+    }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .badge.green { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .badge.red { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .badge.yellow { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .badge.purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+
+    .code-tag {
+      font-family: 'JetBrains Mono', monospace;
+      color: #fbbf24;
+      background: rgba(251, 191, 36, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .form-inline {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-area">
+        <div class="logo-badge">🛡️</div>
+        <div>
+          <h1>HavenWorld Moderation &amp; Control</h1>
+          <div class="subtitle">Alpha Operations, Governance &amp; Player Management</div>
+        </div>
+      </div>
+      <div class="auth-bar">
+        <input type="password" id="admin-secret-input" placeholder="Admin Secret Key" style="width: 220px;">
+        <button id="btn-auth" class="primary">Authenticate</button>
+        <button id="btn-refresh" class="small">🔄 Refresh</button>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-overview">📊 Live Overview</button>
+      <button class="tab-btn" data-tab="tab-users">👥 Users &amp; Moderation</button>
+      <button class="tab-btn" data-tab="tab-reports">🚨 Player Reports (<span id="open-reports-count">0</span>)</button>
+      <button class="tab-btn" data-tab="tab-invites">🎟️ Alpha Invites</button>
+    </div>
+
+    <!-- TAB 1: OVERVIEW -->
+    <div id="tab-overview" class="tab-content">
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">Online Players</div>
+          <div class="stat-val" id="stat-online">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Total Rooms</div>
+          <div class="stat-val" id="stat-rooms">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Database Mode</div>
+          <div class="stat-val" id="stat-db" style="font-size: 18px; color: #a855f7;">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Server Uptime</div>
+          <div class="stat-val" id="stat-uptime" style="font-size: 18px;">0s</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Live Active Rooms &amp; Occupancy</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Room ID</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Occupancy</th>
+            </tr>
+          </thead>
+          <tbody id="rooms-tbody">
+            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Enter admin secret to load data.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: USERS & MODERATION -->
+    <div id="tab-users" class="tab-content hidden">
+      <div class="card">
+        <div class="card-title">
+          <span>Registered Player Profiles</span>
+          <span style="font-size: 12px; color: var(--text-muted);">Showing recent 100 accounts</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>User ID</th>
+              <th>Coins / Gems</th>
+              <th>Status</th>
+              <th>Registered</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Loading users...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 3: REPORTS -->
+    <div id="tab-reports" class="tab-content hidden">
+      <div class="card">
+        <div class="card-title">
+          <span>Community Moderation Reports</span>
+          <div>
+            <select id="reports-filter" style="padding: 4px 8px;">
+              <option value="">All Reports</option>
+              <option value="open" selected>Open Only</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Reporter</th>
+              <th>Reported User</th>
+              <th>Room</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Submitted</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="reports-tbody">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Loading reports...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 4: ALPHA INVITE CODES -->
+    <div id="tab-invites" class="tab-content hidden">
+      <div class="card">
+        <div class="card-title">Generate New Alpha Invite Codes</div>
+        <div class="form-inline">
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block;">Count</label>
+            <input type="number" id="invite-count" value="5" min="1" max="50" style="width: 80px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block;">Max Uses per Code</label>
+            <input type="number" id="invite-max-uses" value="1" min="1" max="100" style="width: 100px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted); display: block;">Expires In (Days)</label>
+            <input type="number" id="invite-expires-days" value="30" min="1" max="365" style="width: 100px;">
+          </div>
+          <button id="btn-generate-invites" class="primary" style="margin-top: 18px;">✨ Generate Codes</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Existing Alpha Invite Codes</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Invite Code</th>
+              <th>Created By</th>
+              <th>Uses</th>
+              <th>Expires</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="invites-tbody">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Loading invite codes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentSecret = localStorage.getItem('haven_admin_secret') || '';
+    const secretInput = document.getElementById('admin-secret-input');
+    if (currentSecret) secretInput.value = currentSecret;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('secret')) {
+      currentSecret = urlParams.get('secret');
+      secretInput.value = currentSecret;
+      localStorage.setItem('haven_admin_secret', currentSecret);
+    }
+
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'x-admin-secret': currentSecret
+      };
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        btn.classList.add('active');
+        const tabId = btn.getAttribute('data-tab');
+        document.getElementById(tabId).classList.remove('hidden');
+        loadActiveTabData(tabId);
+      });
+    });
+
+    document.getElementById('btn-auth').addEventListener('click', () => {
+      currentSecret = secretInput.value.trim();
+      localStorage.setItem('haven_admin_secret', currentSecret);
+      refreshAll();
+    });
+
+    document.getElementById('btn-refresh').addEventListener('click', refreshAll);
+
+    async function fetchOverview() {
+      try {
+        const res = await fetch('/api/admin/overview', { headers: getHeaders() });
+        if (!res.ok) throw new Error('Unauthorized');
+        const data = await res.json();
+        document.getElementById('stat-online').textContent = data.onlinePlayers;
+        document.getElementById('stat-rooms').textContent = data.totalRooms;
+        document.getElementById('stat-db').textContent = (data.dbMode || 'sqlite').toUpperCase();
+        
+        const mins = Math.floor(data.uptime / 60);
+        const hrs = Math.floor(mins / 60);
+        document.getElementById('stat-uptime').textContent = `${hrs}h ${mins % 60}m ${data.uptime % 60}s`;
+
+        const tbody = document.getElementById('rooms-tbody');
+        tbody.innerHTML = '';
+        if (!data.rooms || data.rooms.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No rooms registered.</td></tr>';
+          return;
+        }
+        data.rooms.forEach(r => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><span class="code-tag">${r.id}</span></td>
+            <td style="font-weight: 600;">${r.name}</td>
+            <td><span class="badge ${r.isPublic ? 'purple' : 'yellow'}">${r.isPublic ? 'Public' : 'Sanctuary'}</span></td>
+            <td><strong>${r.playerCount}</strong> players</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        document.getElementById('rooms-tbody').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--rose);">Authentication required. Please enter admin secret.</td></tr>`;
+      }
+    }
+
+    async function fetchUsers() {
+      try {
+        const res = await fetch('/api/admin/users', { headers: getHeaders() });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        const tbody = document.getElementById('users-tbody');
+        tbody.innerHTML = '';
+        if (!data.users || data.users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No user profiles found.</td></tr>';
+          return;
+        }
+        data.users.forEach(u => {
+          const tr = document.createElement('tr');
+          const isBanned = u.is_banned === 1;
+          const isMuted = u.is_muted === 1;
+          tr.innerHTML = `
+            <td style="font-weight: 600; color: #fff;">${u.username}</td>
+            <td><span class="code-tag">${u.id}</span></td>
+            <td>🪙 ${u.coins || 0} / 💎 ${u.gems || 0}</td>
+            <td>
+              ${isBanned ? '<span class="badge red">BANNED</span>' : ''}
+              ${isMuted ? '<span class="badge yellow">MUTED</span>' : ''}
+              ${!isBanned && !isMuted ? '<span class="badge green">ACTIVE</span>' : ''}
+            </td>
+            <td style="color: var(--text-muted);">${u.registered_at ? new Date(u.registered_at).toLocaleDateString() : 'Guest'}</td>
+            <td>
+              <button class="small ${isMuted ? 'success' : 'warning'}" onclick="toggleMute('${u.id}', ${!isMuted})">
+                ${isMuted ? 'Unmute' : 'Mute'}
+              </button>
+              <button class="small ${isBanned ? 'success' : 'danger'}" onclick="toggleBan('${u.id}', ${!isBanned})">
+                ${isBanned ? 'Unban' : 'Ban'}
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        document.getElementById('users-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--rose);">Failed to load users.</td></tr>`;
+      }
+    }
+
+    async function toggleBan(userId, ban) {
+      let reason = 'Violation of terms of service.';
+      if (ban) {
+        const input = prompt('Enter ban reason:', reason);
+        if (input === null) return;
+        reason = input || reason;
+      }
+      const res = await fetch(`/api/admin/users/${userId}/ban`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ banned: ban, reason })
+      });
+      if (res.ok) fetchUsers();
+    }
+
+    async function toggleMute(userId, mute) {
+      let duration = 60;
+      if (mute) {
+        const input = prompt('Mute duration in minutes (0 for indefinite):', '60');
+        if (input === null) return;
+        duration = parseInt(input) || 60;
+      }
+      const res = await fetch(`/api/admin/users/${userId}/mute`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ muted: mute, durationMinutes: duration })
+      });
+      if (res.ok) fetchUsers();
+    }
+
+    async function fetchReports() {
+      try {
+        const filter = document.getElementById('reports-filter').value;
+        const url = filter ? `/api/admin/reports?status=${filter}` : '/api/admin/reports';
+        const res = await fetch(url, { headers: getHeaders() });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        const tbody = document.getElementById('reports-tbody');
+        tbody.innerHTML = '';
+        const openCount = data.reports.filter(r => r.status === 'open').length;
+        document.getElementById('open-reports-count').textContent = openCount;
+
+        if (!data.reports || data.reports.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No reports found.</td></tr>';
+          return;
+        }
+        data.reports.forEach(r => {
+          const tr = document.createElement('tr');
+          const isOpen = r.status === 'open';
+          tr.innerHTML = `
+            <td><span class="code-tag">${r.id}</span></td>
+            <td><span class="code-tag">${r.reporter_id}</span></td>
+            <td style="font-weight: 600; color: #f87171;">${r.reported_id}</td>
+            <td>${r.room_id || 'Global'}</td>
+            <td style="max-width: 250px;">${r.reason}</td>
+            <td><span class="badge ${isOpen ? 'red' : 'green'}">${r.status.toUpperCase()}</span></td>
+            <td style="color: var(--text-muted);">${new Date(r.created_at).toLocaleString()}</td>
+            <td>
+              ${isOpen ? `<button class="small success" onclick="resolveReport('${r.id}')">✓ Resolve</button>` : '—'}
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        document.getElementById('reports-tbody').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--rose);">Failed to load reports.</td></tr>`;
+      }
+    }
+
+    async function resolveReport(reportId) {
+      const res = await fetch(`/api/admin/reports/${reportId}/resolve`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      if (res.ok) fetchReports();
+    }
+
+    async function fetchInvites() {
+      try {
+        const res = await fetch('/api/admin/invites', { headers: getHeaders() });
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        const tbody = document.getElementById('invites-tbody');
+        tbody.innerHTML = '';
+        if (!data.invites || data.invites.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No invite codes yet. Generate some above!</td></tr>';
+          return;
+        }
+        data.invites.forEach(inv => {
+          const tr = document.createElement('tr');
+          const isExhausted = inv.uses >= inv.max_uses;
+          const isExpired = inv.expires_at && new Date(inv.expires_at).getTime() < Date.now();
+          tr.innerHTML = `
+            <td><strong class="code-tag" style="font-size: 13px;">${inv.code}</strong></td>
+            <td>${inv.created_by}</td>
+            <td>${inv.uses} / ${inv.max_uses}</td>
+            <td style="color: var(--text-muted);">${inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : 'Never'}</td>
+            <td>
+              ${isExpired ? '<span class="badge red">EXPIRED</span>' : isExhausted ? '<span class="badge yellow">EXHAUSTED</span>' : '<span class="badge green">ACTIVE</span>'}
+            </td>
+            <td>
+              <button class="small" onclick="copyCode('${inv.code}')">📋 Copy</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        document.getElementById('invites-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--rose);">Failed to load invites.</td></tr>`;
+      }
+    }
+
+    document.getElementById('btn-generate-invites').addEventListener('click', async () => {
+      const count = document.getElementById('invite-count').value;
+      const maxUses = document.getElementById('invite-max-uses').value;
+      const expiresDays = document.getElementById('invite-expires-days').value;
+      const res = await fetch('/api/admin/invites/generate', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ count, maxUses, expiresDays })
+      });
+      if (res.ok) {
+        fetchInvites();
+      } else {
+        alert('Failed to generate invite codes. Check admin credentials.');
+      }
+    });
+
+    document.getElementById('reports-filter').addEventListener('change', fetchReports);
+
+    function copyCode(code) {
+      navigator.clipboard.writeText(code);
+      alert('Copied invite code: ' + code);
+    }
+
+    function loadActiveTabData(tabId) {
+      if (tabId === 'tab-overview') fetchOverview();
+      if (tabId === 'tab-users') fetchUsers();
+      if (tabId === 'tab-reports') fetchReports();
+      if (tabId === 'tab-invites') fetchInvites();
+    }
+
+    function refreshAll() {
+      fetchOverview();
+      fetchReports();
+      const activeTab = document.querySelector('.tab-btn.active').getAttribute('data-tab');
+      loadActiveTabData(activeTab);
+    }
+
+    refreshAll();
+  </script>
+</body>
+</html>
