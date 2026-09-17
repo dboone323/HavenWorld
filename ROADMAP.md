@@ -45,13 +45,14 @@ HavenWorld is an open-source, cozy isometric multiplayer virtual world inspired 
 - [x] Workshop & recycling system for converting items into scrap metal and timber for crafting.
 - [x] Pet companions (cats & dogs) with autonomous wandering AI and owner following.
 - [x] Guestbooks and loft like counters.
-- [ ] Expanded minigame catalog (Fishing tournaments, Fashion runway contests).
-- [ ] Community marketplace auction house for player-to-player item listings.
+- [x] Plaza Fountain Fishing Activity with sweet-spot tension gauge, species weight distribution, and HavenCoins payouts.
+- [x] Community marketplace auction house for player-to-player item listings and purchases.
+- [ ] Expanded minigame catalog (Fashion runway dress-up contests).
 
 ## 🎯 Phase 4: Cross-Platform & Infrastructure
 - [x] Oracle Cloud ARM64 Ampere VM (4 OCPU, 24 GB RAM) 100% free-tier deployment.
 - [x] Cloudflare Tunnel secure TLS ingress.
 - [x] Capacitor iOS app bundle & Electron desktop app wrapper.
-- [ ] Bind production custom domain (`havenworld.me`) with named Cloudflare tunnel.
-- [ ] Automated 24/7 uptime monitoring via UptimeRobot with Discord webhook alerts.
+- [x] Automated named Cloudflare tunnel deployment script (`deploy/setup-named-tunnel.sh`) for permanent `havenworld.me` binding.
+- [x] Automated 24/7 uptime health monitor script with Discord webhook alerts (`scripts/health-check.mjs`).
 - [ ] Community Discord integration for alpha bug triage and patch announcements.

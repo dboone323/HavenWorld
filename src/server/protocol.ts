@@ -16,11 +16,13 @@ import { TradeManager } from './trade.ts';
 import { CATALOG_ITEMS, getRotatingFeaturedStock, getTimeUntilNextRotation } from '../shared/catalog.ts';
 import { calculateSalvageYield, canCraftRecipe, deductCraftingMaterials } from '../shared/crafting.ts';
 import { petInteract } from '../shared/pet.ts';
+import { FISH_SPECIES, rollCatch, generateWeight } from '../shared/fishing.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
 
 export const shardManager = new ShardManager();
+const playerFishingCooldowns = new Map<string, number>();
 
 export interface DispatchContext {
   rooms: RoomManager;
@@ -696,6 +698,59 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
         type: 'SYSTEM_ANNOUNCEMENT',
         payload: { text: `🍕 ${player.name} finished a shift at Pizza Chef and earned ${reward} HavenCoins!` }
       });
+      break;
+    }
+
+    case 'FISHING_CATCH': {
+      const now = Date.now();
+      const lastCast = playerFishingCooldowns.get(player.id) || 0;
+      if (now - lastCast < 2500) {
+        rooms.send(player.ws, {
+          type: 'SYSTEM_MESSAGE',
+          payload: { text: 'You are reeling too fast! Wait a moment before casting again.', type: 'warning' }
+        });
+        break;
+      }
+      playerFishingCooldowns.set(player.id, now);
+
+      const rawRoll = msg.payload?.roll;
+      const rawWeightRoll = msg.payload?.weightRoll;
+      const roll = (typeof rawRoll === 'number' && Number.isFinite(rawRoll) && rawRoll >= 0 && rawRoll < 1)
+        ? rawRoll
+        : Math.random();
+      const weightRoll = (typeof rawWeightRoll === 'number' && Number.isFinite(rawWeightRoll) && rawWeightRoll >= 0 && rawWeightRoll <= 1)
+        ? rawWeightRoll
+        : Math.random();
+
+      const caughtFish = rollCatch(roll);
+      const weight = generateWeight(caughtFish, weightRoll);
+
+      player.coins += caughtFish.coins;
+      db.addCoins(player.id, caughtFish.coins).catch(() => {});
+
+      await awardIdentity(player, ctx, 'CATCH_FISH', { fishId: caughtFish.id, weight });
+
+      rooms.send(player.ws, {
+        type: 'FISHING_CATCH_RESULT',
+        payload: {
+          success: true,
+          fish: caughtFish,
+          weight,
+          coinsEarned: caughtFish.coins,
+          totalCoins: player.coins
+        }
+      });
+      rooms.send(player.ws, {
+        type: 'COINS_UPDATED',
+        payload: { coins: player.coins, earned: caughtFish.coins, reason: `Caught ${caughtFish.name}` }
+      });
+
+      if (caughtFish.rarity === 'rare' || caughtFish.rarity === 'legendary') {
+        rooms.broadcast(room, {
+          type: 'SYSTEM_ANNOUNCEMENT',
+          payload: { text: `🎣 ${player.name} reeled in a ${caughtFish.rarity.toUpperCase()} ${caughtFish.name} (${weight} kg) at the Plaza Fountain! ${caughtFish.icon}` }
+        });
+      }
       break;
     }
 

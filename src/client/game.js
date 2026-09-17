@@ -17,6 +17,7 @@ import { decodePlayerDelta, intToFacing, interpolatePosition } from './shared/au
 import { CATALOG_ITEMS, getRotatingFeaturedStock, getTimeUntilNextRotation } from './shared/catalog.js';
 import { WORKSHOP_RECIPES, calculateSalvageYield, canCraftRecipe } from './shared/crafting.js';
 import { createPet, advancePetAI, petInteract } from './shared/pet.js';
+import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './shared/fishing.js';
 
   // State
   let ws = null;
@@ -449,6 +450,11 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
         updateCoinUI(selfPlayer.coins);
         appendChatMessage('system', `🪙 +${msg.payload.earned} HavenCoins (${msg.payload.reason})!`);
         playCoinChime();
+        break;
+      }
+
+      case 'FISHING_CATCH_RESULT': {
+        handleFishingCatchResult(msg.payload);
         break;
       }
 
@@ -3077,6 +3083,240 @@ import { createPet, advancePetAI, petInteract } from './shared/pet.js';
       }));
     }
   }
+
+  // ==========================================================================
+  // Plaza Fountain Fishing Activity
+  // ==========================================================================
+  const fishingModal = document.getElementById('fishing-modal');
+  const btnFishing = document.getElementById('btn-fishing');
+  const btnCloseFishing = document.getElementById('btn-close-fishing');
+  const btnCastLine = document.getElementById('btn-cast-line');
+  const btnReelLine = document.getElementById('btn-reel-line');
+  const btnCancelFishing = document.getElementById('btn-cancel-fishing');
+  const btnClaimCatch = document.getElementById('btn-claim-catch');
+
+  const fishingSweetspot = document.getElementById('fishing-sweetspot');
+  const fishingIndicator = document.getElementById('fishing-indicator');
+  const fishingProgressFill = document.getElementById('fishing-progress-fill');
+  const fishingProgressPercent = document.getElementById('fishing-progress-percent');
+  const fishingBobber = document.getElementById('fishing-bobber');
+  const fishingCatchBanner = document.getElementById('fishing-catch-banner');
+
+  const fishingTotalCaughtEl = document.getElementById('fishing-total-caught');
+  const fishingRecordWeightEl = document.getElementById('fishing-record-weight');
+  const fishingEarnedCoinsEl = document.getElementById('fishing-earned-coins');
+
+  let fishingState = 'idle'; // 'idle', 'waiting_bite', 'reeling', 'caught'
+  let fishingTensionProgress = 0;
+  let fishingIndicatorPos = 50; // % across track
+  let fishingSweetspotPos = 35; // % across track
+  let fishingSweetspotWidth = 30; // % width
+  let isReelPressed = false;
+  let fishingAnimationTimer = null;
+  let biteTimeout = null;
+  let sweetspotDirection = 1;
+  let fishTotalCount = 0;
+  let fishRecordWeight = 0;
+  let fishSessionCoins = 0;
+
+  btnFishing?.addEventListener('click', () => {
+    fishingModal?.classList.remove('hidden');
+    resetFishingUI();
+  });
+
+  btnCloseFishing?.addEventListener('click', () => {
+    stopFishingActivity();
+    fishingModal?.classList.add('hidden');
+  });
+
+  function resetFishingUI() {
+    stopFishingActivity();
+    fishingState = 'idle';
+    fishingTensionProgress = 0;
+    fishingIndicatorPos = 50;
+    fishingSweetspotPos = 35;
+    isReelPressed = false;
+
+    if (fishingProgressFill) fishingProgressFill.style.width = '0%';
+    if (fishingProgressPercent) fishingProgressPercent.textContent = '0%';
+    if (fishingIndicator) fishingIndicator.style.left = '50%';
+    if (fishingSweetspot) {
+      fishingSweetspot.style.left = `${fishingSweetspotPos}%`;
+      fishingSweetspot.style.width = `${fishingSweetspotWidth}%`;
+    }
+    if (fishingBobber) fishingBobber.classList.remove('bobbing');
+
+    btnCastLine?.classList.remove('hidden');
+    btnReelLine?.classList.add('hidden');
+    btnCancelFishing?.classList.add('hidden');
+    fishingCatchBanner?.classList.add('hidden');
+  }
+
+  function stopFishingActivity() {
+    if (fishingAnimationTimer) {
+      cancelAnimationFrame(fishingAnimationTimer);
+      fishingAnimationTimer = null;
+    }
+    if (biteTimeout) {
+      clearTimeout(biteTimeout);
+      biteTimeout = null;
+    }
+    if (fishingBobber) fishingBobber.classList.remove('bobbing');
+  }
+
+  btnCastLine?.addEventListener('click', () => {
+    if (fishingState !== 'idle') return;
+    fishingState = 'waiting_bite';
+    btnCastLine.classList.add('hidden');
+    btnCancelFishing.classList.remove('hidden');
+    fishingCatchBanner.classList.add('hidden');
+    fishingBobber?.classList.add('bobbing');
+
+    playFurniPop();
+    appendChatMessage('system', '🎣 You cast your line into the fountain. Watching the water...');
+
+    const biteDelay = 1200 + Math.random() * 1500;
+    biteTimeout = setTimeout(() => {
+      onFishBite();
+    }, biteDelay);
+  });
+
+  btnCancelFishing?.addEventListener('click', () => {
+    resetFishingUI();
+    appendChatMessage('system', 'You reeled in your empty line.');
+  });
+
+  function onFishBite() {
+    if (fishingState !== 'waiting_bite') return;
+    fishingState = 'reeling';
+    playChatPing();
+    showToast('A fish took the bait! HOLD REEL to balance tension! 🐟', '🎣');
+
+    btnCancelFishing.classList.add('hidden');
+    btnReelLine.classList.remove('hidden');
+
+    fishingTensionProgress = 25;
+    let lastTime = performance.now();
+
+    function loop(now) {
+      if (fishingState !== 'reeling') return;
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      // Update sweet spot oscillation
+      fishingSweetspotPos += sweetspotDirection * 35 * dt;
+      if (fishingSweetspotPos <= 5) {
+        fishingSweetspotPos = 5;
+        sweetspotDirection = 1;
+      } else if (fishingSweetspotPos >= 95 - fishingSweetspotWidth) {
+        fishingSweetspotPos = 95 - fishingSweetspotWidth;
+        sweetspotDirection = -1;
+      }
+      if (fishingSweetspot) fishingSweetspot.style.left = `${fishingSweetspotPos}%`;
+
+      // Update indicator position based on holding reel
+      const reelAcceleration = isReelPressed ? 65 : -55;
+      fishingIndicatorPos = Math.max(5, Math.min(95, fishingIndicatorPos + reelAcceleration * dt));
+      if (fishingIndicator) fishingIndicator.style.left = `${fishingIndicatorPos}%`;
+
+      // Check if indicator is inside the sweet spot
+      const inZone = (fishingIndicatorPos >= fishingSweetspotPos) &&
+                     (fishingIndicatorPos <= fishingSweetspotPos + fishingSweetspotWidth);
+
+      fishingTensionProgress = updateProgress(fishingTensionProgress, inZone, dt);
+      if (fishingProgressFill) fishingProgressFill.style.width = `${fishingTensionProgress}%`;
+      if (fishingProgressPercent) fishingProgressPercent.textContent = `${Math.round(fishingTensionProgress)}%`;
+
+      if (fishingTensionProgress >= 100) {
+        completeCatch();
+        return;
+      }
+
+      if (fishingTensionProgress <= 0) {
+        // Line broke / fish escaped
+        stopFishingActivity();
+        showToast('The fish broke free! Try keeping it inside the green sweet-spot.', '💨');
+        resetFishingUI();
+        return;
+      }
+
+      fishingAnimationTimer = requestAnimationFrame(loop);
+    }
+
+    fishingAnimationTimer = requestAnimationFrame(loop);
+  }
+
+  // Hold / release reel controls
+  const handleReelDown = (e) => {
+    e.preventDefault();
+    isReelPressed = true;
+  };
+  const handleReelUp = (e) => {
+    e.preventDefault();
+    isReelPressed = false;
+  };
+
+  btnReelLine?.addEventListener('mousedown', handleReelDown);
+  btnReelLine?.addEventListener('mouseup', handleReelUp);
+  btnReelLine?.addEventListener('touchstart', handleReelDown, { passive: false });
+  btnReelLine?.addEventListener('touchend', handleReelUp, { passive: false });
+
+  // Spacebar reel hotkey while fishing modal is open
+  window.addEventListener('keydown', (e) => {
+    if (fishingState === 'reeling' && e.code === 'Space') {
+      isReelPressed = true;
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      isReelPressed = false;
+    }
+  });
+
+  function completeCatch() {
+    stopFishingActivity();
+    fishingState = 'caught';
+    btnReelLine?.classList.add('hidden');
+
+    // Send catch action to authoritative server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'FISHING_CATCH',
+        payload: {
+          roll: Math.random(),
+          weightRoll: Math.random()
+        }
+      }));
+    }
+  }
+
+  function handleFishingCatchResult(payload) {
+    if (!payload || !payload.fish) return;
+    const { fish, weight, coinsEarned } = payload;
+
+    playCoinChime();
+    fishTotalCount++;
+    if (weight > fishRecordWeight) fishRecordWeight = weight;
+    fishSessionCoins += coinsEarned;
+
+    if (fishingTotalCaughtEl) fishingTotalCaughtEl.textContent = String(fishTotalCount);
+    if (fishingRecordWeightEl) fishingRecordWeightEl.textContent = `${fishRecordWeight} kg`;
+    if (fishingEarnedCoinsEl) fishingEarnedCoinsEl.textContent = `+${fishSessionCoins}`;
+
+    document.getElementById('catch-icon').textContent = fish.icon;
+    document.getElementById('catch-name').textContent = fish.name;
+    document.getElementById('catch-weight').textContent = `${weight} kg`;
+    document.getElementById('catch-rarity').textContent = fish.rarity.toUpperCase();
+    document.getElementById('catch-coins').textContent = `+${coinsEarned} HavenCoins`;
+
+    fishingCatchBanner?.classList.remove('hidden');
+    triggerPassportAction('CATCH_FISH', { fishId: fish.id, weight });
+    appendChatMessage('system', `🎣 Caught a ${fish.name} (${weight} kg) for +${coinsEarned} HavenCoins!`);
+  }
+
+  btnClaimCatch?.addEventListener('click', () => {
+    resetFishingUI();
+  });
 
   function updateFriendRequestBadge() {
     const count = friendsData.pendingRequests.length;

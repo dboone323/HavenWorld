@@ -52,6 +52,13 @@ export const PASSPORT_STAMPS = {
     icon: '🧭',
     description: 'Visit at least 2 distinct rooms in the world.',
     category: 'exploration'
+  },
+  master_angler: {
+    id: 'master_angler',
+    title: 'Master Angler',
+    icon: '🎣',
+    description: 'Catch your first fish in the Plaza Fountain.',
+    category: 'activities'
   }
 };
 
@@ -138,6 +145,12 @@ export function recordPassportAction(passport, actionType, metadata = {}) {
       if (passport.visitedRooms.length >= 2) {
         unlock('world_traveler');
       }
+      break;
+    }
+
+    case 'CATCH_FISH': {
+      passport.stats.fishCaught = (passport.stats.fishCaught || 0) + 1;
+      unlock('master_angler');
       break;
     }
 

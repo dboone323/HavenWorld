@@ -71,6 +71,10 @@
           🍕 Pizza Chef
         </button>
 
+        <button id="btn-fishing" class="action-btn fishing-btn" title="Plaza Fountain Fishing">
+          🎣 Fishing
+        </button>
+
         <button id="btn-edit-mode" class="action-btn edit-btn" title="Decorate Personal Pad">
           🛠️ Decorate
         </button>
@@ -364,6 +368,60 @@
       </div>
     </div>
   </div>
+
+    <!-- Plaza Fountain Fishing Activity Modal -->
+    <div id="fishing-modal" class="modal-overlay hidden">
+      <div class="modal-card fishing-card">
+        <div class="modal-header">
+          <h3>🎣 Plaza Fountain Fishing</h3>
+          <button id="btn-close-fishing" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body fishing-game">
+          <div class="fishing-stats-bar">
+            <span>Fish Caught: <b id="fishing-total-caught">0</b></span>
+            <span>Record Catch: <b id="fishing-record-weight">None</b></span>
+            <span>Session: <b id="fishing-earned-coins">+0</b></span>
+          </div>
+
+          <div class="fishing-water-tank">
+            <div class="water-surface">
+              <span class="water-ripple">🌊</span>
+              <span class="water-bobber" id="fishing-bobber">🎣</span>
+              <span class="water-ripple">🌊</span>
+            </div>
+            <div class="tension-track">
+              <div id="fishing-sweetspot" class="tension-sweetspot" style="left: 35%; width: 30%;"></div>
+              <div id="fishing-indicator" class="tension-indicator" style="left: 50%;">🐟</div>
+            </div>
+            <div class="progress-container">
+              <div class="progress-label">
+                <span>Reel Tension &amp; Progress</span>
+                <span id="fishing-progress-percent">0%</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div id="fishing-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fishing-controls">
+            <button id="btn-cast-line" class="primary-btn">🎣 Cast Line</button>
+            <button id="btn-reel-line" class="action-btn hidden" style="background: #10b981; color: #fff; font-weight: 700; padding: 10px 24px;">⚓ HOLD TO REEL</button>
+            <button id="btn-cancel-fishing" class="action-btn hidden">Cancel</button>
+          </div>
+
+          <div id="fishing-catch-banner" class="catch-banner hidden">
+            <div class="catch-badge" id="catch-badge">✨ NEW CATCH!</div>
+            <div class="catch-icon" id="catch-icon">✨🐟</div>
+            <div class="catch-name" id="catch-name">Radiant Haven Koi</div>
+            <div class="catch-details">
+              <span id="catch-weight">4.25 kg</span> • <span id="catch-rarity" class="badge">LEGENDARY</span> • <span id="catch-coins" style="color: #fbbf24; font-weight: 700;">+350 Coins</span>
+            </div>
+            <button id="btn-claim-catch" class="primary-btn" style="margin-top: 10px;">Claim Reward &amp; Cast Again</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Friends & Private Messaging Panel -->
     <div id="friends-modal" class="modal-overlay hidden">

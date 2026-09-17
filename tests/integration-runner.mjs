@@ -537,6 +537,33 @@ await test('GET_PRIVATE_MESSAGES returns message history', async () => {
   await settle(100);
 });
 
+await test('FISHING_CATCH awards coins and broadcasts catch to room occupants', async () => {
+  const angler = await connect();
+  const watcher = await connect();
+  await settle(50);
+
+  // Angler catches a legendary fish
+  angler.ws.send(JSON.stringify({
+    type: 'FISHING_CATCH',
+    payload: { roll: 0.99, weightRoll: 0.75 }
+  }));
+  await settle(80);
+
+  // Angler gets reward confirmation
+  const result = angler.msgs.find(m => m.type === 'FISHING_CATCH_RESULT');
+  assert.ok(result, 'angler received FISHING_CATCH_RESULT');
+  assert.equal(result.payload.fish.id, 'haven_koi');
+  assert.equal(result.payload.coinsEarned, 350);
+
+  // Watcher in plaza gets announcement
+  const announcement = watcher.msgs.find(m => m.type === 'SYSTEM_ANNOUNCEMENT' && m.payload.text.includes('Haven Koi'));
+  assert.ok(announcement, 'watcher received legendary catch room announcement');
+
+  angler.ws.close();
+  watcher.ws.close();
+  await settle(100);
+});
+
 // --- Cleanup ---
 
 for (const c of wss.clients || []) c.terminate();
