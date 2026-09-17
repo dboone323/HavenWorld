@@ -6,15 +6,19 @@ import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from './shared/pizza.js'
 import { escapeHtml } from './shared/chat.js';
 import { initAudio, playFootstep, playFurniPop, playCoinChime, playChatPing, playDoorwayWhoosh, playSitSound, playSwitchClick, toggleMuted, getMuted } from './shared/audio.js';
 import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPassportProgress } from './shared/passport.js';
+import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowScale } from './shared/emotes.js';
 
   // State
   let ws = null;
   let selfId = null;
   let authToken = null; // WS auth token (persisted account player ID, if logged in)
   let authPlayerId = null; // Persisted account player ID (if logged in)
+
+  const initialSavedName = (typeof localStorage !== 'undefined' && localStorage.getItem('haven_player_name')) || '';
+
   let selfPlayer = {
     id: null,
-    name: 'Traveler',
+    name: initialSavedName || 'Traveler',
     x: 5,
     y: 5,
     targetX: 5,
@@ -27,9 +31,23 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
       shirtColor: '#2e86c1',
       pantsColor: '#34495e'
     },
-    lastChat: null
+    lastChat: null,
+    activeEmote: null
   };
   const otherPlayers = new Map();
+
+  // Leaf particles spawned from clicking plants/trees
+  const leafParticles = [];
+  // Hovered world object tooltip state
+  let hoveredEntity = null;
+  // Room transition state (fade-out/fade-in)
+  let roomTransition = {
+    phase: 'idle', // 'idle' | 'out' | 'in'
+    alpha: 0,
+    targetName: '',
+    startTime: 0,
+    duration: 260
+  };
   let currentRoom = {
     id: 'plaza',
     name: 'Central Plaza & Lounge',
@@ -141,6 +159,10 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
     } else if (guestId) {
       params.push('guestId=' + encodeURIComponent(guestId));
     }
+    const storedName = localStorage.getItem('haven_player_name') || selfPlayer.name;
+    if (storedName && storedName !== 'Traveler') {
+      params.push('name=' + encodeURIComponent(storedName));
+    }
     if (params.length > 0) {
       wsUrl += '?' + params.join('&');
     }
@@ -174,7 +196,17 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
     switch (msg.type) {
       case 'INIT_STATE': {
         selfId = msg.payload.selfId || msg.payload.playerId || msg.payload.player?.id;
-        selfPlayer = { ...selfPlayer, ...msg.payload.player, id: selfId };
+        const serverName = msg.payload.player?.name;
+        const storedName = localStorage.getItem('haven_player_name');
+        const resolvedName = (serverName && !serverName.startsWith('usr_')) ? serverName : (storedName || serverName || 'Traveler');
+        selfPlayer = { ...selfPlayer, ...msg.payload.player, id: selfId, name: resolvedName };
+        if (storedName && (!serverName || serverName.startsWith('usr_') || serverName.startsWith('Traveler #'))) {
+          // Sync server state with player's customized name
+          sendWs({ type: 'CHAT', payload: { text: `/name ${storedName}` } });
+        }
+        if (resolvedName && resolvedName !== 'Traveler') {
+          localStorage.setItem('haven_player_name', resolvedName);
+        }
         currentRoom = msg.payload.room;
         otherPlayers.clear();
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
@@ -229,6 +261,9 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
         if (playerId === selfId) {
           selfPlayer.name = player.name;
           selfPlayer.avatar = player.avatar;
+          if (player.name && !player.name.startsWith('usr_')) {
+            localStorage.setItem('haven_player_name', player.name);
+          }
           // If name changed, update the account display
           if (authPlayerId) {
             document.getElementById('account-player-name').textContent = selfPlayer.name;
@@ -237,6 +272,11 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
           const existing = otherPlayers.get(playerId);
           otherPlayers.set(playerId, { ...existing, ...player });
         }
+        break;
+      }
+
+      case 'SYSTEM_MESSAGE': {
+        appendChatMessage('system', msg.payload.text, msg.payload.type || 'system');
         break;
       }
 
@@ -253,12 +293,22 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
 
       case 'ROOM_CHANGED': {
         currentRoom = msg.payload.room;
-        selfPlayer = { ...selfPlayer, ...msg.payload.player };
+        const savedName = localStorage.getItem('haven_player_name') || selfPlayer.name;
+        const serverPlayer = msg.payload.player || {};
+        if (savedName && (!serverPlayer.name || serverPlayer.name.startsWith('usr_'))) {
+          serverPlayer.name = savedName;
+        }
+        selfPlayer = { ...selfPlayer, ...serverPlayer };
         otherPlayers.clear();
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
         appendChatMessage('system', `Entered: ${currentRoom.name}`);
         playDoorwayWhoosh();
         triggerPassportAction('ENTER_ROOM', { roomId: currentRoom.id });
+
+        // Trigger smooth fade-in
+        roomTransition.phase = 'in';
+        roomTransition.startTime = performance.now();
+        roomTransition.targetName = currentRoom.name;
 
         // Update room selector
         const roomSelect = document.getElementById('room-select');
@@ -403,16 +453,19 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
         break;
       }
 
+      case 'PLAYER_EMOTE':
       case 'PLAYER_EMOTED': {
-        const { fromPlayerId, emote, targetPlayerId } = msg.payload;
-        // Spawn floating hearts if hug or heart
-        if (emote === 'hug' || emote === 'heart') {
-          const fromP = fromPlayerId === selfPlayer.id ? selfPlayer : otherPlayers.get(fromPlayerId);
-          if (fromP) spawnEmoteHearts(fromP.x, fromP.y);
-          if (targetPlayerId) {
-            const toP = targetPlayerId === selfPlayer.id ? selfPlayer : otherPlayers.get(targetPlayerId);
-            if (toP) spawnEmoteHearts(toP.x, toP.y);
-          }
+        const fromPlayerId = msg.payload.fromPlayerId || msg.payload.playerId;
+        const emote = msg.payload.emote;
+        const targetPlayerId = msg.payload.targetPlayerId;
+
+        const fromP = fromPlayerId === selfPlayer.id ? selfPlayer : otherPlayers.get(fromPlayerId);
+        if (fromP) {
+          triggerPlayerEmote(fromP, emote);
+        }
+        if (targetPlayerId) {
+          const toP = targetPlayerId === selfPlayer.id ? selfPlayer : otherPlayers.get(targetPlayerId);
+          if (toP) triggerPlayerEmote(toP, emote);
         }
         break;
       }
@@ -673,6 +726,206 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
 
     // Render floating emote heart particles
     renderFloatingHearts();
+
+    // Render drifting leaf particles from rustled plants
+    drawLeafParticles();
+
+    // Render in-world hover tooltip HUD
+    drawTooltip();
+
+    // Render cinematic room transition overlay (fade-in / fade-out)
+    drawRoomTransition();
+  }
+
+  function triggerPlayerEmote(p, emote) {
+    if (!p) return;
+    const durationMap = { jump: 750, wave: 1300, dance: 1800, hug: 1400, heart: 1400 };
+    const dur = durationMap[emote] || 1200;
+    p.activeEmote = {
+      type: emote,
+      startTime: performance.now(),
+      duration: dur
+    };
+
+    if (emote === 'hug' || emote === 'heart') {
+      spawnEmoteHearts(p.x, p.y);
+      p.lastChat = { text: '💖 Hug!', timestamp: Date.now() };
+    } else if (emote === 'jump') {
+      p.lastChat = { text: '🦘 Hop!', timestamp: Date.now() };
+    } else if (emote === 'wave') {
+      p.lastChat = { text: '👋 Hello!', timestamp: Date.now() };
+    } else if (emote === 'dance') {
+      p.lastChat = { text: '💃 Groove!', timestamp: Date.now() };
+    } else {
+      p.lastChat = { text: emote, timestamp: Date.now() };
+    }
+  }
+
+  function rustlePlant(plant) {
+    if (!plant) return;
+    plant.wobbleStart = performance.now();
+    playSwitchClick();
+    const pt = toScreen(plant.x, plant.y);
+    const originX = pt.x;
+    const originY = pt.y + TILE_HEIGHT / 2 - 24;
+    const leafColors = ['#4ade80', '#22c55e', '#16a34a', '#86efac', '#a3e635'];
+    for (let i = 0; i < 7; i++) {
+      leafParticles.push({
+        x: originX + (Math.random() - 0.5) * 22,
+        y: originY + (Math.random() - 0.5) * 16,
+        vx: (Math.random() - 0.5) * 1.6,
+        vy: 0.7 + Math.random() * 1.3,
+        rotation: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.12,
+        color: leafColors[Math.floor(Math.random() * leafColors.length)],
+        size: 3.5 + Math.random() * 3,
+        alpha: 1.0,
+        birth: performance.now(),
+        life: 1100 + Math.random() * 600
+      });
+    }
+  }
+
+  function playArcadeJingle() {
+    playCoinChime();
+    setTimeout(() => playFurniPop(), 90);
+    setTimeout(() => playCoinChime(), 180);
+  }
+
+  function startRoomTransition(targetName = '') {
+    roomTransition = {
+      phase: 'out',
+      alpha: 0,
+      targetName: targetName || 'New Sanctuary',
+      startTime: performance.now(),
+      duration: 260
+    };
+  }
+
+  function drawLeafParticles() {
+    const now = performance.now();
+    for (let i = leafParticles.length - 1; i >= 0; i--) {
+      const p = leafParticles[i];
+      const age = now - p.birth;
+      if (age >= p.life) {
+        leafParticles.splice(i, 1);
+        continue;
+      }
+      const progress = age / p.life;
+      p.x += p.vx + Math.sin(age * 0.006) * 0.6;
+      p.y += p.vy;
+      p.rotation += p.vRot;
+      p.alpha = Math.max(0, 1 - progress);
+
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.size, p.size * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawTooltip() {
+    if (!hoveredEntity) return;
+    const { screenX, screenY, icon, title, hint } = hoveredEntity;
+
+    ctx.save();
+    ctx.font = 'bold 11px Quicksand, sans-serif';
+    const label = `${icon} ${title}`;
+    const sub = hint;
+    const labelWidth = ctx.measureText(label).width;
+    ctx.font = '10px Quicksand, sans-serif';
+    const subWidth = ctx.measureText(sub).width;
+    const totalWidth = Math.max(labelWidth, subWidth) + 18;
+    const boxHeight = 32;
+
+    const bx = screenX - totalWidth / 2;
+    const by = screenY - boxHeight - 8;
+
+    // Glowing rounded backdrop
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, totalWidth, boxHeight, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    // Downward arrow pointer
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+    ctx.beginPath();
+    ctx.moveTo(screenX - 4, by + boxHeight);
+    ctx.lineTo(screenX + 4, by + boxHeight);
+    ctx.lineTo(screenX, by + boxHeight + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Title
+    ctx.font = 'bold 11px Quicksand, sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(label, bx + 9, by + 14);
+
+    // Action Hint
+    ctx.font = '10px Quicksand, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(sub, bx + 9, by + 26);
+
+    ctx.restore();
+  }
+
+  function drawRoomTransition() {
+    if (roomTransition.phase === 'idle') return;
+    const now = performance.now();
+    const elapsed = now - roomTransition.startTime;
+    const progress = Math.min(1, elapsed / roomTransition.duration);
+
+    if (roomTransition.phase === 'out') {
+      roomTransition.alpha = progress;
+      if (progress >= 1) {
+        roomTransition.alpha = 1;
+      }
+    } else if (roomTransition.phase === 'in') {
+      roomTransition.alpha = 1 - progress;
+      if (progress >= 1) {
+        roomTransition.phase = 'idle';
+        roomTransition.alpha = 0;
+        return;
+      }
+    }
+
+    if (roomTransition.alpha <= 0) return;
+
+    ctx.save();
+    ctx.fillStyle = `rgba(15, 23, 42, ${roomTransition.alpha})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (roomTransition.alpha > 0.35) {
+      const textAlpha = Math.min(1, (roomTransition.alpha - 0.35) / 0.65);
+      ctx.globalAlpha = textAlpha;
+
+      const midX = canvas.width / 2;
+      const midY = canvas.height / 2;
+
+      ctx.font = '32px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🚪', midX, midY - 12);
+
+      ctx.font = 'bold 16px Outfit, sans-serif';
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(`Entering ${roomTransition.targetName}...`, midX, midY + 22);
+
+      ctx.font = '12px Quicksand, sans-serif';
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillText('✨ Loading Sanctuary ✨', midX, midY + 42);
+    }
+    ctx.restore();
   }
 
   function spawnEmoteHearts(gx, gy) {
@@ -993,14 +1246,23 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
         break;
       }
       case 'plant': {
-        // Monstera Houseplant
+        // Monstera / Tree with spring wobble animation
+        let wobbleX = 0;
+        if (f.wobbleStart) {
+          const wobbleAge = (performance.now() - f.wobbleStart) / 450;
+          if (wobbleAge >= 1) {
+            delete f.wobbleStart;
+          } else {
+            wobbleX = Math.sin(wobbleAge * Math.PI * 6) * (1 - wobbleAge) * 5;
+          }
+        }
         ctx.fillStyle = '#92400e';
         ctx.fillRect(cx - 8, cy - 10, 16, 12); // Terracotta pot
         ctx.fillStyle = '#10b981';
         ctx.beginPath();
-        ctx.ellipse(cx - 10, cy - 26, 12, 18, -0.4, 0, Math.PI * 2);
-        ctx.ellipse(cx + 10, cy - 26, 12, 18, 0.4, 0, Math.PI * 2);
-        ctx.ellipse(cx, cy - 32, 14, 20, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx - 10 + wobbleX, cy - 26, 12, 18, -0.4, 0, Math.PI * 2);
+        ctx.ellipse(cx + 10 + wobbleX, cy - 26, 12, 18, 0.4, 0, Math.PI * 2);
+        ctx.ellipse(cx + wobbleX, cy - 32, 14, 20, 0, 0, Math.PI * 2);
         ctx.fill();
         break;
       }
@@ -1094,40 +1356,83 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
     const facing = p.facing || 'SE';
     const bounce = (!isSitting && p.isWalking) ? getWalkBob(p.walkCycle || 0, 3) : 0;
 
+    let jumpOffsetY = 0;
+    let waveAngle = 0;
+    let danceOffsetX = 0;
+    let danceOffsetY = 0;
+
+    if (p.activeEmote) {
+      const now = performance.now();
+      const elapsed = now - p.activeEmote.startTime;
+      const progress = elapsed / p.activeEmote.duration;
+      if (progress >= 1) {
+        p.activeEmote = null;
+      } else {
+        if (p.activeEmote.type === 'jump') {
+          jumpOffsetY = computeJumpOffset(progress, 22);
+        } else if (p.activeEmote.type === 'wave') {
+          waveAngle = computeWaveAngle(progress, 0.45);
+        } else if (p.activeEmote.type === 'dance') {
+          const d = computeDanceOffset(progress, 6);
+          danceOffsetX = d.x;
+          danceOffsetY = d.y;
+        } else if (p.activeEmote.type === 'hug' || p.activeEmote.type === 'heart') {
+          danceOffsetY = -Math.abs(Math.sin(progress * Math.PI * 3)) * 4;
+        }
+      }
+    }
+
+    const shadowScale = computeShadowScale(jumpOffsetY, 22);
+    const charX = cx + danceOffsetX;
+    const baseY = cy - (isSitting ? 2 : 8) + bounce + jumpOffsetY + danceOffsetY;
+
     ctx.save();
 
-    // Floor Shadow
+    // Floor Shadow (scales down when jumping)
     ctx.beginPath();
-    ctx.ellipse(cx, cy, isSitting ? 16 : 14, isSitting ? 8 : 7, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.ellipse(cx, cy, (isSitting ? 16 : 14) * shadowScale, (isSitting ? 8 : 7) * shadowScale, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.35 * shadowScale})`;
     ctx.fill();
-
-    // Base Y: Lower by 7px when seated
-    const baseY = cy - (isSitting ? 2 : 8) + bounce;
 
     if (isSitting) {
       // Seated Legs: Folded forward horizontally
       ctx.fillStyle = av.pantsColor || '#34495e';
       ctx.beginPath();
-      ctx.roundRect(cx - 9, baseY - 6, 18, 6, 3);
+      ctx.roundRect(charX - 9, baseY - 6, 18, 6, 3);
       ctx.fill();
 
       // Torso / Shirt (slightly more compact)
       ctx.fillStyle = av.shirtColor || '#2e86c1';
       ctx.beginPath();
-      ctx.roundRect(cx - 9, baseY - 22, 18, 16, 5);
+      ctx.roundRect(charX - 9, baseY - 22, 18, 16, 5);
       ctx.fill();
     } else {
       // Standing Legs / Pants
       ctx.fillStyle = av.pantsColor || '#34495e';
-      ctx.fillRect(cx - 7, baseY - 12, 5, 14);
-      ctx.fillRect(cx + 2, baseY - 12, 5, 14);
+      ctx.fillRect(charX - 7, baseY - 12, 5, 14);
+      ctx.fillRect(charX + 2, baseY - 12, 5, 14);
 
       // Torso / Shirt
       ctx.fillStyle = av.shirtColor || '#2e86c1';
       ctx.beginPath();
-      ctx.roundRect(cx - 10, baseY - 28, 20, 18, 6);
+      ctx.roundRect(charX - 10, baseY - 28, 20, 18, 6);
       ctx.fill();
+    }
+
+    // Waving Arm Animation
+    if (Math.abs(waveAngle) > 0.01) {
+      ctx.save();
+      ctx.translate(charX + 11, baseY - 22);
+      ctx.rotate(-0.8 + waveAngle);
+      ctx.fillStyle = av.shirtColor || '#2e86c1';
+      ctx.beginPath();
+      ctx.roundRect(-2, -14, 5, 14, 2.5);
+      ctx.fill();
+      ctx.fillStyle = av.skin || '#f5cba7';
+      ctx.beginPath();
+      ctx.arc(0.5, -16, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     const headY = isSitting ? baseY - 28 : baseY - 36;
@@ -1135,57 +1440,54 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
     // Head Base (Skin)
     ctx.fillStyle = av.skin || '#f5cba7';
     ctx.beginPath();
-    ctx.arc(cx, headY, 11, 0, Math.PI * 2);
+    ctx.arc(charX, headY, 11, 0, Math.PI * 2);
     ctx.fill();
 
     // Facial features or Back Hair depending on 4-way facing:
-    // 'NW' or 'NE' are looking AWAY from the isometric camera (back of avatar)
-    // 'SE' or 'SW' are looking TOWARD the camera (front of avatar)
     const isFacingBack = (facing === 'NW' || facing === 'NE');
 
     if (isFacingBack) {
       // Back of head — full hair coverage
       ctx.fillStyle = av.hairColor || '#4a235a';
       ctx.beginPath();
-      ctx.arc(cx, headY - 1, 11.5, 0, Math.PI * 2);
+      ctx.arc(charX, headY - 1, 11.5, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      // Front-facing ('SE' = down-right, 'SW' = down-left)
       const eyeShift = facing === 'SW' ? -2 : 2;
 
       // Eyes
       ctx.fillStyle = '#1e293b';
       ctx.beginPath();
-      ctx.arc(cx - 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
-      ctx.arc(cx + 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
+      ctx.arc(charX - 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
+      ctx.arc(charX + 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
       ctx.fill();
 
       // Smile
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.arc(cx + eyeShift / 2, headY + 2, 4, 0.2, Math.PI - 0.2);
+      ctx.arc(charX + eyeShift / 2, headY + 2, 4, 0.2, Math.PI - 0.2);
       ctx.stroke();
 
       // Front Hair style / bangs
       ctx.fillStyle = av.hairColor || '#4a235a';
       ctx.beginPath();
-      ctx.arc(cx, headY - 5, 12, Math.PI * 0.8, Math.PI * 2.2);
+      ctx.arc(charX, headY - 5, 12, Math.PI * 0.8, Math.PI * 2.2);
       ctx.fill();
     }
 
-    // Name Tag
+    // Name Tag — Persistently synchronized
     ctx.font = 'bold 11px Quicksand, sans-serif';
-    const tagText = p.name || 'Traveler';
+    const tagText = (isSelf ? selfPlayer.name : p.name) || 'Traveler';
     const textWidth = ctx.measureText(tagText).width;
 
-    ctx.fillStyle = isSelf ? 'rgba(139, 92, 246, 0.85)' : 'rgba(15, 23, 42, 0.75)';
+    ctx.fillStyle = isSelf ? 'rgba(139, 92, 246, 0.88)' : 'rgba(15, 23, 42, 0.78)';
     ctx.beginPath();
-    ctx.roundRect(cx - textWidth / 2 - 6, (isSitting ? baseY - 54 : baseY - 62), textWidth + 12, 16, 8);
+    ctx.roundRect(charX - textWidth / 2 - 6, (isSitting ? baseY - 54 : baseY - 62), textWidth + 12, 16, 8);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(tagText, cx - textWidth / 2, (isSitting ? baseY - 42 : baseY - 50));
+    ctx.fillText(tagText, charX - textWidth / 2, (isSitting ? baseY - 42 : baseY - 50));
 
     ctx.restore();
   }
@@ -1198,10 +1500,21 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
       return;
     }
 
+    let jumpOffsetY = 0;
+    let danceOffsetX = 0;
+    if (p.activeEmote) {
+      const elapsed = performance.now() - p.activeEmote.startTime;
+      const progress = elapsed / p.activeEmote.duration;
+      if (progress < 1) {
+        if (p.activeEmote.type === 'jump') jumpOffsetY = computeJumpOffset(progress, 22);
+        else if (p.activeEmote.type === 'dance') danceOffsetX = computeDanceOffset(progress, 6).x;
+      }
+    }
+
     const alpha = fadeAlpha(age, 6, 5);
     const pt = toScreen(p.x, p.y);
-    const cx = pt.x;
-    const cy = pt.y + TILE_HEIGHT / 2 - 76;
+    const cx = pt.x + danceOffsetX;
+    const cy = pt.y + TILE_HEIGHT / 2 - 76 + jumpOffsetY;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -1270,14 +1583,16 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
       // Toggle room: if in plaza, switch to personal loft; if in loft, switch to plaza
       const isLoft = currentRoom.id.startsWith('loft_');
       let targetRoomId = 'plaza';
+      let targetName = 'Central Plaza & Lounge';
       if (!isLoft) {
-        // Find player's loft ID from room-select options or user's derived loft ID
         const loftOption = Array.from(document.getElementById('room-select').options)
           .find(opt => opt.value.startsWith('loft_'));
         if (loftOption) {
           targetRoomId = loftOption.value;
+          targetName = loftOption.textContent || 'Personal Sanctuary Loft';
         }
       }
+      startRoomTransition(targetName);
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'SWITCH_ROOM',
@@ -1332,19 +1647,29 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
       // Clear parent surface selection after placing
       if (parentSurfaceId) parentSurfaceId = null;
     } else {
-      // Check interactive furniture hit test (seating & toggles)
+      // Check interactive furniture hit test (seating, toggles, plant rustle, arcade)
       const clickedFurniture = currentRoom.furniture.slice().reverse().find(f => {
         const pt = toScreen(f.x, f.y);
         const cx = pt.x;
         const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20;
         const dx = sx - cx;
         const dy = sy - cy;
-        return Math.hypot(dx, dy) < 26;
+        return Math.hypot(dx, dy) < 28;
       });
 
       if (clickedFurniture) {
+        if (clickedFurniture.type === 'plant') {
+          rustlePlant(clickedFurniture);
+          triggerPassportAction('RUSTLE_TREE');
+          return;
+        }
+        if (clickedFurniture.type === 'arcade') {
+          playArcadeJingle();
+          return;
+        }
+
         const seatTypes = ['sofa', 'bench', 'chair', 'stool', 'bed'];
-        const lightTypes = ['lamp', 'neon', 'tv', 'plant'];
+        const lightTypes = ['lamp', 'neon', 'tv'];
         if (seatTypes.includes(clickedFurniture.type)) {
           playSitSound();
           triggerPassportAction('SIT');
@@ -1386,6 +1711,99 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
     }
   });
 
+  // Interactive In-World Hover Tooltips & Cursor State
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    // Check doorway hover
+    const doorX = Math.floor(GRID_SIZE / 2);
+    const doorPt0 = toScreen(doorX, 0);
+    const doorPt1 = toScreen(doorX + 1, 0);
+    const doorMidX = (doorPt0.x + doorPt1.x) / 2;
+    const doorMidY = (doorPt0.y + doorPt1.y) / 2 - 30;
+    if (Math.hypot(sx - doorMidX, sy - doorMidY) < 36) {
+      const isLoft = currentRoom.id.startsWith('loft_');
+      hoveredEntity = {
+        type: 'door',
+        screenX: doorMidX,
+        screenY: doorMidY - 30,
+        icon: '🚪',
+        title: isLoft ? 'Central Plaza Exit' : 'Personal Loft Door',
+        hint: 'Click to travel'
+      };
+      canvas.style.cursor = 'pointer';
+      return;
+    }
+
+    // Check other players hover
+    for (const [pId, p] of otherPlayers) {
+      const pt = toScreen(p.x, p.y);
+      const cx = pt.x;
+      const cy = pt.y + TILE_HEIGHT / 2 - 20;
+      if (Math.hypot(sx - cx, sy - cy) < 28) {
+        hoveredEntity = {
+          type: 'player',
+          screenX: cx,
+          screenY: cy - 36,
+          icon: '👤',
+          title: p.name || 'Traveler',
+          hint: 'Click to open player menu'
+        };
+        canvas.style.cursor = 'pointer';
+        return;
+      }
+    }
+
+    // Check interactive furniture hover
+    const hoveredFurni = currentRoom.furniture.slice().reverse().find(f => {
+      const pt = toScreen(f.x, f.y);
+      const cx = pt.x;
+      const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20;
+      return Math.hypot(sx - cx, sy - cy) < 28;
+    });
+
+    if (hoveredFurni) {
+      let icon = '🛋️', title = 'Decor', hint = 'Click to interact';
+      if (hoveredFurni.type === 'plant') {
+        icon = '🌿'; title = 'Fiddle-Leaf Plant'; hint = 'Click to rustle leaves';
+      } else if (hoveredFurni.type === 'fountain') {
+        icon = '⛲'; title = 'Central Fountain'; hint = 'Click to relax & fish';
+      } else if (hoveredFurni.type === 'arcade') {
+        icon = '🕹️'; title = 'Retro Arcade'; hint = 'Click to play chiptune';
+      } else if (hoveredFurni.type === 'bench' || hoveredFurni.type === 'sofa' || hoveredFurni.type === 'chair') {
+        icon = '🪑'; title = hoveredFurni.type === 'sofa' ? 'Cozy Sofa' : 'Park Bench'; hint = 'Click to sit & rest';
+      } else if (hoveredFurni.type === 'tv') {
+        icon = '📺'; title = 'CRT Television'; hint = 'Click to switch channel';
+      } else if (hoveredFurni.type === 'neon') {
+        icon = '💡'; title = 'Neon Sign'; hint = 'Click to toggle light';
+      } else if (hoveredFurni.type === 'table') {
+        icon = '🪵'; title = 'Wood Table'; hint = 'Click to place items';
+      }
+
+      const pt = toScreen(hoveredFurni.x, hoveredFurni.y);
+      hoveredEntity = {
+        type: hoveredFurni.type,
+        screenX: pt.x,
+        screenY: pt.y + TILE_HEIGHT / 2 - 45 - (hoveredFurni.elevation || 0) * 20,
+        icon,
+        title,
+        hint
+      };
+      canvas.style.cursor = 'pointer';
+      return;
+    }
+
+    hoveredEntity = null;
+    canvas.style.cursor = 'default';
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    hoveredEntity = null;
+    canvas.style.cursor = 'default';
+  });
+
   // Chat Submission
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
@@ -1408,22 +1826,42 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
   document.querySelectorAll('.emote-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const text = btn.getAttribute('data-text');
+      // Trigger physical emote animation & overhead bubble locally immediately
+      let emoteKey = 'jump';
+      if (text === '👋') emoteKey = 'wave';
+      else if (text === '❤️') emoteKey = 'hug';
+      else if (text === '🔥' || text === '🎉') emoteKey = 'dance';
+      else emoteKey = text;
+
+      triggerPlayerEmote(selfPlayer, emoteKey);
+
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'CHAT', payload: { text } }));
+        ws.send(JSON.stringify({
+          type: 'PLAYER_EMOTE',
+          payload: { emote: emoteKey, text }
+        }));
       }
     });
   });
 
-  function appendChatMessage(sender, text) {
+  function appendChatMessage(sender, text, category = 'normal') {
     const box = document.getElementById('chat-history');
     const msg = document.createElement('div');
     msg.className = 'chat-msg';
 
-    if (sender === 'system') {
+    if (sender === 'system' || category === 'system') {
       msg.classList.add('system');
-      msg.innerHTML = `<span class="time">[System]</span> <span class="text">${escapeHtml(text)}</span>`;
+      msg.innerHTML = `<span class="chat-badge sys">System</span> <span class="text">${escapeHtml(text)}</span>`;
+    } else if (category === 'reward' || text.includes('🪙') || text.includes('HavenCoins')) {
+      msg.classList.add('reward');
+      msg.innerHTML = `<span class="chat-badge reward">Reward</span> <span class="text">${escapeHtml(text)}</span>`;
+    } else if (category === 'whisper' || text.startsWith('[Whisper')) {
+      msg.classList.add('whisper');
+      msg.innerHTML = `<span class="chat-badge whisper">Whisper</span> <span class="text">${escapeHtml(text)}</span>`;
     } else {
-      msg.innerHTML = `<span class="sender">${escapeHtml(sender)}:</span> <span class="text">${escapeHtml(text)}</span>`;
+      const isSelf = sender === selfPlayer.name;
+      const badgeHtml = isSelf ? `<span class="chat-badge you">You</span> ` : '';
+      msg.innerHTML = `${badgeHtml}<span class="sender ${isSelf ? 'is-self' : ''}">${escapeHtml(sender)}:</span> <span class="text">${escapeHtml(text)}</span>`;
     }
 
     box.appendChild(msg);
@@ -1439,6 +1877,8 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
   // ==========================================================================
   document.getElementById('room-select').addEventListener('change', (e) => {
     const targetRoom = e.target.value;
+    const optText = e.target.selectedOptions[0]?.textContent || targetRoom;
+    startRoomTransition(optText);
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'SWITCH_ROOM',
@@ -2245,6 +2685,7 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
       `;
       card.querySelector('button').addEventListener('click', () => {
         navigatorModal.classList.add('hidden');
+        startRoomTransition(r.name);
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: r.id } }));
         }
@@ -2270,6 +2711,7 @@ import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPasspo
         `;
         card.querySelector('button').addEventListener('click', () => {
           navigatorModal.classList.add('hidden');
+          startRoomTransition(r.name);
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: r.id } }));
           }

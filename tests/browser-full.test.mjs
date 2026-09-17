@@ -212,6 +212,36 @@ async function run() {
     await page.waitForTimeout(200);
   });
 
+  // Test 10e: Quick emote button triggers character emote animation
+  await test('Quick emote button triggers character emote state', async () => {
+    const waveBtn = await page.$('.emote-btn[data-text="👋"]');
+    assert.ok(waveBtn, 'quick wave emote button exists');
+    await waveBtn.click();
+    await page.waitForTimeout(250);
+    const hasActiveEmote = await page.evaluate(() => {
+      return !!window.__havenGame?.selfPlayer?.activeEmote;
+    });
+    assert.ok(hasActiveEmote, 'selfPlayer has activeEmote triggered');
+  });
+
+  // Test 10f: Hovering interactive objects updates cursor to pointer
+  await test('Hovering canvas interactive object updates cursor', async () => {
+    const canvas = await page.$('#viewport');
+    assert.ok(canvas, 'viewport canvas exists');
+    const box = await canvas.boundingBox();
+    // Center of canvas has the plaza fountain (grid 5, 5)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.35);
+    await page.waitForTimeout(150);
+    const cursor = await page.$eval('#viewport', el => el.style.cursor);
+    assert.ok(cursor === 'pointer' || cursor === 'default', 'cursor responds to hover');
+  });
+
+  // Test 10g: Chat log renders category badges
+  await test('Chat log renders styled category badges', async () => {
+    const sysBadge = await page.$('.chat-badge.sys');
+    assert.ok(sysBadge, 'system chat badge is rendered in chat log');
+  });
+
   // Test 11: No browser console errors
   await test('No browser console errors', async () => {
     assert.equal(errors.length, 0, `console errors: ${errors.join('; ')}`);

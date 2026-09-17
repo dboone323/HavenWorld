@@ -167,8 +167,16 @@ function verifyPassword(password: string, stored: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(verifyHash));
 }
 
+/** In-memory cache for guest session profiles and name retention across reconnects */
+export const guestProfileCache = new Map<string, { name?: string; coins?: number; gems?: number; avatar?: any }>();
+
 /** Ensure a player profile row exists (no-op in memory mode) */
 export async function initPlayerProfile(userId: string, username: string): Promise<void> {
+  if (username) {
+    const existing = guestProfileCache.get(userId) || {};
+    guestProfileCache.set(userId, { ...existing, name: username });
+  }
+
   if (mode === 'supabase') {
     try {
       const { error } = await supabase!.from('profiles').upsert(
@@ -184,12 +192,11 @@ export async function initPlayerProfile(userId: string, username: string): Promi
       const stmt = sqliteDb!.prepare(`
         INSERT INTO profiles (id, username, coins, gems)
         VALUES (?, ?, 1000, 50)
-        ON CONFLICT(id) DO NOTHING
+        ON CONFLICT(id) DO UPDATE SET username = COALESCE(profiles.username, excluded.username)
       `);
       stmt.run(userId, username || userId);
     } catch (e) {
-      // Username may already exist for a different player — that's OK,
-      // the profile will be loaded from the DB on connect.
+      // Username may already exist for a different player — fallback to cache
     }
   }
 }
@@ -640,14 +647,30 @@ export async function removeFurniture(furnitureId: string): Promise<void> {
 
 // Load a player's saved profile, avatar, and coin balance on join
 export async function loadPlayerProfile(userId: string): Promise<PlayerProfile | null> {
+  const cached = guestProfileCache.get(userId);
+
   if (mode === 'supabase') {
     try {
       const { data: profile, error: pErr } = await supabase!.from('profiles').select('username, coins, gems, last_daily_claim').eq('id', userId).maybeSingle();
-      if (pErr || !profile) return null;
+      if (pErr || !profile) {
+        if (cached && cached.name) {
+          return {
+            id: userId,
+            name: cached.name,
+            coins: cached.coins || 1000,
+            gems: cached.gems || 50,
+            lastDailyClaim: 0,
+            avatar: cached.avatar || null,
+          };
+        }
+        return null;
+      }
       const { data: avatar, error: aErr } = await supabase!.from('avatar_profiles').select('skin, hair_style, hair_color, shirt_color, pants_color').eq('user_id', userId).maybeSingle();
+      const loadedName = profile.username || cached?.name || userId;
+      guestProfileCache.set(userId, { ...(cached || {}), name: loadedName, coins: profile.coins, gems: profile.gems });
       return {
         id: userId,
-        name: profile.username || userId,
+        name: loadedName,
         coins: profile.coins || 1000,
         gems: profile.gems || 50,
         lastDailyClaim: profile.last_daily_claim ? new Date(profile.last_daily_claim).getTime() : 0,
@@ -658,18 +681,42 @@ export async function loadPlayerProfile(userId: string): Promise<PlayerProfile |
       };
     } catch (err) {
       console.warn('Supabase loadPlayerProfile warning:', (err as Error).message);
+      if (cached && cached.name) {
+        return {
+          id: userId,
+          name: cached.name,
+          coins: cached.coins || 1000,
+          gems: cached.gems || 50,
+          lastDailyClaim: 0,
+          avatar: cached.avatar || null,
+        };
+      }
       return null;
     }
   }
   if (mode === 'sqlite') {
     const profileStmt = sqliteDb!.prepare('SELECT username, coins, gems, last_daily_claim FROM profiles WHERE id = ?');
     const profileRow = profileStmt.get(userId) as { username: string; coins: number; gems: number; last_daily_claim: string } | undefined;
-    if (!profileRow) return null;
+    if (!profileRow) {
+      if (cached && cached.name) {
+        return {
+          id: userId,
+          name: cached.name,
+          coins: cached.coins || 1000,
+          gems: cached.gems || 50,
+          lastDailyClaim: 0,
+          avatar: cached.avatar || null,
+        };
+      }
+      return null;
+    }
     const avatarStmt = sqliteDb!.prepare('SELECT skin, hair_style, hair_color, shirt_color, pants_color FROM avatar_profiles WHERE user_id = ?');
     const avatarRow = avatarStmt.get(userId) as { skin: string; hair_style: string; hair_color: string; shirt_color: string; pants_color: string } | undefined;
+    const loadedName = profileRow.username || cached?.name || userId;
+    guestProfileCache.set(userId, { ...(cached || {}), name: loadedName, coins: profileRow.coins, gems: profileRow.gems });
     return {
       id: userId,
-      name: profileRow.username || userId,
+      name: loadedName,
       coins: profileRow.coins || 1000,
       gems: profileRow.gems || 50,
       lastDailyClaim: profileRow.last_daily_claim ? new Date(profileRow.last_daily_claim).getTime() : 0,
@@ -684,17 +731,32 @@ export async function loadPlayerProfile(userId: string): Promise<PlayerProfile |
 
 // Update player name
 export async function savePlayerName(userId: string, name: string): Promise<void> {
+  const existing = guestProfileCache.get(userId) || {};
+  guestProfileCache.set(userId, { ...existing, name });
+
   if (mode === 'supabase') {
     try {
-      await supabase!.from('profiles').update({ username: name }).eq('id', userId);
+      const { error } = await supabase!.from('profiles').update({ username: name }).eq('id', userId);
+      if (error) {
+        await supabase!.from('profiles').upsert({ id: userId, username: name, coins: 1000, gems: 50 });
+      }
     } catch (err) {
       console.warn('Supabase savePlayerName warning:', (err as Error).message);
     }
     return;
   }
   if (mode === 'sqlite') {
-    const stmt = sqliteDb!.prepare('UPDATE profiles SET username = ? WHERE id = ?');
-    stmt.run(name, userId);
+    try {
+      const stmt = sqliteDb!.prepare(`
+        INSERT INTO profiles (id, username, coins, gems)
+        VALUES (?, ?, 1000, 50)
+        ON CONFLICT(id) DO UPDATE SET username = excluded.username
+      `);
+      stmt.run(userId, name);
+    } catch (err) {
+      const updateStmt = sqliteDb!.prepare('UPDATE profiles SET username = ? WHERE id = ?');
+      updateStmt.run(name, userId);
+    }
   }
 }
 

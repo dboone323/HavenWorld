@@ -150,6 +150,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const authToken = url.searchParams.get('token') || (req.headers['x-haven-token'] as string) || null;
   const guestToken = url.searchParams.get('guestId') || null;
+  const nameParam = (url.searchParams.get('name') || '').trim();
 
   let playerId: string;
   let authUserId: string | null = null;
@@ -166,7 +167,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     playerId = 'usr_' + Math.random().toString(36).substring(2, 9);
   }
 
-  const defaultName = 'Traveler #' + (nextPlayerNumber++);
+  const defaultName = nameParam || ('Traveler #' + (nextPlayerNumber++));
 
   // Try to load existing player profile from DB (works with account IDs)
   let playerName = defaultName;
@@ -183,7 +184,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
 
   const existingPlayer = await db.loadPlayerProfile(playerId);
   if (existingPlayer) {
-    playerName = existingPlayer.name || defaultName;
+    playerName = nameParam || existingPlayer.name || defaultName;
     playerCoins = existingPlayer.coins || 1000;
     playerGems = existingPlayer.gems || 50;
     playerLastDailyClaim = existingPlayer.lastDailyClaim || 0;
@@ -192,7 +193,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
     }
   } else {
     // Ensure profile is persisted for new players
-    await db.initPlayerProfile(playerId, defaultName);
+    await db.initPlayerProfile(playerId, playerName);
   }
 
   const player = {

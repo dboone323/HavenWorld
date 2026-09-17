@@ -76,10 +76,14 @@ test('CHAT broadcasts trimmed text', () => {
 
 test('CHAT /name renames the player', () => {
   const rooms = new RoomManager(); const { api } = mockDb();
+  const globalPlayers = new Map();
   const p = makePlayer('a'); rooms.join('plaza', p);
-  handleMessage({ type: 'CHAT', payload: { text: '/name Rex' } }, p, C(rooms, api, p));
+  globalPlayers.set('a', p);
+  handleMessage({ type: 'CHAT', payload: { text: '/name Rex' } }, p, C(rooms, api, p, globalPlayers));
   assert.equal(p.name, 'Rex');
+  assert.equal(globalPlayers.get('a').name, 'Rex');
   assert.equal(JSON.parse(p.ws.sent[0]).type, 'PLAYER_PROFILE_UPDATED');
+  assert.equal(JSON.parse(p.ws.sent[1]).type, 'SYSTEM_MESSAGE');
 });
 
 test('UPDATE_AVATAR persists and broadcasts', () => {
@@ -105,6 +109,29 @@ test('SWITCH_ROOM relocates the player and notifies others', async () => {
   assert.equal(a.x, 5);
   assert.equal(JSON.parse(a.ws.sent[0]).type, 'ROOM_CHANGED');
   assert.equal(JSON.parse(b.ws.sent[b.ws.sent.length - 1]).type, 'PLAYER_LEFT');
+});
+
+test('SWITCH_ROOM preserves renamed player name tag in ROOM_CHANGED and PLAYER_JOINED', async () => {
+  const rooms = new RoomManager(); const { api } = mockDb();
+  const globalPlayers = new Map();
+  const a = makePlayer('a'); const b = makePlayer('b');
+  rooms.join('plaza', a);
+  globalPlayers.set('a', a); globalPlayers.set('b', b);
+  a.name = 'CosmicTraveler';
+
+  rooms.rooms['sanctuary_loft'] = {
+    id: 'sanctuary_loft', name: 'Cozy Personal Loft', isPublic: false,
+    players: new Map([['b', b]]), furniture: [], ownerId: null
+  };
+
+  await handleMessage({ type: 'SWITCH_ROOM', payload: { roomId: 'sanctuary_loft' } }, a, C(rooms, api, a, globalPlayers));
+  const roomChanged = JSON.parse(a.ws.sent[0]);
+  assert.equal(roomChanged.type, 'ROOM_CHANGED');
+  assert.equal(roomChanged.payload.player.name, 'CosmicTraveler');
+
+  const playerJoined = JSON.parse(b.ws.sent[0]);
+  assert.equal(playerJoined.type, 'PLAYER_JOINED');
+  assert.equal(playerJoined.payload.player.name, 'CosmicTraveler');
 });
 
 test('PLACE_FURNITURE is ignored outside the loft', () => {

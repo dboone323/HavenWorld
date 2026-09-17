@@ -120,16 +120,42 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const { text } = moderateChat(raw);
       if (!text) return;
 
-      // In-game commands: /name <n>
+      // In-game commands: /name <n>, /jump, /wave, /dance, /hug
       if (text.startsWith('/')) {
         const cmd = parseCommand(text);
         if (cmd && cmd.command === 'name' && cmd.args) {
-          player.name = cmd.args.slice(0, 18);
+          player.name = cmd.args.slice(0, 18).trim();
+          if (ctx.globalPlayers) {
+            const gp = ctx.globalPlayers.get(player.id);
+            if (gp) gp.name = player.name;
+          }
+          const userLoftId = getUserLoftRoomId(player.id);
+          const userLoft = rooms.get(userLoftId);
+          if (userLoft) {
+            userLoft.name = `${player.name}'s Personal Sanctuary Loft`;
+          }
           db.savePlayerName(player.id, player.name).catch(() => {});
           rooms.broadcast(room, {
             type: 'PLAYER_PROFILE_UPDATED',
             payload: { playerId: player.id, player: serializePlayer(player) }
           });
+          rooms.send(player.ws, {
+            type: 'SYSTEM_MESSAGE',
+            payload: { text: `Name updated to "${player.name}".`, type: 'system' }
+          });
+          return;
+        }
+
+        if (cmd && (cmd.command === 'jump' || cmd.command === 'wave' || cmd.command === 'dance' || cmd.command === 'hug')) {
+          rooms.broadcast(room, {
+            type: 'PLAYER_EMOTE',
+            payload: {
+              playerId: player.id,
+              emote: cmd.command,
+              sender: player.name
+            }
+          });
+          return;
         }
         return;
       }
