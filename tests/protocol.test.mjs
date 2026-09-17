@@ -466,3 +466,135 @@ test('UPDATE_ROOM_STYLE updates style for loft owner and rejects non-owner', asy
   assert.ok(errEvent.payload.message.includes('customize your own loft'));
 });
 
+test('INTERACT_FURNITURE handles seating and light toggling', async () => {
+  const rooms = new RoomManager();
+  const { api } = mockDb();
+  const alice = makePlayer('usr_alice123', 'plaza');
+  alice.x = 0;
+  alice.y = 0;
+  alice.isSitting = false;
+  rooms.join('plaza', alice);
+
+  // 1. Alice clicks on bench (f_bench1 at x=2, y=3)
+  await handleMessage({
+    type: 'INTERACT_FURNITURE',
+    payload: { furnitureId: 'f_bench1', action: 'sit' }
+  }, alice, C(rooms, api, alice));
+
+  assert.equal(alice.x, 2);
+  assert.equal(alice.y, 3);
+  assert.equal(alice.isSitting, true);
+
+  let sent = alice.ws.sent.map(s => JSON.parse(s));
+  let moveEvent = sent.reverse().find(m => m.type === 'PLAYER_MOVED');
+  assert.ok(moveEvent);
+  assert.equal(moveEvent.payload.isSitting, true);
+  assert.equal(moveEvent.payload.targetX, 2);
+  assert.equal(moveEvent.payload.targetY, 3);
+
+  // 2. Alice moves, resetting sitting
+  await handleMessage({
+    type: 'MOVE',
+    payload: { x: 4, y: 5 }
+  }, alice, C(rooms, api, alice));
+
+  assert.equal(alice.isSitting, false);
+  sent = alice.ws.sent.map(s => JSON.parse(s));
+  moveEvent = sent.reverse().find(m => m.type === 'PLAYER_MOVED');
+  assert.ok(moveEvent);
+  assert.equal(moveEvent.payload.isSitting, false);
+  assert.equal(moveEvent.payload.targetX, 4);
+  assert.equal(moveEvent.payload.targetY, 5);
+
+  // 3. Alice toggles light on arcade/plant in plaza
+  await handleMessage({
+    type: 'INTERACT_FURNITURE',
+    payload: { furnitureId: 'f_arcade', action: 'toggle' }
+  }, alice, C(rooms, api, alice));
+
+  sent = alice.ws.sent.map(s => JSON.parse(s));
+  const toggleEvent = sent.reverse().find(m => m.type === 'FURNITURE_STATE_UPDATED');
+  assert.ok(toggleEvent);
+  assert.equal(toggleEvent.payload.furnitureId, 'f_arcade');
+  assert.equal(toggleEvent.payload.state.isOn, true);
+
+  // Toggle off
+  await handleMessage({
+    type: 'INTERACT_FURNITURE',
+    payload: { furnitureId: 'f_arcade', action: 'toggle' }
+  }, alice, C(rooms, api, alice));
+
+  sent = alice.ws.sent.map(s => JSON.parse(s));
+  const toggleEvent2 = sent.reverse().find(m => m.type === 'FURNITURE_STATE_UPDATED');
+  assert.ok(toggleEvent2);
+  assert.equal(toggleEvent2.payload.state.isOn, false);
+});
+
+test('GET_ROOM_DIRECTORY returns public rooms and active lofts', async () => {
+  const rooms = new RoomManager();
+  const { api } = mockDb();
+  const alice = makePlayer('usr_alice123', 'plaza');
+  const bob = makePlayer('usr_bob456', 'plaza');
+  const globalPlayers = new Map([['usr_alice123', alice], ['usr_bob456', bob]]);
+  rooms.join('plaza', alice);
+  rooms.join('plaza', bob);
+
+  await handleMessage({ type: 'GET_ROOM_DIRECTORY', payload: null }, alice, {
+    rooms, db: api, ws: alice.ws, globalPlayers
+  });
+
+  const sent = alice.ws.sent.map(s => JSON.parse(s));
+  const dirMsg = sent.find(m => m.type === 'ROOM_DIRECTORY_UPDATE');
+  assert.ok(dirMsg);
+  assert.ok(Array.isArray(dirMsg.payload.publicRooms));
+  assert.equal(dirMsg.payload.publicRooms[0].id, 'plaza');
+  assert.equal(dirMsg.payload.publicRooms[0].count, 2);
+});
+
+test('Full direct trade lifecycle: request -> accept -> update -> lock -> confirm atomic swap', async () => {
+  const rooms = new RoomManager();
+  const { api } = mockDb();
+  const alice = makePlayer('usr_alice', 'plaza');
+  const bob = makePlayer('usr_bob', 'plaza');
+  alice.coins = 500;
+  bob.coins = 100;
+  const globalPlayers = new Map([['usr_alice', alice], ['usr_bob', bob]]);
+  rooms.join('plaza', alice);
+  rooms.join('plaza', bob);
+
+  const ctxAlice = { rooms, db: api, ws: alice.ws, globalPlayers };
+  const ctxBob = { rooms, db: api, ws: bob.ws, globalPlayers };
+
+  // 1. Alice requests trade with Bob
+  await handleMessage({ type: 'TRADE_REQUEST', payload: { targetPlayerId: 'usr_bob' } }, alice, ctxAlice);
+  const bobReceived = bob.ws.sent.map(s => JSON.parse(s)).find(m => m.type === 'TRADE_REQUEST_RECEIVED');
+  assert.ok(bobReceived);
+  const tradeId = bobReceived.payload.tradeId;
+
+  // 2. Bob accepts trade
+  await handleMessage({ type: 'TRADE_ACCEPT', payload: { tradeId } }, bob, ctxBob);
+  const aliceStarted = alice.ws.sent.map(s => JSON.parse(s)).find(m => m.type === 'TRADE_STARTED');
+  assert.ok(aliceStarted);
+
+  // 3. Alice offers 200 coins; Bob offers 50 coins
+  await handleMessage({ type: 'TRADE_UPDATE_OFFER', payload: { tradeId, coins: 200, items: [] } }, alice, ctxAlice);
+  await handleMessage({ type: 'TRADE_UPDATE_OFFER', payload: { tradeId, coins: 50, items: [] } }, bob, ctxBob);
+
+  // 4. Both lock their offers
+  await handleMessage({ type: 'TRADE_LOCK', payload: { tradeId, locked: true } }, alice, ctxAlice);
+  await handleMessage({ type: 'TRADE_LOCK', payload: { tradeId, locked: true } }, bob, ctxBob);
+
+  // 5. Both confirm trade
+  await handleMessage({ type: 'TRADE_CONFIRM', payload: { tradeId } }, alice, ctxAlice);
+  await handleMessage({ type: 'TRADE_CONFIRM', payload: { tradeId } }, bob, ctxBob);
+
+  // Assert atomic swap completed
+  // Alice: 500 - 200 + 50 = 350
+  // Bob: 100 - 50 + 200 = 250
+  assert.equal(alice.coins, 350);
+  assert.equal(bob.coins, 250);
+
+  const completed = alice.ws.sent.map(s => JSON.parse(s)).find(m => m.type === 'TRADE_COMPLETED');
+  assert.ok(completed);
+});
+

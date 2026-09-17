@@ -16,6 +16,8 @@ export interface Player {
   y: number;
   targetX: number;
   targetY: number;
+  facing?: 'NE' | 'SE' | 'SW' | 'NW';
+  isSitting?: boolean;
   coins: number;
   gems: number;
   lastDailyClaim: number;
@@ -94,6 +96,8 @@ export function serializePlayer(p: Player): PlayerInfo {
     y: p.y,
     targetX: p.targetX,
     targetY: p.targetY,
+    facing: p.facing,
+    isSitting: p.isSitting,
     coins: p.coins,
     gems: p.gems,
     avatar: p.avatar,

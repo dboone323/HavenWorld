@@ -1,6 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stepToward, frameDt, fadeAlpha, lerp } from '../src/shared/movement.ts';
+import { stepToward, frameDt, fadeAlpha, lerp, calculateFacing, getWalkBob } from '../src/shared/movement.ts';
+
+test('calculateFacing maps movement vectors to 4-way isometric directions', () => {
+  // Positive dx and dy moves screen down (SE)
+  assert.equal(calculateFacing(1, 1), 'SE');
+  // Negative dx and dy moves screen up (NW)
+  assert.equal(calculateFacing(-1, -1), 'NW');
+  // Positive dx, negative dy moves screen right (NE)
+  assert.equal(calculateFacing(2, -2), 'NE');
+  // Negative dx, positive dy moves screen left (SW)
+  assert.equal(calculateFacing(-2, 2), 'SW');
+  // Zero movement returns null
+  assert.equal(calculateFacing(0, 0), null);
+});
+
+test('getWalkBob generates sinusoidal bob only when walking', () => {
+  assert.equal(getWalkBob(0, false), 0);
+  assert.equal(getWalkBob(1.57, false), 0);
+  const bob = getWalkBob(Math.PI / 2, true);
+  assert.ok(Math.abs(bob - 2.5) < 0.01, `bob was ${bob}`);
+});
 
 test('stepToward moves toward target', () => {
   const p = { x: 0, y: 0, targetX: 10, targetY: 0, walkCycle: 0, isWalking: false };

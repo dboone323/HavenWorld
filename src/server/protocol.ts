@@ -4,8 +4,10 @@
  * outbound events. db calls are self-noops in memory mode.
  */
 import { clampGrid } from '../shared/iso.ts';
+import { calculateFacing } from '../shared/movement.ts';
 import { parseCommand, moderateChat } from './moderation.ts';
 import { serializePlayer, serializeRoom, RoomManager, getUserLoftRoomId } from './rooms.ts';
+import { TradeManager } from './trade.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
@@ -63,9 +65,12 @@ export interface DispatchContext {
   };
   ws: WebSocket;
   globalPlayers?: Map<string, Player>;
+  tradeManager?: TradeManager;
   /** Daily bonus cooldown in milliseconds (24h). */
   dailyCooldownMs?: number;
 }
+
+const defaultTradeManager = new TradeManager();
 
 /**
  * Dispatch a single client message to the appropriate room-state mutation.
@@ -83,9 +88,23 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       const { x, y } = msg.payload || {};
       player.targetX = clampGrid(typeof x === 'number' ? x : (Number(x) ?? player.x), GRID_MAX);
       player.targetY = clampGrid(typeof y === 'number' ? y : (Number(y) ?? player.y), GRID_MAX);
+      player.isSitting = false;
+      const dx = player.targetX - player.x;
+      const dy = player.targetY - player.y;
+      if (dx !== 0 || dy !== 0) {
+        player.facing = calculateFacing(dx, dy, player.facing || 'SE');
+      }
       rooms.broadcast(room, {
         type: 'PLAYER_MOVED',
-        payload: { playerId: player.id, startX: player.x, startY: player.y, targetX: player.targetX, targetY: player.targetY }
+        payload: {
+          playerId: player.id,
+          startX: player.x,
+          startY: player.y,
+          targetX: player.targetX,
+          targetY: player.targetY,
+          isSitting: false,
+          facing: player.facing,
+        }
       });
       break;
     }
@@ -614,6 +633,215 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
           wallpaper: currentRoom.wallpaper,
         }
       });
+      break;
+    }
+
+    // --- Furniture Interaction (Seating & Lighting) ---
+    case 'INTERACT_FURNITURE': {
+      const { furnitureId, action } = (msg.payload || {}) as { furnitureId?: string; action?: 'sit' | 'toggle' | 'stand' };
+      if (!furnitureId) return;
+      const furni = currentRoom.furniture.find((f) => f.id === furnitureId);
+      if (!furni) return;
+
+      const seatTypes = ['sofa', 'bench', 'chair', 'stool', 'bed'];
+      const lightTypes = ['lamp', 'neon', 'plant', 'tv'];
+
+      if (action === 'stand') {
+        player.isSitting = false;
+        rooms.broadcast(room, {
+          type: 'PLAYER_MOVED',
+          payload: {
+            playerId: player.id,
+            startX: player.x,
+            startY: player.y,
+            targetX: player.x,
+            targetY: player.y,
+            isSitting: false,
+            facing: player.facing,
+          }
+        });
+      } else if (action === 'sit' || (!action && seatTypes.includes(furni.type))) {
+        player.x = furni.x;
+        player.y = furni.y;
+        player.targetX = furni.x;
+        player.targetY = furni.y;
+        player.isSitting = true;
+        rooms.broadcast(room, {
+          type: 'PLAYER_MOVED',
+          payload: {
+            playerId: player.id,
+            startX: player.x,
+            startY: player.y,
+            targetX: player.targetX,
+            targetY: player.targetY,
+            isSitting: true,
+            facing: player.facing,
+          }
+        });
+      } else if (action === 'toggle' || (!action && lightTypes.includes(furni.type))) {
+        const currentState = furni.state || { isOn: false };
+        furni.state = {
+          ...currentState,
+          isOn: !currentState.isOn,
+        };
+        rooms.broadcast(room, {
+          type: 'FURNITURE_STATE_UPDATED',
+          payload: { furnitureId: furni.id, state: furni.state }
+        });
+      }
+      break;
+    }
+
+    // --- Room Directory / Navigator ---
+    case 'GET_ROOM_DIRECTORY': {
+      const publicRooms = [
+        { id: 'plaza', name: '🏢 Central Plaza & Lounge', description: 'The bustling town center and social hub.', count: rooms.get('plaza')?.players.size || 0 }
+      ];
+      const personalLofts: { id: string; ownerId: string; ownerName: string; name: string; count: number }[] = [];
+      if (ctx.globalPlayers) {
+        for (const [_, p] of ctx.globalPlayers) {
+          const loftId = getUserLoftRoomId(p.id);
+          const loft = rooms.get(loftId);
+          if (loft) {
+            personalLofts.push({
+              id: loftId,
+              ownerId: p.id,
+              ownerName: p.name,
+              name: loft.name || `${p.name}'s Cozy Loft`,
+              count: loft.players.size
+            });
+          }
+        }
+      }
+      rooms.send(player.ws, {
+        type: 'ROOM_DIRECTORY_UPDATE',
+        payload: { publicRooms, personalLofts }
+      });
+      break;
+    }
+
+    // --- Direct Trading ---
+    case 'TRADE_REQUEST': {
+      const { targetPlayerId } = (msg.payload || {}) as { targetPlayerId?: string };
+      if (!targetPlayerId || targetPlayerId === player.id) {
+        rooms.send(player.ws, { type: 'TRADE_ERROR', payload: { message: 'Invalid trade partner selected.' } });
+        return;
+      }
+      const targetP = ctx.globalPlayers?.get(targetPlayerId);
+      if (!targetP) {
+        rooms.send(player.ws, { type: 'TRADE_ERROR', payload: { message: 'Player is no longer online.' } });
+        return;
+      }
+      const tradeManager = ctx.tradeManager || defaultTradeManager;
+      const session = tradeManager.createSession(player.id, targetP.id);
+      rooms.send(targetP.ws, {
+        type: 'TRADE_REQUEST_RECEIVED',
+        payload: { tradeId: session.id, fromPlayerId: player.id, fromPlayerName: player.name }
+      });
+      rooms.send(player.ws, {
+        type: 'TRADE_REQUEST_SENT',
+        payload: { tradeId: session.id, targetPlayerId: targetP.id, targetPlayerName: targetP.name }
+      });
+      break;
+    }
+
+    case 'TRADE_ACCEPT': {
+      const { tradeId } = (msg.payload || {}) as { tradeId?: string };
+      if (!tradeId) return;
+      const tradeManager = ctx.tradeManager || defaultTradeManager;
+      const session = tradeManager.acceptRequest(tradeId, player.id);
+      if (!session) {
+        rooms.send(player.ws, { type: 'TRADE_ERROR', payload: { message: 'Trade request expired or invalid.' } });
+        return;
+      }
+      const p1 = ctx.globalPlayers?.get(session.player1Id);
+      const p2 = ctx.globalPlayers?.get(session.player2Id);
+      if (p1) rooms.send(p1.ws, { type: 'TRADE_STARTED', payload: { tradeId: session.id, session, partnerName: p2?.name || 'Partner' } });
+      if (p2) rooms.send(p2.ws, { type: 'TRADE_STARTED', payload: { tradeId: session.id, session, partnerName: p1?.name || 'Partner' } });
+      break;
+    }
+
+    case 'TRADE_UPDATE_OFFER': {
+      const { tradeId, coins, items } = (msg.payload || {}) as { tradeId?: string; coins?: number; items?: string[] };
+      if (!tradeId) return;
+      const tradeManager = ctx.tradeManager || defaultTradeManager;
+      const validCoins = Math.max(0, Math.min(player.coins, Number(coins) || 0));
+      const session = tradeManager.updateOffer(tradeId, player.id, validCoins, items || []);
+      if (session) {
+        const p1 = ctx.globalPlayers?.get(session.player1Id);
+        const p2 = ctx.globalPlayers?.get(session.player2Id);
+        if (p1) rooms.send(p1.ws, { type: 'TRADE_UPDATED', payload: { tradeId: session.id, session } });
+        if (p2) rooms.send(p2.ws, { type: 'TRADE_UPDATED', payload: { tradeId: session.id, session } });
+      }
+      break;
+    }
+
+    case 'TRADE_LOCK': {
+      const { tradeId, locked } = (msg.payload || {}) as { tradeId?: string; locked?: boolean };
+      if (!tradeId) return;
+      const tradeManager = ctx.tradeManager || defaultTradeManager;
+      const session = tradeManager.lockOffer(tradeId, player.id, !!locked);
+      if (session) {
+        const p1 = ctx.globalPlayers?.get(session.player1Id);
+        const p2 = ctx.globalPlayers?.get(session.player2Id);
+        if (p1) rooms.send(p1.ws, { type: 'TRADE_UPDATED', payload: { tradeId: session.id, session } });
+        if (p2) rooms.send(p2.ws, { type: 'TRADE_UPDATED', payload: { tradeId: session.id, session } });
+      }
+      break;
+    }
+
+    case 'TRADE_CONFIRM': {
+      const { tradeId } = (msg.payload || {}) as { tradeId?: string };
+      if (!tradeId) return;
+      const tradeManager = ctx.tradeManager || defaultTradeManager;
+      const { session, ready } = tradeManager.confirmTrade(tradeId, player.id);
+      if (!session) return;
+      const p1 = ctx.globalPlayers?.get(session.player1Id);
+      const p2 = ctx.globalPlayers?.get(session.player2Id);
+
+      if (ready && p1 && p2) {
+        const p1CoinsOffered = session.player1Offer.coins;
+        const p2CoinsOffered = session.player2Offer.coins;
+
+        p1.coins = p1.coins - p1CoinsOffered + p2CoinsOffered;
+        p2.coins = p2.coins - p2CoinsOffered + p1CoinsOffered;
+
+        db.addCoins(p1.id, p2CoinsOffered - p1CoinsOffered).catch(() => {});
+        db.addCoins(p2.id, p1CoinsOffered - p2CoinsOffered).catch(() => {});
+
+        for (const it of session.player1Offer.items) {
+          db.removeItem(p1.id, it, 1).catch(() => {});
+          db.addItem(p2.id, it, 1).catch(() => {});
+        }
+        for (const it of session.player2Offer.items) {
+          db.removeItem(p2.id, it, 1).catch(() => {});
+          db.addItem(p1.id, it, 1).catch(() => {});
+        }
+
+        rooms.send(p1.ws, { type: 'TRADE_COMPLETED', payload: { tradeId: session.id, message: 'Trade successful!' } });
+        rooms.send(p2.ws, { type: 'TRADE_COMPLETED', payload: { tradeId: session.id, message: 'Trade successful!' } });
+
+        rooms.send(p1.ws, { type: 'COINS_UPDATED', payload: { coins: p1.coins, earned: p2CoinsOffered - p1CoinsOffered, reason: 'Trade' } });
+        rooms.send(p2.ws, { type: 'COINS_UPDATED', payload: { coins: p2.coins, earned: p1CoinsOffered - p2CoinsOffered, reason: 'Trade' } });
+      } else {
+        if (p1) rooms.send(p1.ws, { type: 'TRADE_UPDATED', payload: { tradeId: session.id, session } });
+        if (p2) rooms.send(p2.ws, { type: 'TRADE_UPDATED', payload: { tradeId: session.id, session } });
+      }
+      break;
+    }
+
+    case 'TRADE_CANCEL': {
+      const { tradeId } = (msg.payload || {}) as { tradeId?: string };
+      if (!tradeId) return;
+      const tradeManager = ctx.tradeManager || defaultTradeManager;
+      const session = tradeManager.getSession(tradeId);
+      if (session) {
+        const p1 = ctx.globalPlayers?.get(session.player1Id);
+        const p2 = ctx.globalPlayers?.get(session.player2Id);
+        tradeManager.cancelTrade(tradeId);
+        if (p1) rooms.send(p1.ws, { type: 'TRADE_CANCELED', payload: { tradeId, reason: `${player.name} canceled the trade.` } });
+        if (p2) rooms.send(p2.ws, { type: 'TRADE_CANCELED', payload: { tradeId, reason: `${player.name} canceled the trade.` } });
+      }
       break;
     }
 

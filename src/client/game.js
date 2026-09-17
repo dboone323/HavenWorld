@@ -1,9 +1,11 @@
 // HavenWorld — Game Engine & Multiplayer Client (HTML5 Canvas + WebSockets)
 // ES module: pure logic is imported from shared/ (unit-tested in Node).
 import { toScreen as isoToScreen, toGrid as isoToGrid } from './shared/iso.js';
-import { stepToward, frameDt, fadeAlpha } from './shared/movement.js';
+import { calculateFacing, getWalkBob, stepToward, frameDt, fadeAlpha } from './shared/movement.js';
 import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from './shared/pizza.js';
 import { escapeHtml } from './shared/chat.js';
+import { initAudio, playFootstep, playFurniPop, playCoinChime, playChatPing, playDoorwayWhoosh, playSitSound, playSwitchClick } from './shared/audio.js';
+import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPassportProgress } from './shared/passport.js';
 
   // State
   let ws = null;
@@ -117,6 +119,15 @@ import { escapeHtml } from './shared/chat.js';
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
+  // Resume Web Audio on first user interaction (browser policy)
+  const unlockAudio = () => {
+    initAudio();
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+  };
+  window.addEventListener('pointerdown', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
+
   // ==========================================================================
   // WebSocket Multiplayer Networking
   // ==========================================================================
@@ -192,16 +203,23 @@ import { escapeHtml } from './shared/chat.js';
       }
 
       case 'PLAYER_MOVED': {
-        const { playerId, startX, startY, targetX, targetY } = msg.payload;
+        const { playerId, startX, startY, targetX, targetY, isSitting, facing } = msg.payload;
         if (playerId === selfId) {
           selfPlayer.targetX = targetX;
           selfPlayer.targetY = targetY;
+          if (typeof isSitting === 'boolean') {
+            if (isSitting && !selfPlayer.isSitting) playSitSound();
+            selfPlayer.isSitting = isSitting;
+          }
+          if (facing) selfPlayer.facing = facing;
         } else if (otherPlayers.has(playerId)) {
           const p = otherPlayers.get(playerId);
           p.x = startX;
           p.y = startY;
           p.targetX = targetX;
           p.targetY = targetY;
+          if (typeof isSitting === 'boolean') p.isSitting = isSitting;
+          if (facing) p.facing = facing;
         }
         break;
       }
@@ -229,6 +247,7 @@ import { escapeHtml } from './shared/chat.js';
           p.lastChat = { text, timestamp: Date.now() };
         }
         appendChatMessage(sender, text);
+        playChatPing();
         break;
       }
 
@@ -238,24 +257,40 @@ import { escapeHtml } from './shared/chat.js';
         otherPlayers.clear();
         msg.payload.otherPlayers.forEach(p => otherPlayers.set(p.id, p));
         appendChatMessage('system', `Entered: ${currentRoom.name}`);
+        playDoorwayWhoosh();
+        triggerPassportAction('ENTER_ROOM', { roomId: currentRoom.id });
 
         // Update room selector
         const roomSelect = document.getElementById('room-select');
-        roomSelect.value = currentRoom.id;
-        if (currentRoom.id.startsWith('loft_')) {
-          addLoftToRoomSelector(currentRoom.id, currentRoom.name);
+        if (roomSelect) {
+          roomSelect.value = currentRoom.id;
+          if (currentRoom.id.startsWith('loft_')) {
+            addLoftToRoomSelector(currentRoom.id, currentRoom.name);
+          }
         }
         break;
       }
 
       case 'FURNITURE_ADDED': {
         currentRoom.furniture.push(msg.payload.item);
+        playFurniPop();
         break;
       }
 
       case 'FURNITURE_REMOVED': {
         const id = msg.payload.id;
         currentRoom.furniture = currentRoom.furniture.filter(f => f.id !== id);
+        playFurniPop();
+        break;
+      }
+
+      case 'FURNITURE_STATE_UPDATED': {
+        const { furnitureId, state } = msg.payload;
+        const furni = currentRoom.furniture.find(f => f.id === furnitureId);
+        if (furni) {
+          furni.state = { ...(furni.state || {}), ...state };
+          playSwitchClick();
+        }
         break;
       }
 
@@ -273,6 +308,7 @@ import { escapeHtml } from './shared/chat.js';
         selfPlayer.coins = msg.payload.coins;
         updateCoinUI(selfPlayer.coins);
         appendChatMessage('system', `🪙 +${msg.payload.earned} HavenCoins (${msg.payload.reason})!`);
+        playCoinChime();
         break;
       }
 
@@ -348,6 +384,7 @@ import { escapeHtml } from './shared/chat.js';
         }
         appendPMMessage(fromPlayerName, text, isSelf);
         renderFriendsList();
+        playChatPing();
         break;
       }
 
@@ -385,6 +422,61 @@ import { escapeHtml } from './shared/chat.js';
           if (msg.payload.flooring) currentRoom.flooring = msg.payload.flooring;
           if (msg.payload.wallpaper) currentRoom.wallpaper = msg.payload.wallpaper;
         }
+        break;
+      }
+
+      case 'ROOM_DIRECTORY_UPDATE': {
+        renderRoomDirectory(msg.payload.publicRooms || [], msg.payload.personalLofts || []);
+        break;
+      }
+
+      case 'TRADE_REQUEST_RECEIVED': {
+        const { tradeId, fromPlayerName } = msg.payload;
+        showToast(`${fromPlayerName} wants to trade with you!`, '🤝');
+        if (confirm(`🤝 ${fromPlayerName} wants to trade with you! Accept trade?`)) {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'TRADE_ACCEPT', payload: { tradeId } }));
+          }
+        }
+        break;
+      }
+
+      case 'TRADE_REQUEST_SENT': {
+        showToast(`Trade request sent to ${msg.payload.targetPlayerName}.`, '🤝');
+        break;
+      }
+
+      case 'TRADE_STARTED': {
+        activeTradeSession = msg.payload.session;
+        document.getElementById('partner-trade-title').textContent = `${msg.payload.partnerName}'s Offer`;
+        document.getElementById('trade-modal').classList.remove('hidden');
+        updateTradeUI(msg.payload.session);
+        showToast(`Trade started with ${msg.payload.partnerName}!`, '🤝');
+        break;
+      }
+
+      case 'TRADE_UPDATED': {
+        updateTradeUI(msg.payload.session);
+        break;
+      }
+
+      case 'TRADE_COMPLETED': {
+        document.getElementById('trade-modal').classList.add('hidden');
+        activeTradeSession = null;
+        showToast('Trade completed successfully!', '🎉');
+        playCoinChime();
+        break;
+      }
+
+      case 'TRADE_CANCELED': {
+        document.getElementById('trade-modal').classList.add('hidden');
+        activeTradeSession = null;
+        showToast(msg.payload.reason || 'Trade canceled.', '⚠️');
+        break;
+      }
+
+      case 'TRADE_ERROR': {
+        showToast(msg.payload.message, '⚠️');
         break;
       }
     }
@@ -497,7 +589,22 @@ import { escapeHtml } from './shared/chat.js';
   }
 
   function updatePlayerMovement(p, dt) {
+    const oldCycle = p.walkCycle || 0;
     stepToward(p, dt, 3.8);
+    if (p.isWalking) {
+      p.walkCycle = oldCycle + dt * 10;
+      const dx = p.targetX - p.x;
+      const dy = p.targetY - p.y;
+      p.facing = calculateFacing(dx, dy, p.facing || 'SE');
+      if (p === selfPlayer) {
+        if (Math.floor(p.walkCycle / Math.PI) > Math.floor(oldCycle / Math.PI)) {
+          playFootstep();
+          triggerPassportAction('STEP');
+        }
+      }
+    } else {
+      p.walkCycle = 0;
+    }
   }
 
   function render() {
@@ -505,6 +612,9 @@ import { escapeHtml } from './shared/chat.js';
 
     // Draw Isometric Floor & Grid
     drawIsometricFloor();
+
+    // Draw Ambient Lighting from active light sources
+    drawAmbientLighting();
 
     // Draw Target Move Click Ripple
     if (targetIndicator) {
@@ -815,6 +925,38 @@ import { escapeHtml } from './shared/chat.js';
     ctx.restore();
   }
 
+  function drawAmbientLighting() {
+    const lights = currentRoom.furniture.filter(f => {
+      const isLight = f.type === 'neon' || f.type === 'tv' || f.type === 'lamp';
+      return isLight && (f.state?.isOn ?? true);
+    });
+
+    if (lights.length === 0) return;
+
+    ctx.save();
+    for (const f of lights) {
+      const pt = toScreen(f.x, f.y);
+      const cx = pt.x;
+      const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20 - 15;
+      const radius = f.type === 'neon' ? 110 : f.type === 'tv' ? 95 : 100;
+      const grad = ctx.createRadialGradient(cx, cy, 6, cx, cy, radius);
+      if (f.type === 'neon') {
+        grad.addColorStop(0, 'rgba(236, 72, 153, 0.24)');
+      } else if (f.type === 'tv') {
+        grad.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
+      } else {
+        grad.addColorStop(0, 'rgba(253, 224, 71, 0.26)');
+      }
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawFurniture(f) {
     const pt = toScreen(f.x, f.y);
     const cx = pt.x;
@@ -864,19 +1006,53 @@ import { escapeHtml } from './shared/chat.js';
       }
       case 'tv': {
         // Retro CRT TV
+        const isOn = f.state?.isOn ?? true;
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(cx - 16, cy - 32, 32, 26);
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillRect(cx - 12, cy - 28, 20, 18); // Glowing screen
+        ctx.fillStyle = isOn ? '#38bdf8' : '#0f172a';
+        ctx.fillRect(cx - 12, cy - 28, 20, 18); // Screen
+        if (isOn) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.fillRect(cx - 10, cy - 26, 16, 2); // Glare
+        }
         break;
       }
       case 'neon': {
         // Neon Wall Sign
-        ctx.shadowColor = '#ec4899';
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = '#f472b6';
+        const isOn = f.state?.isOn ?? true;
+        if (isOn) {
+          ctx.shadowColor = '#ec4899';
+          ctx.shadowBlur = 14;
+          ctx.fillStyle = '#f472b6';
+        } else {
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#475569';
+        }
         ctx.font = 'bold 12px Quicksand';
         ctx.fillText('✨ HAVEN', cx - 26, cy - 24);
+        break;
+      }
+      case 'lamp': {
+        // Modern Table/Floor Lamp
+        const isOn = f.state?.isOn ?? true;
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(cx - 2, cy - 26, 4, 26); // Stand
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - 2, 7, 4, 0, 0, Math.PI * 2);
+        ctx.fill(); // Base
+        // Lampshade
+        ctx.fillStyle = isOn ? '#fef08a' : '#94a3b8';
+        if (isOn) {
+          ctx.shadowColor = '#facc15';
+          ctx.shadowBlur = 14;
+        }
+        ctx.beginPath();
+        ctx.moveTo(cx - 10, cy - 18);
+        ctx.lineTo(cx + 10, cy - 18);
+        ctx.lineTo(cx + 14, cy - 34);
+        ctx.lineTo(cx - 14, cy - 34);
+        ctx.closePath();
+        ctx.fill();
         break;
       }
       case 'arcade': {
@@ -914,54 +1090,89 @@ import { escapeHtml } from './shared/chat.js';
     const cy = pt.y + TILE_HEIGHT / 2;
 
     const av = p.avatar || selfPlayer.avatar;
-    const bounce = p.isWalking ? Math.sin(p.walkCycle || 0) * 3 : 0;
+    const isSitting = !!p.isSitting;
+    const facing = p.facing || 'SE';
+    const bounce = (!isSitting && p.isWalking) ? getWalkBob(p.walkCycle || 0, 3) : 0;
 
     ctx.save();
 
     // Floor Shadow
     ctx.beginPath();
-    ctx.ellipse(cx, cy, 14, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, isSitting ? 16 : 14, isSitting ? 8 : 7, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.fill();
 
-    const baseY = cy - 8 + bounce;
+    // Base Y: Lower by 7px when seated
+    const baseY = cy - (isSitting ? 2 : 8) + bounce;
 
-    // Legs / Pants
-    ctx.fillStyle = av.pantsColor || '#34495e';
-    ctx.fillRect(cx - 7, baseY - 12, 5, 14);
-    ctx.fillRect(cx + 2, baseY - 12, 5, 14);
+    if (isSitting) {
+      // Seated Legs: Folded forward horizontally
+      ctx.fillStyle = av.pantsColor || '#34495e';
+      ctx.beginPath();
+      ctx.roundRect(cx - 9, baseY - 6, 18, 6, 3);
+      ctx.fill();
 
-    // Torso / Shirt
-    ctx.fillStyle = av.shirtColor || '#2e86c1';
-    ctx.beginPath();
-    ctx.roundRect(cx - 10, baseY - 28, 20, 18, 6);
-    ctx.fill();
+      // Torso / Shirt (slightly more compact)
+      ctx.fillStyle = av.shirtColor || '#2e86c1';
+      ctx.beginPath();
+      ctx.roundRect(cx - 9, baseY - 22, 18, 16, 5);
+      ctx.fill();
+    } else {
+      // Standing Legs / Pants
+      ctx.fillStyle = av.pantsColor || '#34495e';
+      ctx.fillRect(cx - 7, baseY - 12, 5, 14);
+      ctx.fillRect(cx + 2, baseY - 12, 5, 14);
 
-    // Head / Face
+      // Torso / Shirt
+      ctx.fillStyle = av.shirtColor || '#2e86c1';
+      ctx.beginPath();
+      ctx.roundRect(cx - 10, baseY - 28, 20, 18, 6);
+      ctx.fill();
+    }
+
+    const headY = isSitting ? baseY - 28 : baseY - 36;
+
+    // Head Base (Skin)
     ctx.fillStyle = av.skin || '#f5cba7';
     ctx.beginPath();
-    ctx.arc(cx, baseY - 36, 11, 0, Math.PI * 2);
+    ctx.arc(cx, headY, 11, 0, Math.PI * 2);
     ctx.fill();
 
-    // Eyes
-    ctx.fillStyle = '#1e293b';
-    ctx.beginPath();
-    ctx.arc(cx - 4, baseY - 36, 1.6, 0, Math.PI * 2);
-    ctx.arc(cx + 4, baseY - 36, 1.6, 0, Math.PI * 2);
-    ctx.fill();
+    // Facial features or Back Hair depending on 4-way facing:
+    // 'NW' or 'NE' are looking AWAY from the isometric camera (back of avatar)
+    // 'SE' or 'SW' are looking TOWARD the camera (front of avatar)
+    const isFacingBack = (facing === 'NW' || facing === 'NE');
 
-    // Smile
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(cx, baseY - 34, 4, 0.2, Math.PI - 0.2);
-    ctx.stroke();
+    if (isFacingBack) {
+      // Back of head — full hair coverage
+      ctx.fillStyle = av.hairColor || '#4a235a';
+      ctx.beginPath();
+      ctx.arc(cx, headY - 1, 11.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Front-facing ('SE' = down-right, 'SW' = down-left)
+      const eyeShift = facing === 'SW' ? -2 : 2;
 
-    // Hair
-    ctx.fillStyle = av.hairColor || '#4a235a';
-    ctx.beginPath();
-    ctx.arc(cx, baseY - 41, 12, Math.PI * 0.8, Math.PI * 2.2);
-    ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(cx - 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
+      ctx.arc(cx + 4 + eyeShift, headY, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Smile
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx + eyeShift / 2, headY + 2, 4, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+
+      // Front Hair style / bangs
+      ctx.fillStyle = av.hairColor || '#4a235a';
+      ctx.beginPath();
+      ctx.arc(cx, headY - 5, 12, Math.PI * 0.8, Math.PI * 2.2);
+      ctx.fill();
+    }
 
     // Name Tag
     ctx.font = 'bold 11px Quicksand, sans-serif';
@@ -970,11 +1181,11 @@ import { escapeHtml } from './shared/chat.js';
 
     ctx.fillStyle = isSelf ? 'rgba(139, 92, 246, 0.85)' : 'rgba(15, 23, 42, 0.75)';
     ctx.beginPath();
-    ctx.roundRect(cx - textWidth / 2 - 6, baseY - 62, textWidth + 12, 16, 8);
+    ctx.roundRect(cx - textWidth / 2 - 6, (isSitting ? baseY - 54 : baseY - 62), textWidth + 12, 16, 8);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(tagText, cx - textWidth / 2, baseY - 50);
+    ctx.fillText(tagText, cx - textWidth / 2, (isSitting ? baseY - 42 : baseY - 50));
 
     ctx.restore();
   }
@@ -1121,7 +1332,47 @@ import { escapeHtml } from './shared/chat.js';
       // Clear parent surface selection after placing
       if (parentSurfaceId) parentSurfaceId = null;
     } else {
+      // Check interactive furniture hit test (seating & toggles)
+      const clickedFurniture = currentRoom.furniture.slice().reverse().find(f => {
+        const pt = toScreen(f.x, f.y);
+        const cx = pt.x;
+        const cy = pt.y + TILE_HEIGHT / 2 - (f.elevation || 0) * 20;
+        const dx = sx - cx;
+        const dy = sy - cy;
+        return Math.hypot(dx, dy) < 26;
+      });
+
+      if (clickedFurniture) {
+        const seatTypes = ['sofa', 'bench', 'chair', 'stool', 'bed'];
+        const lightTypes = ['lamp', 'neon', 'tv', 'plant'];
+        if (seatTypes.includes(clickedFurniture.type)) {
+          playSitSound();
+          triggerPassportAction('SIT');
+          selfPlayer.targetX = clickedFurniture.x;
+          selfPlayer.targetY = clickedFurniture.y;
+          selfPlayer.isSitting = true;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'INTERACT_FURNITURE',
+              payload: { furnitureId: clickedFurniture.id, action: 'sit' }
+            }));
+          }
+          return;
+        } else if (lightTypes.includes(clickedFurniture.type)) {
+          playSwitchClick();
+          triggerPassportAction('TOGGLE_LIGHT');
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'INTERACT_FURNITURE',
+              payload: { furnitureId: clickedFurniture.id, action: 'toggle' }
+            }));
+          }
+          return;
+        }
+      }
+
       // Walk to position with responsive optimistic movement and network sync
+      selfPlayer.isSitting = false;
       targetIndicator = { x: targetX, y: targetY, alpha: 1.0 };
       selfPlayer.targetX = targetX;
       selfPlayer.targetY = targetY;
@@ -1595,6 +1846,7 @@ import { escapeHtml } from './shared/chat.js';
     minigameModal.classList.add('hidden');
 
     if (finalCoins > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      triggerPassportAction('MINIGAME_SCORE', { score: finalCoins });
       ws.send(JSON.stringify({
         type: 'MINIGAME_SCORE',
         payload: { score: finalCoins * 2 }
@@ -1837,6 +2089,305 @@ import { escapeHtml } from './shared/chat.js';
     loginForm.classList.add('hidden');
     signupUsernameInput.focus();
   });
+
+  // ==========================================================================
+  // Toast Notifications
+  // ==========================================================================
+  function showToast(message, icon = '✨') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast-item';
+    toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${escapeHtml(message)}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  }
+
+  // ==========================================================================
+  // Haven Passport System
+  // ==========================================================================
+  let localPassport = null;
+
+  function loadPassport() {
+    try {
+      const saved = localStorage.getItem('haven_passport');
+      if (saved) {
+        localPassport = JSON.parse(saved);
+      }
+    } catch {}
+    if (!localPassport) {
+      localPassport = createDefaultPassport(selfId || 'guest', selfPlayer.name || 'Traveler');
+    }
+  }
+
+  function triggerPassportAction(actionType, metadata = {}) {
+    if (!localPassport) loadPassport();
+    localPassport.playerName = selfPlayer.name || 'Traveler';
+    const newStamps = recordPassportAction(localPassport, actionType, metadata);
+    try {
+      localStorage.setItem('haven_passport', JSON.stringify(localPassport));
+    } catch {}
+    for (const s of newStamps) {
+      showToast(`Achievement Unlocked: ${s.icon} ${s.title}!`, s.icon);
+      playCoinChime();
+    }
+  }
+
+  function renderPassportUI() {
+    if (!localPassport) loadPassport();
+    document.getElementById('passport-player-name').textContent = selfPlayer.name || 'Traveler';
+    const prog = getPassportProgress(localPassport);
+    document.getElementById('passport-progress-fill').style.width = `${prog.percent}%`;
+    document.getElementById('passport-progress-label').textContent = `${prog.unlockedCount} / ${prog.totalStamps} Stamps Unlocked (${prog.percent}%)`;
+
+    const grid = document.getElementById('passport-stamps-grid');
+    grid.innerHTML = '';
+    for (const [id, s] of Object.entries(PASSPORT_STAMPS)) {
+      const unlocked = !!localPassport.unlockedStamps[id];
+      const card = document.createElement('div');
+      card.className = `stamp-card ${unlocked ? 'unlocked' : 'locked'}`;
+      card.innerHTML = `
+        <div class="stamp-icon">${s.icon}</div>
+        <div class="stamp-title">${escapeHtml(s.title)}</div>
+        <div class="stamp-desc">${escapeHtml(s.description)}</div>
+        ${unlocked ? '<div style="font-size:10px; color:#34d399; font-weight:700;">✓ Unlocked</div>' : '<div style="font-size:10px; color:var(--text-muted);">🔒 Locked</div>'}
+      `;
+      grid.appendChild(card);
+    }
+  }
+
+  const passportModal = document.getElementById('passport-modal');
+  const btnPassport = document.getElementById('btn-passport');
+  if (btnPassport) {
+    btnPassport.addEventListener('click', () => {
+      renderPassportUI();
+      passportModal.classList.remove('hidden');
+    });
+  }
+  const btnClosePassport = document.getElementById('btn-close-passport');
+  if (btnClosePassport) {
+    btnClosePassport.addEventListener('click', () => {
+      passportModal.classList.add('hidden');
+    });
+  }
+
+  // ==========================================================================
+  // Navigator Directory
+  // ==========================================================================
+  const navigatorModal = document.getElementById('navigator-modal');
+  const btnNavigator = document.getElementById('btn-navigator');
+  const tabNavPublic = document.getElementById('tab-nav-public');
+  const tabNavLofts = document.getElementById('tab-nav-lofts');
+  const navPublicList = document.getElementById('nav-public-list');
+  const navLoftsList = document.getElementById('nav-lofts-list');
+
+  if (btnNavigator) {
+    btnNavigator.addEventListener('click', () => {
+      navigatorModal.classList.remove('hidden');
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'GET_ROOM_DIRECTORY', payload: null }));
+      }
+    });
+  }
+
+  document.getElementById('btn-close-navigator')?.addEventListener('click', () => {
+    navigatorModal.classList.add('hidden');
+  });
+
+  tabNavPublic?.addEventListener('click', () => {
+    tabNavPublic.classList.add('active');
+    tabNavLofts.classList.remove('active');
+    navPublicList.classList.remove('hidden');
+    navLoftsList.classList.add('hidden');
+  });
+
+  tabNavLofts?.addEventListener('click', () => {
+    tabNavLofts.classList.add('active');
+    tabNavPublic.classList.remove('active');
+    navLoftsList.classList.remove('hidden');
+    navPublicList.classList.add('hidden');
+  });
+
+  function renderRoomDirectory(publicRooms, personalLofts) {
+    if (!navPublicList || !navLoftsList) return;
+    navPublicList.innerHTML = '';
+    navLoftsList.innerHTML = '';
+
+    publicRooms.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'room-card';
+      card.innerHTML = `
+        <div class="room-card-info">
+          <div class="room-card-title">${escapeHtml(r.name)}</div>
+          <div class="room-card-desc">${escapeHtml(r.description || 'Public Social Sanctuary')}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="room-occupancy-badge">👥 ${r.count} online</span>
+          <button class="primary-btn" style="padding:6px 14px; font-size:13px;">Enter</button>
+        </div>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        navigatorModal.classList.add('hidden');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: r.id } }));
+        }
+      });
+      navPublicList.appendChild(card);
+    });
+
+    if (personalLofts.length === 0) {
+      navLoftsList.innerHTML = '<div class="empty-state" style="padding:20px; text-align:center; color:var(--text-muted);">No other personal lofts currently online</div>';
+    } else {
+      personalLofts.forEach(r => {
+        const card = document.createElement('div');
+        card.className = 'room-card';
+        card.innerHTML = `
+          <div class="room-card-info">
+            <div class="room-card-title">🏠 ${escapeHtml(r.name)}</div>
+            <div class="room-card-desc">Owner: ${escapeHtml(r.ownerName)}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="room-occupancy-badge">👥 ${r.count} online</span>
+            <button class="primary-btn" style="padding:6px 14px; font-size:13px;">Visit</button>
+          </div>
+        `;
+        card.querySelector('button').addEventListener('click', () => {
+          navigatorModal.classList.add('hidden');
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: r.id } }));
+          }
+        });
+        navLoftsList.appendChild(card);
+      });
+    }
+  }
+
+  // ==========================================================================
+  // Direct Player Trading
+  // ==========================================================================
+  const tradeModal = document.getElementById('trade-modal');
+  let activeTradeSession = null;
+  const myTradeLockBadge = document.getElementById('my-trade-lock-badge');
+  const partnerTradeLockBadge = document.getElementById('partner-trade-lock-badge');
+  const myTradeCoins = document.getElementById('my-trade-coins');
+  const partnerTradeCoins = document.getElementById('partner-trade-coins');
+  const btnTradeLock = document.getElementById('btn-trade-lock');
+  const btnTradeConfirm = document.getElementById('btn-trade-confirm');
+  const btnTradeCancel = document.getElementById('btn-trade-cancel');
+
+  document.getElementById('ctx-btn-trade')?.addEventListener('click', () => {
+    if (!activeContextPlayer) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'TRADE_REQUEST',
+        payload: { targetPlayerId: activeContextPlayer.id }
+      }));
+      showToast(`Trade request sent to ${activeContextPlayer.name}!`, '🤝');
+    }
+    playerContextMenu.classList.add('hidden');
+  });
+
+  myTradeCoins?.addEventListener('input', () => {
+    if (!activeTradeSession) return;
+    const coins = Math.max(0, parseInt(myTradeCoins.value, 10) || 0);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'TRADE_UPDATE_OFFER',
+        payload: { tradeId: activeTradeSession.id, coins, items: [] }
+      }));
+    }
+  });
+
+  btnTradeLock?.addEventListener('click', () => {
+    if (!activeTradeSession) return;
+    const isP1 = activeTradeSession.player1Id === selfId;
+    const myOffer = isP1 ? activeTradeSession.player1Offer : activeTradeSession.player2Offer;
+    const newLockState = !myOffer.locked;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'TRADE_LOCK',
+        payload: { tradeId: activeTradeSession.id, locked: newLockState }
+      }));
+    }
+  });
+
+  btnTradeConfirm?.addEventListener('click', () => {
+    if (!activeTradeSession) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'TRADE_CONFIRM',
+        payload: { tradeId: activeTradeSession.id }
+      }));
+    }
+  });
+
+  btnTradeCancel?.addEventListener('click', () => {
+    if (!activeTradeSession) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'TRADE_CANCEL',
+        payload: { tradeId: activeTradeSession.id }
+      }));
+    }
+    tradeModal.classList.add('hidden');
+    activeTradeSession = null;
+  });
+
+  document.getElementById('btn-close-trade')?.addEventListener('click', () => {
+    if (activeTradeSession && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'TRADE_CANCEL',
+        payload: { tradeId: activeTradeSession.id }
+      }));
+    }
+    tradeModal.classList.add('hidden');
+    activeTradeSession = null;
+  });
+
+  function updateTradeUI(session) {
+    if (!session) return;
+    activeTradeSession = session;
+    const isP1 = session.player1Id === selfId;
+    const myOffer = isP1 ? session.player1Offer : session.player2Offer;
+    const partnerOffer = isP1 ? session.player2Offer : session.player1Offer;
+
+    if (myOffer.locked) {
+      myTradeLockBadge.className = 'trade-lock-badge locked';
+      myTradeLockBadge.textContent = '🔒 Locked';
+      btnTradeLock.textContent = '🔓 Unlock Offer';
+      myTradeCoins.disabled = true;
+    } else {
+      myTradeLockBadge.className = 'trade-lock-badge unlocked';
+      myTradeLockBadge.textContent = '🔓 Unlocked';
+      btnTradeLock.textContent = '🔒 Lock Offer';
+      myTradeCoins.disabled = false;
+    }
+
+    if (partnerOffer.locked) {
+      partnerTradeLockBadge.className = 'trade-lock-badge locked';
+      partnerTradeLockBadge.textContent = '🔒 Locked';
+    } else {
+      partnerTradeLockBadge.className = 'trade-lock-badge unlocked';
+      partnerTradeLockBadge.textContent = '🔓 Unlocked';
+    }
+
+    partnerTradeCoins.textContent = partnerOffer.coins.toLocaleString();
+
+    if (myOffer.locked && partnerOffer.locked) {
+      btnTradeConfirm.disabled = false;
+      if (myOffer.confirmed) {
+        btnTradeConfirm.textContent = '✓ Confirmed (Waiting for partner...)';
+      } else {
+        btnTradeConfirm.textContent = '🤝 Confirm & Swap';
+      }
+    } else {
+      btnTradeConfirm.disabled = true;
+      btnTradeConfirm.textContent = '🤝 Both must lock offers';
+    }
+  }
 
   // --- Start Client ---
   // Auto-connect immediately: use saved account or persistent guest session

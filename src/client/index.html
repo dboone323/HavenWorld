@@ -26,6 +26,9 @@
         <select id="room-select">
           <option value="plaza">🏢 Central Plaza & Lounge</option>
         </select>
+        <button id="btn-navigator" class="action-btn directory-btn" title="Open Sanctuary Directory">
+          🧭 Directory
+        </button>
       </div>
 
       <div class="top-actions">
@@ -36,6 +39,10 @@
 
         <button id="btn-daily-bonus" class="action-btn bonus-btn" title="Claim 250 Daily Coins">
           🎁 Daily Gift
+        </button>
+
+        <button id="btn-passport" class="action-btn passport-btn" title="Haven Passport & Stamps">
+          🛂 Passport
         </button>
 
         <button id="btn-minigame" class="action-btn minigame-btn" title="Play Pizza Chef Mini-game">
@@ -106,6 +113,7 @@
           <button id="btn-close-ctx-menu" class="close-btn">✕</button>
         </div>
         <div class="context-menu-actions">
+          <button id="ctx-btn-trade" class="ctx-action-btn">🤝 Trade</button>
           <button id="ctx-btn-hug" class="ctx-action-btn">🫂 Hug</button>
           <button id="ctx-btn-wave" class="ctx-action-btn">👋 Wave</button>
           <button id="ctx-btn-friend" class="ctx-action-btn">➕ Add Friend</button>
@@ -357,6 +365,115 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Room Navigator Directory Modal -->
+    <div id="navigator-modal" class="modal-overlay hidden">
+      <div class="modal-card navigator-card">
+        <div class="modal-header">
+          <h3>🧭 Sanctuary Directory</h3>
+          <button id="btn-close-navigator" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="navigator-tabs">
+            <button id="tab-nav-public" class="action-btn active">🌟 Public Sanctuaries</button>
+            <button id="tab-nav-lofts" class="action-btn">🏠 Personal Lofts</button>
+          </div>
+          <div id="nav-public-list" class="navigator-room-list">
+            <!-- Dynamic room cards -->
+          </div>
+          <div id="nav-lofts-list" class="navigator-room-list hidden">
+            <!-- Dynamic personal loft cards -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Player-to-Player Direct Trade Modal -->
+    <div id="trade-modal" class="modal-overlay hidden">
+      <div class="modal-card trade-card">
+        <div class="modal-header">
+          <h3>🤝 Direct Player Trade</h3>
+          <button id="btn-close-trade" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body trade-body">
+          <div class="trade-panes">
+            <!-- Your Offer Pane -->
+            <div class="trade-pane">
+              <div class="trade-pane-header">
+                <span class="trade-party-title">Your Offer</span>
+                <span id="my-trade-lock-badge" class="trade-lock-badge unlocked">🔓 Unlocked</span>
+              </div>
+              <div class="trade-offer-box">
+                <label>Offer HavenCoins:</label>
+                <div class="trade-coins-input-row">
+                  <span class="coin-icon">🪙</span>
+                  <input type="number" id="my-trade-coins" min="0" value="0" step="10">
+                </div>
+                <div class="trade-items-summary" id="my-trade-items">
+                  <p class="panel-tip">Select items from inventory to trade</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Partner's Offer Pane -->
+            <div class="trade-pane">
+              <div class="trade-pane-header">
+                <span class="trade-party-title" id="partner-trade-title">Partner's Offer</span>
+                <span id="partner-trade-lock-badge" class="trade-lock-badge unlocked">🔓 Unlocked</span>
+              </div>
+              <div class="trade-offer-box">
+                <label>Offered HavenCoins:</label>
+                <div class="trade-coins-display-row">
+                  <span class="coin-icon">🪙</span>
+                  <span id="partner-trade-coins">0</span>
+                </div>
+                <div class="trade-items-summary" id="partner-trade-items">
+                  <p class="panel-tip">Awaiting offer...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="trade-actions-bar">
+            <button id="btn-trade-lock" class="action-btn">🔒 Lock Offer</button>
+            <button id="btn-trade-confirm" class="primary-btn" disabled>🤝 Confirm & Swap</button>
+            <button id="btn-trade-cancel" class="chip-danger">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Haven Passport & Achievement Stamps Modal -->
+    <div id="passport-modal" class="modal-overlay hidden">
+      <div class="modal-card passport-card">
+        <div class="modal-header">
+          <h3>🛂 Haven Passport</h3>
+          <button id="btn-close-passport" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body passport-body">
+          <div class="passport-profile-header">
+            <div class="passport-avatar-badge" id="passport-avatar-badge">👤</div>
+            <div class="passport-meta">
+              <h4 id="passport-player-name">Traveler</h4>
+              <p class="passport-rank" id="passport-rank">Citizen of HavenWorld</p>
+              <div class="passport-progress-bar-container">
+                <div class="passport-progress-bar" id="passport-progress-fill" style="width: 0%;"></div>
+              </div>
+              <span class="passport-progress-label" id="passport-progress-label">0 / 7 Stamps Unlocked (0%)</span>
+            </div>
+          </div>
+          <h4 class="passport-section-title">Achievement Stamps</h4>
+          <div class="passport-stamps-grid" id="passport-stamps-grid">
+            <!-- Dynamic stamps -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Toast Notifications Container -->
+    <div id="toast-container" class="toast-stack"></div>
+
     <!-- Welcome / Auth Gate Overlay -->
     <div id="welcome-overlay" class="modal-overlay hidden">
       <div class="modal-card welcome-card">

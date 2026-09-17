@@ -7,6 +7,8 @@ export function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+export type FacingDirection = 'NE' | 'SE' | 'SW' | 'NW';
+
 export interface PlayerMovement {
   x: number;
   y: number;
@@ -14,6 +16,27 @@ export interface PlayerMovement {
   targetY: number;
   isWalking?: boolean;
   walkCycle?: number;
+  facing?: FacingDirection;
+  isSitting?: boolean;
+}
+
+/** Calculate 4-way isometric facing direction from grid motion vector. */
+export function calculateFacing(dx: number, dy: number): FacingDirection | null {
+  if (Math.hypot(dx, dy) < 0.01) return null;
+  // Isometric projection screen delta:
+  const screenDx = dx - dy;
+  const screenDy = dx + dy;
+  if (Math.abs(screenDx) > Math.abs(screenDy)) {
+    return screenDx > 0 ? 'NE' : 'SW';
+  } else {
+    return screenDy > 0 ? 'SE' : 'NW';
+  }
+}
+
+/** Compute subtle sinusoidal walking vertical bob in pixels. */
+export function getWalkBob(walkCycle: number = 0, isWalking: boolean = false): number {
+  if (!isWalking) return 0;
+  return Math.sin(walkCycle) * 2.5;
 }
 
 export interface StepResult {
@@ -35,7 +58,10 @@ export function stepToward(
     player.x += (dx / dist) * step;
     player.y += (dy / dist) * step;
     player.isWalking = true;
+    player.isSitting = false;
     player.walkCycle = (player.walkCycle || 0) + dt * 10;
+    const f = calculateFacing(dx, dy);
+    if (f) player.facing = f;
     return { moved: true, snapped: false };
   }
   player.x = player.targetX;

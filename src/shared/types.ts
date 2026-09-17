@@ -99,6 +99,11 @@ export interface UpdateRoomStylePayload {
   wallpaper?: string;
 }
 
+export interface InteractFurniturePayload {
+  furnitureId: string;
+  action: 'sit' | 'toggle' | 'stand';
+}
+
 export type ClientMessage =
   | { type: 'JOIN_ROOM'; payload: JoinRoomPayload }
   | { type: 'MOVE_TO'; payload: MoveToPayload }
@@ -119,7 +124,15 @@ export type ClientMessage =
   | { type: 'SEND_PRIVATE_MESSAGE'; payload: SendPrivateMessagePayload }
   | { type: 'GET_PRIVATE_MESSAGES'; payload: null }
   | { type: 'PLAYER_EMOTE'; payload: PlayerEmotePayload }
-  | { type: 'UPDATE_ROOM_STYLE'; payload: UpdateRoomStylePayload };
+  | { type: 'UPDATE_ROOM_STYLE'; payload: UpdateRoomStylePayload }
+  | { type: 'INTERACT_FURNITURE'; payload: InteractFurniturePayload }
+  | { type: 'GET_ROOM_DIRECTORY'; payload: null }
+  | { type: 'TRADE_REQUEST'; payload: { targetPlayerId: string } }
+  | { type: 'TRADE_ACCEPT'; payload: { tradeId: string } }
+  | { type: 'TRADE_UPDATE_OFFER'; payload: { tradeId: string; coins: number; items: string[] } }
+  | { type: 'TRADE_LOCK'; payload: { tradeId: string; locked: boolean } }
+  | { type: 'TRADE_CONFIRM'; payload: { tradeId: string } }
+  | { type: 'TRADE_CANCEL'; payload: { tradeId: string } };
 
 /* ── Outbound (Server → Client) ───────────────────────────────── */
 
@@ -134,6 +147,8 @@ export interface PlayerInfo {
   gems: number;
   avatar: Avatar;
   lastChat: ChatBubble | null;
+  isSitting?: boolean;
+  facing?: 'NE' | 'SE' | 'SW' | 'NW';
 }
 
 export interface Avatar {
@@ -159,6 +174,10 @@ export interface PlacedFurniture {
   rotation: number;
   elevation?: number;          // 0 = floor, >0 = raised (optional for backward compat)
   parentSurfaceId?: string | null;
+  state?: {
+    isOn?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 export interface RoomInfo {
@@ -227,11 +246,12 @@ export type ServerMessage =
   | { type: 'ROOM_STATE'; payload: { room: RoomInfo; player: PlayerInfo; otherPlayers: PlayerInfo[] } }
   | { type: 'PLAYER_JOINED'; payload: { player: PlayerInfo } }
   | { type: 'PLAYER_LEFT'; payload: { playerId: string } }
-  | { type: 'PLAYER_MOVED'; payload: { playerId: string; startX: number; startY: number; targetX: number; targetY: number; speed: number } }
-  | { type: 'CHAT_MESSAGE'; payload: { playerId: string; sender: string; text: string; channel: string; timestamp: number; } }
+  | { type: 'PLAYER_MOVED'; payload: { playerId: string; startX: number; startY: number; targetX: number; targetY: number; speed?: number; isSitting?: boolean; facing?: 'NE' | 'SE' | 'SW' | 'NW' } }
+  | { type: 'CHAT_MESSAGE'; payload: { playerId: string; sender: string; text: string; channel?: string; timestamp: number; } }
   | { type: 'ROOM_CHANGED'; payload: { room: RoomInfo; player: PlayerInfo; otherPlayers: PlayerInfo[] } }
   | { type: 'FURNITURE_ADDED'; payload: { item: PlacedFurniture } }
   | { type: 'FURNITURE_REMOVED'; payload: { id: string } }
+  | { type: 'FURNITURE_STATE_UPDATED'; payload: { furnitureId: string; state: Record<string, unknown> } }
   | { type: 'ROOM_CLEARED'; payload: null }
   | { type: 'COINS_UPDATED'; payload: { coins: number; earned: number; reason: string } }
   | { type: 'SYSTEM_ANNOUNCEMENT'; payload: { text: string } }
@@ -253,7 +273,17 @@ export type ServerMessage =
   | { type: 'FURNITURE_ERROR'; payload: { message: string } }
   // Social & Room Customization
   | { type: 'PLAYER_EMOTED'; payload: { fromPlayerId: string; fromPlayerName: string; emote: string; targetPlayerId?: string; targetPlayerName?: string; text: string } }
-  | { type: 'ROOM_STYLE_UPDATED'; payload: { roomId: string; flooring: string; wallpaper: string } };
+  | { type: 'ROOM_STYLE_UPDATED'; payload: { roomId: string; flooring: string; wallpaper: string } }
+  // Room Directory
+  | { type: 'ROOM_DIRECTORY_UPDATE'; payload: { publicRooms: { id: string; name: string; description: string; count: number }[]; personalLofts: { id: string; ownerId: string; ownerName: string; name: string; count: number }[] } }
+  // Trading
+  | { type: 'TRADE_REQUEST_RECEIVED'; payload: { tradeId: string; fromPlayerId: string; fromPlayerName: string } }
+  | { type: 'TRADE_REQUEST_SENT'; payload: { tradeId: string; targetPlayerId: string; targetPlayerName: string } }
+  | { type: 'TRADE_STARTED'; payload: { tradeId: string; session: unknown; partnerName: string } }
+  | { type: 'TRADE_UPDATED'; payload: { tradeId: string; session: unknown } }
+  | { type: 'TRADE_COMPLETED'; payload: { tradeId: string; message: string } }
+  | { type: 'TRADE_CANCELED'; payload: { tradeId: string; reason: string } }
+  | { type: 'TRADE_ERROR'; payload: { message: string } };
 
 /* ── Convenience: narrow a typed payload from a raw envelope ── */
 export type ClientMessageOf<T extends ClientMessage['type']> = Extract<ClientMessage, { type: T }>;

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { RoomManager, serializePlayer, serializeRoom, getUserLoftRoomId } from './rooms.ts';
 import { handleMessage } from './protocol.ts';
+import { TradeManager } from './trade.ts';
 import * as db from './db.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,7 @@ export const wss = new WebSocketServer({ server });
 
 export const rooms = new RoomManager();
 export const globalPlayers = new Map<string, import('./rooms.ts').Player>();
+export const tradeManager = new TradeManager();
 let nextPlayerNumber = 101;
 
 const PORT = process.env.PORT || 3000;
@@ -51,6 +53,27 @@ app.use('/shared', express.static(path.join(__dirname, '../shared'), {
     }
   }
 }));
+
+// --- Diagnostics & Health Endpoints ---
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: Date.now(),
+    memory: process.memoryUsage(),
+    connections: wss.clients.size,
+  });
+});
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    status: 'online',
+    onlinePlayers: globalPlayers.size,
+    rooms: rooms.list().length,
+    dbMode: db.getMode(),
+    timestamp: Date.now()
+  });
+});
 
 // --- Auth API Endpoints ---
 
@@ -250,7 +273,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
       return;
     }
     await handleMessage(msg, player, {
-      rooms, db, ws, globalPlayers,
+      rooms, db, ws, globalPlayers, tradeManager,
       dailyCooldownMs: 24 * 60 * 60 * 1000,
     });
   };
@@ -262,6 +285,7 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   }
 
   ws.on('close', () => {
+    tradeManager.cancelPlayerTrade(playerId);
     rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } });
     rooms.leave(player);
     globalPlayers.delete(playerId);
