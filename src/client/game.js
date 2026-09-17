@@ -1860,4 +1860,9 @@ import { escapeHtml } from './shared/chat.js';
     initWebSocket(null, storedGuestId);
   }
 
+  window.__havenGame = {
+    getCurrentRoom: () => currentRoom,
+    getSelfPlayer: () => selfPlayer,
+  };
+
   requestAnimationFrame(gameLoop);

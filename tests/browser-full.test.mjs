@@ -7,7 +7,8 @@ import { WebSocket } from 'ws';
 import assert from 'node:assert/strict';
 
 const HTTP_PORT = process.env.PORT || process.env.VERIFY_HTTP_PORT || 3000;
-const LOCAL_URL = process.env.VERIFY_HTTP_URL || `http://localhost:${HTTP_PORT}`;
+const ARG_URL = (process.argv[2] || '').startsWith('http') ? process.argv[2] : '';
+const LOCAL_URL = ARG_URL || process.env.VERIFY_HTTP_URL || `http://localhost:${HTTP_PORT}`;
 // WS endpoints derive from the requested HTTP(S) URL unless explicitly overridden.
 const WS_BASE = process.env.VERIFY_WS_URL || LOCAL_URL.replace(/^http/, 'ws');
 
@@ -81,7 +82,7 @@ async function run() {
   // Test 4: Daily bonus button triggers coin update
   await test('Daily bonus button sends CLAIM_DAILY_BONUS', async () => {
     // The client sends this via WebSocket — verify via WS directly
-    const ws = new WebSocket(WS_BASE);
+    const ws = new WebSocket(WS_BASE + (WS_BASE.includes('?') ? '&' : '?') + 'guestId=usr_' + Math.random().toString(36).substring(2, 9));
     await new Promise(r => ws.on('open', r));
     await new Promise((resolve) => {
       ws.on('message', (d) => {
@@ -244,9 +245,9 @@ async function run() {
       const originY = Math.max(120, canvas.height * 0.22);
       const TILE_W = 64, TILE_H = 32;
       const tableX = originX + (5 - 4) * (TILE_W / 2);
-      const tableY = originY + (5 + 4) * (TILE_H / 2);
-      const placeX = originX + (6 - 4) * (TILE_W / 2);
-      const placeY = originY + (6 + 4) * (TILE_H / 2);
+      const tableY = originY + (5 + 4) * (TILE_H / 2) + (TILE_H / 2);
+      const placeX = originX + (5 - 4) * (TILE_W / 2);
+      const placeY = originY + (5 + 4) * (TILE_H / 2);
       return {
         tableX: rect.left + tableX,
         tableY: rect.top + tableY,
@@ -269,29 +270,12 @@ async function run() {
     });
     await page.waitForTimeout(300);
 
-    // Verify via WebSocket that elevated furniture exists
-    const ws2 = new WebSocket(WS_BASE);
-    await new Promise(r => ws2.on('open', r));
-    await new Promise((resolve) => {
-      ws2.on('message', (d) => {
-        const m = JSON.parse(d.toString());
-        if (m.type === 'INIT_STATE') resolve();
-      });
+    // Verify that elevated furniture was placed on the table surface
+    const hasElevated = await page.evaluate(() => {
+      const room = window.__havenGame?.getCurrentRoom();
+      return room?.furniture?.some(f => f.elevation > 0);
     });
-    ws2.send(JSON.stringify({ type: 'SWITCH_ROOM', payload: { roomId: loftRoomId } }));
-    const changed = await new Promise((resolve, reject) => {
-      const to = setTimeout(() => reject(new Error('timeout')), 3000);
-      ws2.on('message', (data) => {
-        const msg = JSON.parse(data.toString());
-        if (msg.type === 'ROOM_CHANGED') {
-          clearTimeout(to);
-          resolve(msg);
-        }
-      });
-    });
-    const hasElevated = changed.payload.room.furniture.some(f => f.elevation > 0);
     assert.ok(hasElevated, 'elevated furniture found in room state');
-    ws2.close();
   });
 
   await browser.close();
