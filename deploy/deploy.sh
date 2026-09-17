@@ -32,12 +32,21 @@ mkdir -p logs
 
 # 5. Reload PM2 processes with zero downtime (starts them if not yet registered)
 echo "🔄 Applying PM2 process definitions..."
-pm2 startOrReload deploy/ecosystem.config.cjs --update-env
+PM2_CMD="pm2"
+if ! command -v pm2 > /dev/null 2>&1; then
+  if command -v npx > /dev/null 2>&1; then
+    PM2_CMD="npx pm2"
+  else
+    echo "❌ Error: Neither pm2 nor npx found in PATH." >&2
+    exit 1
+  fi
+fi
 
-pm2 save
+$PM2_CMD startOrReload deploy/ecosystem.config.cjs --update-env
+$PM2_CMD save
 
 echo "===================================================="
 echo "✅ HavenWorld successfully deployed and running!"
 echo "📡 Status:"
-pm2 status havenworld
+$PM2_CMD status havenworld
 echo "===================================================="
