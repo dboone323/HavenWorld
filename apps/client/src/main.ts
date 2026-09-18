@@ -41,11 +41,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   let customizer: AvatarCustomizer | null = null;
 
   document.getElementById('btn-avatar')?.addEventListener('click', () => {
-    const panel = document.getElementById('avatar-panel');
-    if (!panel) return;
-    if (!customizer) customizer = new AvatarCustomizer(panel);
-    else customizer.open();
-    panel.classList.toggle('hidden');
+    if (!customizer) {
+      customizer = new AvatarCustomizer(authService.user?.avatar, (savedData) => {
+        authService.updateAvatar(savedData);
+      });
+    }
+    customizer.open();
   });
 
   // ── In-game navigation buttons ──────────────────────────────────────────

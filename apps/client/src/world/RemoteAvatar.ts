@@ -185,6 +185,16 @@ export class RemoteAvatar {
     }, 4000);
   }
 
+  public applyCustomization(data: AvatarData): void {
+    const skinHex = (data.skinTone as string) || (data.skinColor as string);
+    if (skinHex && this._meshes.length > 0) {
+      const mat = this._meshes[0].material as StandardMaterial;
+      if (mat) {
+        mat.diffuseColor = Color3.FromHexString(skinHex);
+      }
+    }
+  }
+
   public dispose(): void {
     if (this._speechTimeout) {
       window.clearTimeout(this._speechTimeout);

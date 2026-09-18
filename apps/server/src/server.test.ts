@@ -13,7 +13,7 @@ test('SERVER_CONFIG has valid defaults', () => {
   assert.ok(['development', 'production', 'test'].includes(SERVER_CONFIG.nodeEnv));
 });
 
-test('SOCKET_EVENTS contains all 14 Section 5.2 events', () => {
+test('SOCKET_EVENTS contains all core and furniture events', () => {
   assert.equal(SOCKET_EVENTS.AUTH_JOIN, 'auth:join');
   assert.equal(SOCKET_EVENTS.AUTH_ERROR, 'auth:error');
   assert.equal(SOCKET_EVENTS.ROOM_STATE, 'room:state');
@@ -28,7 +28,11 @@ test('SOCKET_EVENTS contains all 14 Section 5.2 events', () => {
   assert.equal(SOCKET_EVENTS.AVATAR_CHANGED, 'avatar:changed');
   assert.equal(SOCKET_EVENTS.FRIEND_ONLINE, 'friend:online');
   assert.equal(SOCKET_EVENTS.FRIEND_OFFLINE, 'friend:offline');
-  assert.equal(Object.keys(SOCKET_EVENTS).length, 14);
+  // Part 5B Furniture events
+  assert.equal(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, 'room:furniture_updated');
+  assert.equal(SOCKET_EVENTS.FURNITURE_PLACE, 'furniture:place');
+  assert.equal(SOCKET_EVENTS.FURNITURE_REMOVE, 'furniture:remove');
+  assert.equal(Object.keys(SOCKET_EVENTS).length, 17);
 });
 
 test('Password hashing performs real bcrypt hash and verification', async () => {

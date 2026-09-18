@@ -1,12 +1,17 @@
 // Core Data Models shared between client and server
 
 export interface AvatarData {
-  bodyType?: string;
-  skinTone: string;
+  bodyType?: number | string;
+  height?: number;
+  build?: number;
+  skinTone?: string;
+  skinColor?: string;
   hairStyle?: string;
   hairColor?: string;
   eyeStyle?: string;
   eyeColor?: string;
+  topColor?: string;
+  bottomColor?: string;
   outfitHead?: string | null;
   outfitFace?: string | null;
   outfitBody?: string | null;
@@ -23,6 +28,48 @@ export interface AvatarData {
   shoes?: string;
   hat?: string;
   accessory?: string;
+  bodyMorphs?: Record<string, number>;
+  [key: string]: unknown;
+}
+
+export interface Avatar3DData {
+  bodyType: number;   // 0.0 (thin) to 1.0 (fat)
+  height: number;     // 0.0 (short) to 1.0 (tall)
+  build: number;      // 0.0 (slim) to 1.0 (muscular)
+  skinTone: string;   // hex e.g. '#F5CBA7'
+  hairColor: string;  // hex
+  eyeColor: string;   // hex
+  topColor: string;   // hex
+  bottomColor: string;// hex
+}
+
+export interface FurniturePlacementData {
+  id: string;
+  itemId: string;
+  assetUrl: string;
+  placedById: string;
+  x: number;
+  y: number;
+  z: number;
+  rotY: number;
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
+}
+
+export interface FurniturePlacement {
+  id: string;
+  itemId: string;
+  assetUrl?: string;
+  x: number;
+  y: number;
+  z: number;
+  rotY: number;
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
+  isNew?: boolean;
+  isRemoved?: boolean;
 }
 
 export type Direction = 'down' | 'up' | 'left' | 'right';

@@ -25,6 +25,11 @@ export const SOCKET_EVENTS = {
   // Friends
   FRIEND_ONLINE:  'friend:online',
   FRIEND_OFFLINE: 'friend:offline',
+
+  // Furniture (Part 5B)
+  ROOM_FURNITURE_UPDATED: 'room:furniture_updated',
+  FURNITURE_PLACE:        'furniture:place',
+  FURNITURE_REMOVE:       'furniture:remove',
 } as const;
 
 export type SocketEventType = typeof SOCKET_EVENTS[keyof typeof SOCKET_EVENTS];

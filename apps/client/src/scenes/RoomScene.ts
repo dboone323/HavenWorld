@@ -14,6 +14,8 @@ import { RoomLoader } from '../world/RoomLoader';
 import { createPlaceholderRoom } from '../world/PlaceholderRoom';
 import { AvatarController } from '../world/AvatarController';
 import { RemoteAvatar } from '../world/RemoteAvatar';
+import { FurnitureManager } from '../world/FurnitureManager';
+import { RoomEditor } from '../world/RoomEditor';
 import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
@@ -143,6 +145,41 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     }
   }
 
+  // ── Furniture & Room Decorator ───────────────────────────────────────────
+  const furnitureManager = new FurnitureManager(scene, user.id);
+  await furnitureManager.loadRoomFurniture(roomId);
+
+  const isOwner = authService.user?.personalRoom?.id === roomId;
+  const btnDecorate = document.getElementById('btn-decorate');
+  let roomEditor: RoomEditor | null = null;
+
+  const toggleDecorate = () => {
+    if (!roomEditor) return;
+    if (roomEditor.inEditMode) {
+      roomEditor.exitEditMode();
+      if (btnDecorate) {
+        btnDecorate.textContent = '🛋️ Decorate';
+        btnDecorate.classList.remove('btn--teal');
+      }
+    } else {
+      roomEditor.enterEditMode();
+      if (btnDecorate) {
+        btnDecorate.textContent = '💾 Finish';
+        btnDecorate.classList.add('btn--teal');
+      }
+    }
+  };
+
+  if (isOwner && btnDecorate) {
+    btnDecorate.classList.remove('hidden');
+    btnDecorate.textContent = '🛋️ Decorate';
+    btnDecorate.classList.remove('btn--teal');
+    roomEditor = new RoomEditor(scene, furnitureManager, roomId, 0);
+    btnDecorate.addEventListener('click', toggleDecorate);
+  } else if (btnDecorate) {
+    btnDecorate.classList.add('hidden');
+  }
+
   // ── Input & Chat Controllers ──────────────────────────────────────────────
   const inputController = new InputController(scene, avatarController, camera);
   const chatOverlay = new ChatOverlay((msg: ChatMessage) => {
@@ -260,15 +297,48 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     })
   );
 
+  // Furniture updated in real-time
+  const onFurnitureUpdate = async (data: { roomId: string }) => {
+    if (data?.roomId === roomId) {
+      furnitureManager.clear();
+      await furnitureManager.loadRoomFurniture(roomId);
+    }
+  };
+  unsubs.push(socketService.on<{ roomId: string }>(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, onFurnitureUpdate));
+  unsubs.push(socketService.on<{ roomId: string }>('room:furniture_updated', onFurnitureUpdate));
+
+  // Avatar customization updated in real-time
+  const onAvatarUpdate = (data: { userId: string; avatarData?: any }) => {
+    if (!data) return;
+    if (data.userId === user.id) {
+      if (data.avatarData) {
+        avatarController.applyCustomization(data.avatarData);
+      }
+    } else {
+      const remote = remoteAvatars.get(data.userId);
+      if (remote && data.avatarData) {
+        remote.applyCustomization(data.avatarData);
+      }
+    }
+  };
+  unsubs.push(socketService.on<{ userId: string; avatarData?: any }>(SOCKET_EVENTS.AVATAR_UPDATE, onAvatarUpdate));
+  unsubs.push(socketService.on<{ userId: string; avatarData?: any }>('avatar:update', onAvatarUpdate));
+
   // ── Disposal & Cleanup ────────────────────────────────────────────────────
   scene.onDisposeObservable.add(() => {
     window.removeEventListener('keydown', onKeyDown);
+    if (btnDecorate) {
+      btnDecorate.removeEventListener('click', toggleDecorate);
+      btnDecorate.classList.add('hidden');
+    }
     if (cameraFollowObserver) {
       scene.unregisterBeforeRender(cameraFollowObserver);
     }
     for (const unsub of unsubs) {
       unsub();
     }
+    roomEditor?.dispose();
+    furnitureManager.clear();
     inputController.dispose();
     chatOverlay.dispose();
     avatarController.dispose();

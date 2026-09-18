@@ -42,7 +42,13 @@ function checkMoveRateLimit(socketId: string): boolean {
   return rec.count <= 20; // max 20 position updates per second
 }
 
+let ioInstance: Server | null = null;
+export function getIO(): Server | null {
+  return ioInstance;
+}
+
 export function registerSocketHandlers(io: Server): void {
+  ioInstance = io;
   io.use(socketAuthMiddleware);
 
   io.on('connection', (socket: Socket) => {
@@ -408,6 +414,83 @@ export function registerSocketHandlers(io: Server): void {
           }
         } catch (err) {
           console.error('[Socket] avatar:update error:', err);
+        }
+      }
+    );
+
+    // ── furniture:place (Part 5B) ─────────────────────────────────────────────
+    socket.on(
+      SOCKET_EVENTS.FURNITURE_PLACE,
+      async (data: {
+        roomId: string;
+        placement: {
+          itemId: string;
+          x: number;
+          y: number;
+          z: number;
+          rotY?: number;
+          scaleX?: number;
+          scaleY?: number;
+          scaleZ?: number;
+        };
+      }) => {
+        try {
+          const { roomId, placement } = data;
+          const room = await prisma.room.findUnique({ where: { id: roomId } });
+          if (!room || room.ownerId !== userId) {
+            socket.emit('error', { message: 'Not authorized to place furniture in this room' });
+            return;
+          }
+
+          const created = await prisma.roomFurniture.create({
+            data: {
+              roomId,
+              itemId: placement.itemId,
+              placedBy: userId,
+              x: placement.x,
+              y: placement.y,
+              z: placement.z ?? 0,
+              rotation: placement.rotY ?? 0,
+              scaleX: placement.scaleX ?? 1,
+              scaleY: placement.scaleY ?? 1,
+              scaleZ: placement.scaleZ ?? 1,
+            },
+            include: { item: true },
+          });
+
+          io.to(roomId).emit(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, {
+            roomId,
+            action: 'place',
+            item: created,
+          });
+        } catch (err) {
+          console.error('[Socket] furniture:place error:', err);
+        }
+      }
+    );
+
+    // ── furniture:remove (Part 5B) ────────────────────────────────────────────
+    socket.on(
+      SOCKET_EVENTS.FURNITURE_REMOVE,
+      async (data: { roomId: string; furnitureId: string }) => {
+        try {
+          const { roomId, furnitureId } = data;
+          const item = await prisma.roomFurniture.findUnique({
+            where: { id: furnitureId },
+          });
+          if (!item || item.placedBy !== userId) {
+            socket.emit('error', { message: 'Not authorized to remove this item' });
+            return;
+          }
+
+          await prisma.roomFurniture.delete({ where: { id: furnitureId } });
+          io.to(roomId).emit(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, {
+            roomId,
+            action: 'remove',
+            furnitureId,
+          });
+        } catch (err) {
+          console.error('[Socket] furniture:remove error:', err);
         }
       }
     );

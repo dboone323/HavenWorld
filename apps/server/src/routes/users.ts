@@ -1,7 +1,11 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { prisma } from '../prisma';
 import { inventoryService } from '../services/InventoryService';
+import { getIO } from '../sockets';
+import { roomManager } from '../services/RoomManager';
+import { SOCKET_EVENTS } from '@havenworld/shared';
 
 const router = Router();
 
@@ -29,11 +33,101 @@ router.get('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
     where: { userId: req.user!.userId },
   });
   if (!avatar) return res.status(404).json({ error: 'Avatar not found.' });
-  return res.json(avatar);
+  return res.json({
+    ...avatar,
+    bodyType: avatar.bodyTypeVal,
+    height: avatar.heightVal,
+    build: avatar.buildVal,
+  });
+});
+
+const avatarDataSchema = z.object({
+  bodyType: z.number().min(0).max(1).optional(),
+  height: z.number().min(0).max(1).optional(),
+  build: z.number().min(0).max(1).optional(),
+  skinTone: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  hairColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  eyeColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  topColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  bottomColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  hairStyle: z.string().optional(),
+  eyeStyle: z.string().optional(),
+});
+
+// PUT /api/users/me/avatar — save 3D avatar customization
+router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
+  const parsed = avatarDataSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid avatar data', issues: parsed.error.issues });
+  }
+
+  const userId = req.user!.userId;
+  const d = parsed.data;
+
+  const updated = await prisma.avatar.upsert({
+    where: { userId },
+    create: {
+      userId,
+      skinTone: d.skinTone ?? '#F5CBA7',
+      hairColor: d.hairColor ?? '#1C1C1C',
+      eyeColor: d.eyeColor ?? '#4A3728',
+      topColor: d.topColor ?? '#4169E1',
+      bottomColor: d.bottomColor ?? '#2E8B57',
+      bodyTypeVal: d.bodyType ?? 0.5,
+      heightVal: d.height ?? 0.5,
+      buildVal: d.build ?? 0.5,
+      hairStyle: d.hairStyle ?? 'hair-short-01',
+      eyeStyle: d.eyeStyle ?? 'eyes-default',
+    },
+    update: {
+      skinTone: d.skinTone,
+      hairColor: d.hairColor,
+      eyeColor: d.eyeColor,
+      topColor: d.topColor,
+      bottomColor: d.bottomColor,
+      bodyTypeVal: d.bodyType,
+      heightVal: d.height,
+      buildVal: d.build,
+      hairStyle: d.hairStyle,
+      eyeStyle: d.eyeStyle,
+    },
+  });
+
+  const io = getIO();
+  if (io) {
+    const currentRoom = roomManager.getPlayerRoom(userId) || (req.body as any).roomId;
+    if (currentRoom) {
+      io.to(currentRoom).emit(SOCKET_EVENTS.AVATAR_UPDATE, {
+        userId,
+        avatarData: d,
+      });
+    }
+  }
+
+  return res.json({ success: true, avatar: updated });
 });
 
 // GET /api/users/me/inventory — items in user's inventory with full item details
 router.get('/me/inventory', requireAuth, async (req: AuthRequest, res) => {
+  const typeFilter = req.query.type as string | undefined;
+  if (typeFilter === 'furniture') {
+    const furniture = await prisma.inventory.findMany({
+      where: {
+        userId: req.user!.userId,
+        item: { category: 'FURNITURE' },
+      },
+      include: { item: true },
+    });
+    return res.json(
+      furniture.map((f) => ({
+        itemId: f.item.id,
+        name: f.item.name,
+        assetUrl: f.item.assetUrl || `/assets/furniture/${f.item.spriteKey}.glb`,
+        quantity: f.quantity,
+      }))
+    );
+  }
+
   const inventory = await inventoryService.getUserInventory(req.user!.userId);
   return res.json(inventory);
 });

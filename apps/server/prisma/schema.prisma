@@ -108,6 +108,11 @@ model Avatar {
   outfitFeet  String?
   outfitBack  String?
   outfitHand  String?
+  bodyTypeVal Float    @default(0.5)
+  heightVal   Float    @default(0.5)
+  buildVal    Float    @default(0.5)
+  topColor    String   @default("#4169E1")
+  bottomColor String   @default("#2E8B57")
   updatedAt   DateTime @updatedAt
 
   @@map("avatars")
@@ -115,12 +120,15 @@ model Avatar {
 
 model Item {
   id            String        @id @default(uuid())
-  name          String
+  name          String        @unique
   description   String        @default("")
   category      ItemCategory
   rarity        ItemRarity    @default(COMMON)
   isTradeable   Boolean       @default(false)
+  isDefault     Boolean       @default(false)
+  price         Int           @default(0)
   spriteKey     String
+  assetUrl      String?
   createdAt     DateTime      @default(now())
   inventories   Inventory[]
   roomFurniture RoomFurniture[]
@@ -170,10 +178,13 @@ model RoomFurniture {
   item      Item     @relation(fields: [itemId], references: [id])
   placedBy  String
   placer    User     @relation(fields: [placedBy], references: [id])
-  x         Int
-  y         Int
-  z         Int      @default(0)
-  rotation  Int      @default(0)
+  x         Float
+  y         Float
+  z         Float    @default(0)
+  rotation  Float    @default(0)
+  scaleX    Float    @default(1)
+  scaleY    Float    @default(1)
+  scaleZ    Float    @default(1)
   layer     Int      @default(0)
   placedAt  DateTime @default(now())
 

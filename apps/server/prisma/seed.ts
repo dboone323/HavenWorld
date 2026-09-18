@@ -87,22 +87,61 @@ async function main() {
     // Feet
     { id: 'shoes-white', name: 'White Sneakers', category: ItemCategory.CLOTHING_FEET, spriteKey: 'clothing/shoes-white', rarity: ItemRarity.COMMON },
     { id: 'shoes-black', name: 'Black Shoes', category: ItemCategory.CLOTHING_FEET, spriteKey: 'clothing/shoes-black', rarity: ItemRarity.COMMON },
-    // Furniture (starter set for personal rooms)
-    { id: 'furniture-chair', name: 'Basic Chair', category: ItemCategory.FURNITURE, spriteKey: 'furniture/chair-basic', rarity: ItemRarity.COMMON },
-    { id: 'furniture-table', name: 'Basic Table', category: ItemCategory.FURNITURE, spriteKey: 'furniture/table-basic', rarity: ItemRarity.COMMON },
-    { id: 'furniture-plant', name: 'Small Plant', category: ItemCategory.FURNITURE, spriteKey: 'furniture/plant-small', rarity: ItemRarity.COMMON },
-    { id: 'furniture-rug', name: 'Basic Rug', category: ItemCategory.FURNITURE, spriteKey: 'furniture/rug-basic', rarity: ItemRarity.COMMON },
-    { id: 'furniture-lamp', name: 'Floor Lamp', category: ItemCategory.FURNITURE, spriteKey: 'furniture/lamp-floor', rarity: ItemRarity.COMMON },
+    // Furniture (Part 5B 10 items)
+    { id: 'furniture-chair', name: 'Wooden Chair', category: ItemCategory.FURNITURE, spriteKey: 'chair', assetUrl: '/assets/furniture/chair.glb', price: 0, isDefault: true, description: 'A simple wooden chair. Comfortable enough.' },
+    { id: 'furniture-table', name: 'Round Table', category: ItemCategory.FURNITURE, spriteKey: 'table', assetUrl: '/assets/furniture/table.glb', price: 0, isDefault: true, description: 'A round wooden table. Fits four chairs.' },
+    { id: 'furniture-sofa', name: 'Blue Sofa', category: ItemCategory.FURNITURE, spriteKey: 'sofa', assetUrl: '/assets/furniture/sofa.glb', price: 0, isDefault: true, description: 'A comfortable two-seater sofa in ocean blue.' },
+    { id: 'furniture-lamp', name: 'Floor Lamp', category: ItemCategory.FURNITURE, spriteKey: 'lamp', assetUrl: '/assets/furniture/lamp.glb', price: 0, isDefault: true, description: 'A tall floor lamp with a warm white shade.' },
+    { id: 'furniture-bookshelf', name: 'Bookshelf', category: ItemCategory.FURNITURE, spriteKey: 'bookshelf', assetUrl: '/assets/furniture/bookshelf.glb', price: 0, isDefault: true, description: 'A wooden bookshelf. Perfect for the intellectual look.' },
+    { id: 'furniture-rug', name: 'Red Rug', category: ItemCategory.FURNITURE, spriteKey: 'rug', assetUrl: '/assets/furniture/rug.glb', price: 0, isDefault: true, description: 'A classic red area rug. Ties the room together.' },
+    { id: 'furniture-painting', name: 'Wall Painting', category: ItemCategory.FURNITURE, spriteKey: 'painting', assetUrl: '/assets/furniture/painting.glb', price: 100, isDefault: false, description: 'An abstract painting to brighten up your walls.' },
+    { id: 'furniture-fireplace', name: 'Fireplace', category: ItemCategory.FURNITURE, spriteKey: 'fireplace', assetUrl: '/assets/furniture/fireplace.glb', price: 250, isDefault: false, description: 'A cozy decorative fireplace. Crackling not included.' },
+    { id: 'furniture-plant', name: 'Plant Pot', category: ItemCategory.FURNITURE, spriteKey: 'plant', assetUrl: '/assets/furniture/plant.glb', price: 50, isDefault: false, description: 'A leafy green houseplant in a terracotta pot.' },
+    { id: 'furniture-tv', name: 'TV Stand', category: ItemCategory.FURNITURE, spriteKey: 'tv', assetUrl: '/assets/furniture/tv.glb', price: 200, isDefault: false, description: 'A sleek TV stand. Screen sold separately.' },
   ];
 
   for (const item of defaultItems) {
     await prisma.item.upsert({
-      where: { id: item.id },
-      create: { ...item, isTradeable: false },
-      update: { name: item.name },
+      where: { name: item.name },
+      create: {
+        id: item.id,
+        name: item.name,
+        description: item.description || '',
+        category: item.category,
+        rarity: (item as any).rarity || ItemRarity.COMMON,
+        spriteKey: item.spriteKey,
+        assetUrl: (item as any).assetUrl,
+        price: (item as any).price ?? 0,
+        isDefault: (item as any).isDefault ?? false,
+        isTradeable: false,
+      },
+      update: {
+        name: item.name,
+        description: item.description || '',
+        spriteKey: item.spriteKey,
+        assetUrl: (item as any).assetUrl,
+        price: (item as any).price ?? 0,
+        isDefault: (item as any).isDefault ?? false,
+      },
     });
   }
-  console.log(`[Seed] Created ${defaultItems.length} default items`);
+  console.log(`[Seed] Upserted ${defaultItems.length} items`);
+
+  // Grant all isDefault furniture items to all users
+  const defaultFurniture = await prisma.item.findMany({
+    where: { category: ItemCategory.FURNITURE, isDefault: true },
+  });
+  const allUsers = await prisma.user.findMany({ select: { id: true } });
+  for (const user of allUsers) {
+    for (const item of defaultFurniture) {
+      await prisma.inventory.upsert({
+        where: { userId_itemId: { userId: user.id, itemId: item.id } },
+        create: { userId: user.id, itemId: item.id, quantity: 1 },
+        update: {},
+      });
+    }
+  }
+  console.log(`[Seed] Granted default furniture to ${allUsers.length} users.`);
   console.log('[Seed] Database seed complete!');
 }
 

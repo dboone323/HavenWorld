@@ -1,24 +1,12 @@
-import {
-  Scene,
-  TransformNode,
-  AbstractMesh,
-  AnimationGroup,
-  Vector3,
-  Color3,
-  StandardMaterial,
-  MeshBuilder,
-  SceneLoader,
-} from '@babylonjs/core';
-import { AdvancedDynamicTexture, TextBlock } from '@babylonjs/gui';
+import * as BABYLON from '@babylonjs/core';
+import { AdvancedDynamicTexture, Rectangle, TextBlock } from '@babylonjs/gui';
+import type { AvatarData } from '@havenworld/shared';
 import { socketService } from '../services/socket';
 
-export interface AvatarData {
-  skinColor?: string;
-  hairColor?: string;
-  eyeColor?: string;
-  bodyMorphs?: Record<string, number>;
-  [key: string]: unknown;
-}
+const AVATAR_GLB_PATH = '/assets/avatars/';
+const AVATAR_GLB_FILE = 'base_avatar.glb';
+const WALK_SPEED = 3.5; // meters per second
+const ARRIVAL_THRESHOLD = 0.15; // stop walking when within 15cm
 
 export interface UserProfile {
   id: string;
@@ -27,194 +15,324 @@ export interface UserProfile {
 }
 
 export class AvatarController {
-  public rootMesh!: TransformNode;
-  private _scene: Scene;
-  private _user: UserProfile;
-  private _meshes: AbstractMesh[] = [];
-  private _animations: Map<string, AnimationGroup> = new Map();
-  private _currentAnim: AnimationGroup | null = null;
-  private _targetPosition: Vector3 | null = null;
-  private _isMoving = false;
-  private _moveSpeed = 3.5; // meters per second
-  private _nameTagMesh: AbstractMesh | null = null;
+  public rootMesh: BABYLON.AbstractMesh | null = null;
   public roomId: string = 'main';
 
-  constructor(scene: Scene, user: UserProfile) {
-    this._scene = scene;
-    this._user = user;
+  private scene: BABYLON.Scene;
+  private user: UserProfile;
+  private skeleton: BABYLON.Skeleton | null = null;
+  private morphManagers: BABYLON.MorphTargetManager[] = [];
+  private animations: Map<string, BABYLON.AnimationGroup> = new Map();
+  private currentAnim: BABYLON.AnimationGroup | null = null;
+  private blendTimer: number | null = null;
+  private readonly BLEND_FRAMES = 9; // ~0.3s at 30fps
+
+  private nameTagTexture: AdvancedDynamicTexture | null = null;
+  private nameTagMesh: BABYLON.AbstractMesh | null = null;
+  private targetPosition: BABYLON.Vector3 | null = null;
+  private isMoving = false;
+  private renderObserver: (() => void) | null = null;
+
+  constructor(scene: BABYLON.Scene, user: UserProfile) {
+    this.scene = scene;
+    this.user = user;
   }
 
-  public async init(): Promise<void> {
+  public get position(): BABYLON.Vector3 {
+    return this.rootMesh?.position ?? BABYLON.Vector3.Zero();
+  }
+
+  // ─── Public API ───────────────────────────────────────────────────────────
+  async init(spawnPosition: BABYLON.Vector3 = BABYLON.Vector3.Zero()): Promise<void> {
+    await this.load(spawnPosition);
+  }
+
+  async load(spawnPosition: BABYLON.Vector3): Promise<void> {
     try {
-      await this._loadGLB();
-    } catch {
-      console.warn('[AvatarController] GLB not found — using placeholder capsule.');
-      this._buildPlaceholder();
+      const result = await BABYLON.SceneLoader.ImportMeshAsync(
+        '',
+        AVATAR_GLB_PATH,
+        AVATAR_GLB_FILE,
+        this.scene
+      );
+
+      if (!result.meshes.length) {
+        throw new Error('[AvatarController] GLB loaded but contained no meshes.');
+      }
+
+      this.rootMesh = result.meshes[0];
+      this.rootMesh.name = `avatar_local_${this.user.id}`;
+      this.rootMesh.position = spawnPosition.clone();
+
+      // Collect morph target managers from all sub-meshes
+      for (const mesh of result.meshes) {
+        if (mesh.morphTargetManager) {
+          this.morphManagers.push(mesh.morphTargetManager);
+        }
+      }
+
+      if (result.skeletons.length > 0) {
+        this.skeleton = result.skeletons[0];
+      }
+
+      this.initAnimations(result.animationGroups);
+      console.log(
+        `[AvatarController] GLB loaded. Meshes: ${result.meshes.length}, MorphManagers: ${this.morphManagers.length}, AnimGroups: ${result.animationGroups.length}`
+      );
+    } catch (err) {
+      console.warn('[AvatarController] GLB load failed, using procedural placeholder capsule:', err);
+      this.buildPlaceholder(spawnPosition);
     }
 
-    this._buildNameTag();
-    this._registerRenderLoop();
+    if (this.user.avatarData) {
+      this.applyCustomization(this.user.avatarData);
+    }
+
+    this.attachNameTag();
+    this.registerUpdateLoop();
   }
 
-  private async _loadGLB(): Promise<void> {
-    const result = await SceneLoader.ImportMeshAsync(
-      '',
-      '',
-      '/assets/avatars/base_avatar.glb',
-      this._scene
-    );
+  private buildPlaceholder(spawnPosition: BABYLON.Vector3): void {
+    const root = new BABYLON.TransformNode(`avatar_local_${this.user.id}`, this.scene);
+    root.position = spawnPosition.clone();
 
-    this.rootMesh = new TransformNode('localAvatar_root', this._scene);
-    result.meshes[0].parent = this.rootMesh;
-    this._meshes = result.meshes as AbstractMesh[];
-
-    // Apply avatar customization
-    if (this._user.avatarData) {
-      this._applyMaterials(this._user.avatarData);
-    }
-
-    // Register animation groups by name
-    for (const ag of result.animationGroups) {
-      this._animations.set(ag.name, ag);
-      ag.stop();
-    }
-
-    this._playAnimation('idle', true);
-  }
-
-  private _buildPlaceholder(): void {
-    this.rootMesh = new TransformNode('localAvatar_root', this._scene);
-
-    const body = MeshBuilder.CreateCapsule(
+    const body = BABYLON.MeshBuilder.CreateCapsule(
       'avatar_body',
       { radius: 0.25, height: 1.7, tessellation: 8 },
-      this._scene
+      this.scene
     );
-    body.parent = this.rootMesh;
+    body.parent = root;
     body.position.y = 0.85;
 
-    const head = MeshBuilder.CreateSphere(
+    const head = BABYLON.MeshBuilder.CreateSphere(
       'avatar_head',
       { diameter: 0.4, segments: 8 },
-      this._scene
+      this.scene
     );
-    head.parent = this.rootMesh;
+    head.parent = root;
     head.position.y = 1.95;
 
-    const mat = new StandardMaterial('avatar_mat', this._scene);
-    const skinHex = this._user.avatarData?.skinColor || '#F5CBA7';
-    mat.diffuseColor = Color3.FromHexString(skinHex);
+    const mat = new BABYLON.StandardMaterial('avatar_mat', this.scene);
+    const skinHex = (this.user.avatarData?.skinTone as string) || '#F5CBA7';
+    mat.diffuseColor = BABYLON.Color3.FromHexString(skinHex);
     body.material = mat;
     head.material = mat;
 
-    this._meshes = [body, head];
+    this.rootMesh = body;
   }
 
-  private _applyMaterials(data: AvatarData): void {
-    if (data.bodyMorphs) {
-      for (const [name, value] of Object.entries(data.bodyMorphs)) {
-        for (const mesh of this._meshes) {
-          const manager = (
-            mesh as unknown as {
-              morphTargetManager?: {
-                numTargets: number;
-                getTarget: (i: number) => { name: string; influence: number };
-              };
-            }
-          ).morphTargetManager;
-          if (!manager) continue;
-          for (let i = 0; i < manager.numTargets; i++) {
-            const target = manager.getTarget(i);
-            if (target.name === name) {
-              target.influence = value;
-            }
-          }
+  moveTo(target: BABYLON.Vector3): void {
+    this.targetPosition = new BABYLON.Vector3(target.x, this.rootMesh?.position.y ?? 0, target.z);
+    if (!this.isMoving) {
+      this.isMoving = true;
+      this.crossFadeTo('walk');
+    }
+  }
+
+  playSocialAnim(name: 'sit' | 'wave' | 'dance'): void {
+    this.targetPosition = null;
+    this.isMoving = false;
+    this.crossFadeTo(name, name !== 'wave'); // wave does not loop
+  }
+
+  applyCustomization(data: AvatarData): void {
+    this.applyMorphTargets(data);
+    this.applyMaterialColors(data);
+  }
+
+  // ─── Morph Targets ────────────────────────────────────────────────────────
+  private applyMorphTargets(data: AvatarData): void {
+    const bodyType = typeof data.bodyType === 'number' ? data.bodyType : 0.5;
+    const height = typeof data.height === 'number' ? data.height : 0.5;
+    const build = typeof data.build === 'number' ? data.build : 0.5;
+
+    for (const manager of this.morphManagers) {
+      for (let i = 0; i < manager.numTargets; i++) {
+        const target = manager.getTarget(i);
+        switch (target.name.toLowerCase()) {
+          case 'fat':
+            target.influence = Math.max(0, (bodyType - 0.5) * 2);
+            break;
+          case 'thin':
+            target.influence = Math.max(0, (0.5 - bodyType) * 2);
+            break;
+          case 'tall':
+            target.influence = Math.max(0, (height - 0.5) * 2);
+            break;
+          case 'short':
+            target.influence = Math.max(0, (0.5 - height) * 2);
+            break;
+          case 'muscular':
+            target.influence = Math.max(0, build);
+            break;
         }
       }
     }
   }
 
-  private _buildNameTag(): void {
-    const plane = MeshBuilder.CreatePlane(
-      'nametag_plane',
-      { width: 2, height: 0.4 },
-      this._scene
-    );
-    plane.parent = this.rootMesh;
-    plane.position.y = 2.4;
-    plane.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
+  // ─── Material Colors ──────────────────────────────────────────────────────
+  private applyMaterialColors(data: AvatarData): void {
+    const colorMap: Record<string, string | undefined> = {
+      mat_skin: data.skinTone || (data.skinColor as string),
+      mat_hair: data.hairColor,
+      mat_eyes: data.eyeColor,
+      mat_shirt: data.topColor,
+      mat_pants: data.bottomColor,
+    };
 
-    const texture = AdvancedDynamicTexture.CreateForMesh(plane, 512, 128);
-    const label = new TextBlock('nametag_text', this._user.username);
-    label.color = '#ffffff';
-    label.fontSize = 48;
-    label.fontFamily = 'Calibri, sans-serif';
-    texture.addControl(label);
-
-    this._nameTagMesh = plane;
-  }
-
-  private _playAnimation(name: string, loop: boolean): void {
-    if (this._currentAnim) this._currentAnim.stop();
-    const anim = this._animations.get(name);
-    if (anim) {
-      anim.start(loop, 1.0, anim.from, anim.to, false);
-      this._currentAnim = anim;
+    for (const [matName, hexColor] of Object.entries(colorMap)) {
+      if (!hexColor) continue;
+      const mat = this.scene.getMaterialByName(matName) as
+        | BABYLON.PBRMaterial
+        | BABYLON.StandardMaterial
+        | null;
+      if (mat) {
+        if ('albedoColor' in mat) {
+          (mat as BABYLON.PBRMaterial).albedoColor = BABYLON.Color3.FromHexString(hexColor);
+        } else if ('diffuseColor' in mat) {
+          (mat as BABYLON.StandardMaterial).diffuseColor = BABYLON.Color3.FromHexString(hexColor);
+        }
+      }
     }
   }
 
-  private _registerRenderLoop(): void {
-    this._scene.registerBeforeRender(() => {
-      if (!this._targetPosition || !this._isMoving) return;
+  // ─── Name Tag ─────────────────────────────────────────────────────────────
+  private attachNameTag(): void {
+    if (!this.rootMesh) return;
+    const plane = BABYLON.MeshBuilder.CreatePlane(
+      `nametag_${this.user.username}`,
+      { width: 1.8, height: 0.4 },
+      this.scene
+    );
+    plane.parent = this.rootMesh;
+    plane.position = new BABYLON.Vector3(0, 2.3, 0); // above head
+    plane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+    plane.isPickable = false;
+
+    this.nameTagTexture = AdvancedDynamicTexture.CreateForMesh(plane, 512, 128);
+    const bg = new Rectangle();
+    bg.background = '#00000099';
+    bg.cornerRadius = 8;
+    bg.thickness = 0;
+    bg.width = '100%';
+    bg.height = '100%';
+    this.nameTagTexture.addControl(bg);
+
+    const label = new TextBlock();
+    label.text = this.user.username;
+    label.color = '#ffffff';
+    label.fontSize = 32;
+    label.fontFamily = 'Calibri, sans-serif';
+    bg.addControl(label);
+
+    this.nameTagMesh = plane;
+  }
+
+  // ─── Animation System ─────────────────────────────────────────────────────
+  private initAnimations(animationGroups: BABYLON.AnimationGroup[]): void {
+    const validNames = ['idle', 'walk', 'sit', 'wave', 'dance'];
+    for (const group of animationGroups) {
+      const name = group.name.toLowerCase().trim();
+      if (validNames.includes(name)) {
+        group.stop();
+        group.setWeightForAllAnimatables(0);
+        this.animations.set(name, group);
+      }
+    }
+
+    this.animations.forEach((group) => group.play(true));
+    this.crossFadeTo('idle');
+  }
+
+  playAnim(name: string, loop = true): void {
+    this.crossFadeTo(name, loop);
+  }
+
+  private crossFadeTo(name: string, loop = true): void {
+    const incoming = this.animations.get(name);
+    if (!incoming) {
+      return;
+    }
+
+    const outgoing = this.currentAnim;
+    this.currentAnim = incoming;
+
+    if (this.blendTimer !== null) {
+      window.clearInterval(this.blendTimer);
+    }
+
+    let frame = 0;
+    this.blendTimer = window.setInterval(() => {
+      const t = Math.min(frame / this.BLEND_FRAMES, 1);
+      incoming.setWeightForAllAnimatables(t);
+      if (outgoing && outgoing !== incoming) {
+        outgoing.setWeightForAllAnimatables(1 - t);
+      }
+      frame++;
+      if (frame > this.BLEND_FRAMES) {
+        window.clearInterval(this.blendTimer!);
+        this.blendTimer = null;
+        if (outgoing && outgoing !== incoming) {
+          outgoing.setWeightForAllAnimatables(0);
+        }
+      }
+    }, 1000 / 30);
+  }
+
+  // ─── Movement Update Loop ─────────────────────────────────────────────────
+  private registerUpdateLoop(): void {
+    const callback = () => {
+      if (!this.rootMesh || !this.targetPosition || !this.isMoving) return;
 
       const current = this.rootMesh.position;
-      const dir = this._targetPosition.subtract(current);
-      dir.y = 0; // Ignore vertical height
+      const dir = this.targetPosition.subtract(current);
+      dir.y = 0;
       const dist = dir.length();
-      const dt = this._scene.getEngine().getDeltaTime() / 1000;
+      const delta = this.scene.getEngine().getDeltaTime() / 1000;
 
-      if (dist < 0.05) {
-        this.rootMesh.position.copyFrom(this._targetPosition);
-        this._isMoving = false;
-        this._playAnimation('idle', true);
+      if (dist < ARRIVAL_THRESHOLD) {
+        this.rootMesh.position.copyFrom(this.targetPosition);
+        this.isMoving = false;
+        this.targetPosition = null;
+        this.crossFadeTo('idle');
 
         // Confirm final position to server
         const roomId =
           (window as unknown as Record<string, string>).__havenRoomId || this.roomId;
         socketService.emit('player:move', {
           roomId,
-          x: this._targetPosition.x,
-          y: this._targetPosition.y,
-          z: this._targetPosition.z,
+          x: this.rootMesh.position.x,
+          y: this.rootMesh.position.y,
+          z: this.rootMesh.position.z,
           rotY: this.rootMesh.rotation.y,
         });
         return;
       }
 
-      const step = dir.normalize().scale(this._moveSpeed * dt);
-      this.rootMesh.position.addInPlace(step);
-
-      // Rotate to face movement direction
+      // Rotate toward target
       const angle = Math.atan2(dir.x, dir.z);
       this.rootMesh.rotation.y = angle;
-    });
+
+      // Move toward target
+      const step = dir.normalize().scale(WALK_SPEED * delta);
+      this.rootMesh.position.addInPlace(step);
+    };
+
+    this.scene.registerBeforeRender(callback);
+    this.renderObserver = callback;
   }
 
-  /** Move avatar to a target world position. */
-  public moveTo(target: Vector3): void {
-    this._targetPosition = target.clone();
-    this._targetPosition.y = 0; // Always walk on ground plane
-    this._isMoving = true;
-    this._playAnimation('walk', true);
-  }
-
-  public applyAvatarData(data: AvatarData): void {
-    this._applyMaterials(data);
-  }
-
-  public dispose(): void {
-    this._meshes.forEach((m) => m.dispose());
-    this._nameTagMesh?.dispose();
-    this.rootMesh.dispose();
+  dispose(): void {
+    if (this.blendTimer !== null) {
+      window.clearInterval(this.blendTimer);
+    }
+    if (this.renderObserver) {
+      this.scene.unregisterBeforeRender(this.renderObserver);
+    }
+    this.nameTagTexture?.dispose();
+    this.nameTagMesh?.dispose();
+    this.animations.forEach((ag) => ag.dispose());
+    this.animations.clear();
+    this.rootMesh?.dispose();
   }
 }

@@ -38,6 +38,9 @@ importers:
       '@babylonjs/inspector':
         specifier: ^9.27.1
         version: 9.27.1(4aheugwuqi6wqpmhlha5bn2jpu)
+      '@babylonjs/serializers':
+        specifier: ^9.27.1
+        version: 9.27.1(@babylonjs/core@9.27.1)(babylonjs-gltf2interface@9.27.1)
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.3

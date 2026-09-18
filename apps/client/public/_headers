@@ -8,3 +8,8 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Access-Control-Allow-Origin: *
+
+/assets/*.glb
+  Content-Type: model/gltf-binary
+  Cache-Control: public, max-age=2592000, immutable
+  Access-Control-Allow-Origin: *
