@@ -177,8 +177,8 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 
   // 9. Send verification email via Resend
-  const clientUrl = process.env.CLIENT_URL || 'https://havenworld-game.pages.dev';
-  const verifyUrl = `${clientUrl}/verify?token=${emailVerifyToken}`;
+  const serverUrl = process.env.SERVER_URL || 'https://147-224-164-228.nip.io';
+  const verifyUrl = `${serverUrl}/api/auth/verify?token=${emailVerifyToken}`;
 
   if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
     await resend.emails.send({

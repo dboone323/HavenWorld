@@ -74,7 +74,7 @@ export const authService = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Login failed' }));
-      throw new Error(err.message ?? 'Login failed');
+      throw new Error(err.error || err.message || 'Login failed');
     }
     const data: { user: AuthUser } & TokenPayload = await res.json();
     _applyTokens(data);
