@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
-import type { RoomData } from '@shared/types';
 import { authService } from '../services/auth';
+import type { RoomData } from '@shared/types';
 
 /**
- * LobbyScene — displays the #lobby-panel with room cards fetched from the API.
- * Selecting a room starts RoomScene and launches the parallel UIScene.
+ * LobbyScene — displays room browser HTML overlay.
+ * Fetches rooms via REST API and transitions to RoomScene on selection.
  */
 export class LobbyScene extends Phaser.Scene {
   constructor() {
@@ -27,10 +27,12 @@ export class LobbyScene extends Phaser.Scene {
 
     try {
       const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
+      const token = authService.token || authService.getToken() || '';
       const res = await fetch(`${SERVER}/api/rooms`, {
         headers: {
-          Authorization: `Bearer ${authService.token ?? ''}`,
+          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -48,6 +50,7 @@ export class LobbyScene extends Phaser.Scene {
         grid.appendChild(card);
       }
     } catch (err) {
+      console.error('[LobbyScene] Error fetching rooms:', err);
       grid.innerHTML = `<p class="error-text">Failed to load rooms. <button id="retry-rooms">Retry</button></p>`;
       document.getElementById('retry-rooms')?.addEventListener('click', () => {
         this.fetchRooms().catch(console.error);
@@ -58,11 +61,16 @@ export class LobbyScene extends Phaser.Scene {
   private buildRoomCard(room: RoomData): HTMLElement {
     const card = document.createElement('div');
     card.className = 'room-card';
+
+    const occupants = room.occupants ?? room.players?.length ?? 0;
+    const capacity = room.maxOccupants ?? room.capacity ?? 50;
+    const mapDisplay = room.theme || room.map || 'Public';
+
     card.innerHTML = `
       <div class="room-card__name">${escapeHtml(room.name)}</div>
       <div class="room-card__info">
-        <span class="room-card__players">${room.players.length} / ${room.capacity}</span>
-        <span class="room-card__map">${escapeHtml(room.map)}</span>
+        <span class="room-card__players">${occupants} / ${capacity}</span>
+        <span class="room-card__map">${escapeHtml(mapDisplay)}</span>
       </div>
       <button class="btn btn--teal room-card__join">Join</button>
     `;
@@ -78,7 +86,8 @@ export class LobbyScene extends Phaser.Scene {
     document.getElementById('lobby-panel')?.classList.add('hidden');
     document.getElementById('game-container')?.classList.remove('hidden');
 
-    this.scene.start('RoomScene', { roomId: room.id, mapKey: room.map });
+    const mapKey = room.id.replace('room-', '');
+    this.scene.start('RoomScene', { roomId: room.id, mapKey });
 
     if (!this.scene.isActive('UIScene')) {
       this.scene.launch('UIScene');
@@ -86,7 +95,8 @@ export class LobbyScene extends Phaser.Scene {
   }
 }
 
-function escapeHtml(text: string): string {
+function escapeHtml(text?: string | null): string {
+  if (!text) return '';
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
