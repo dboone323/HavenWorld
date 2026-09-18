@@ -102,7 +102,7 @@ async function main() {
 
   for (const item of defaultItems) {
     await prisma.item.upsert({
-      where: { name: item.name },
+      where: { id: item.id },
       create: {
         id: item.id,
         name: item.name,
