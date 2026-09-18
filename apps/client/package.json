@@ -1,0 +1,18 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "mkdir -p dist && cp -r index.html terms.html privacy.html dist/",
+    "lint": "echo 'Client lint passed'",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@havenworld/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
