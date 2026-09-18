@@ -24,7 +24,7 @@ let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
 const API = `${SERVER}/api`;
 
 function scheduleRefresh(expiresIn: number): void {

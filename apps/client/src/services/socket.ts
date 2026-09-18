@@ -26,7 +26,7 @@ export const socketService = {
       _socket.disconnect();
     }
 
-    const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+    const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
     _socket = io(SERVER || window.location.origin, {
       path:          '/socket.io',
       transports:    ['websocket', 'polling'],

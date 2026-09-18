@@ -122,7 +122,7 @@ export class AvatarCustomizer {
 
   private async save(): Promise<void> {
     try {
-      const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+      const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
       const res = await fetch(`${SERVER}/api/users/me/avatar`, {
         method:  'PUT',
         headers: {
