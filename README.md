@@ -2,7 +2,7 @@
 
 A browser-based social virtual world — open source, community-driven.
 
-**Game URL:** https://havenworld.pages.dev
+**Game URL:** https://havenworld-game.pages.dev (Custom domain: https://havenworld.me)
 
 ## Tech Stack
 
