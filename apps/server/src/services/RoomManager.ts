@@ -56,7 +56,9 @@ class RoomManager {
     x: number,
     y: number,
     direction: string,
-    isMoving: boolean
+    isMoving: boolean,
+    z: number = 0,
+    rotY: number = 0
   ): void {
     const roomId = this.socketToRoom.get(socketId);
     if (!roomId) return;
@@ -64,6 +66,8 @@ class RoomManager {
     if (player) {
       player.x = x;
       player.y = y;
+      player.z = z;
+      player.rotY = rotY;
       player.direction = direction as PlayerState['direction'];
       player.isMoving = isMoving;
     }

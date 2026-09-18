@@ -1,282 +1,283 @@
-import Phaser from 'phaser';
-// @ts-ignore — easystarjs has no types package
-import EasyStar from 'easystarjs';
-import type { PlayerState, ChatMessage } from '@shared/types';
-import { SOCKET_EVENTS } from '@shared/events';
+import {
+  Scene,
+  ArcRotateCamera,
+  Vector3,
+  Color3,
+  Color4,
+  HemisphericLight,
+  DirectionalLight,
+  ShadowGenerator,
+} from '@babylonjs/core';
+import { SOCKET_EVENTS, type PlayerState, type ChatMessage } from '@havenworld/shared';
+import { HavenEngine } from '../engine/HavenEngine';
+import { RoomLoader } from '../world/RoomLoader';
+import { createPlaceholderRoom } from '../world/PlaceholderRoom';
+import { AvatarController } from '../world/AvatarController';
+import { RemoteAvatar } from '../world/RemoteAvatar';
+import { InputController } from '../engine/InputController';
+import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
-import { Avatar } from '../entities/Avatar';
 
-const TILE_SIZE   = 32;
-const MOVE_SPEED  = 120; // px/s
+export async function createRoomScene(haven: HavenEngine, data?: { roomId?: string }): Promise<Scene> {
+  const scene = new Scene(haven.engine);
+  scene.clearColor = new Color4(0.08, 0.08, 0.15, 1.0);
 
-interface RoomSceneData {
-  roomId: string;
-  mapKey:  string;
-}
+  const roomId = data?.roomId || authService.user?.personalRoom?.id || 'room-park';
+  (window as unknown as Record<string, string>).__havenRoomId = roomId;
 
-/**
- * RoomScene — primary game world scene.
- *
- * Features:
- * - Tiled tilemap loading (4 layers: Ground, Walls, Objects, Overlay)
- * - Collision on Walls layer
- * - EasyStar.js A* click-to-move pathfinding
- * - Camera follow + tilemap-bounds clamping
- * - Real-time multiplayer sync via socketService
- * - Depth-sorting avatars by Y position each frame
- */
-export class RoomScene extends Phaser.Scene {
-  private roomId!:   string;
-  private mapKey!:   string;
-  private map!:      Phaser.Tilemaps.Tilemap;
-  private wallsLayer!: Phaser.Tilemaps.TilemapLayer;
+  // ── Show HUD & Game Container ─────────────────────────────────────────────
+  document.getElementById('game-container')?.classList.remove('hidden');
+  document.getElementById('room-nav')?.classList.remove('hidden');
+  document.getElementById('player-card')?.classList.remove('hidden');
+  document.getElementById('chat-panel')?.classList.remove('hidden');
+  document.getElementById('lobby-panel')?.classList.add('hidden');
+  document.getElementById('login-panel')?.classList.add('hidden');
 
-  private localAvatar!:  Avatar;
-  private avatars:       Map<string, Avatar> = new Map();
-
-  private easystar!: EasyStar;
-  private targetPath: { x: number; y: number }[] = [];
-  private pathStepIndex = 0;
-
-  // Unsub functions for socket listeners
-  private unsubs: Array<() => void> = [];
-
-  constructor() {
-    super({ key: 'RoomScene' });
+  const usernameEl = document.querySelector('#player-card .player-card__username');
+  if (usernameEl && authService.user) {
+    usernameEl.textContent = authService.user.username;
   }
 
-  init(data: RoomSceneData): void {
-    this.roomId = data.roomId;
-    // Resolve to a valid cached tilemap key
-    if (data.mapKey === 'park' || data.roomId === 'room-park') {
-      this.mapKey = 'park';
-    } else if (data.mapKey === 'lobby' || data.roomId === 'room-lobby') {
-      this.mapKey = 'lobby';
-    } else if (data.mapKey === 'cafe' || data.roomId === 'room-cafe') {
-      this.mapKey = 'cafe';
-    } else if (data.mapKey === 'town-square' || data.roomId === 'room-town-square') {
-      this.mapKey = 'town-square';
+  // ── Fixed-Angle Isometric Camera ──────────────────────────────────────────
+  const camera = new ArcRotateCamera(
+    'isometricCam',
+    -Math.PI / 4, // 45 deg angle
+    Math.PI / 4,  // 45 deg pitch
+    18,           // initial distance
+    new Vector3(0, 0, 0),
+    scene
+  );
+  camera.lowerRadiusLimit = 8;
+  camera.upperRadiusLimit = 28;
+  camera.lowerBetaLimit = Math.PI / 4;
+  camera.upperBetaLimit = Math.PI / 4;
+  camera.lowerAlphaLimit = -Math.PI / 4;
+  camera.upperAlphaLimit = -Math.PI / 4;
+  camera.attachControl(haven.canvas, true);
+
+  // Lock camera rotation: remove pointer rotation & keyboard move inputs
+  camera.inputs.removeByType('ArcRotateCameraPointersInput');
+  camera.inputs.removeByType('ArcRotateCameraKeyboardMoveInput');
+
+  // ── Lighting & Shadows ───────────────────────────────────────────────────
+  const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), scene);
+  ambientLight.intensity = 0.75;
+  ambientLight.groundColor = new Color3(0.2, 0.22, 0.35);
+
+  const sunLight = new DirectionalLight('sunLight', new Vector3(-1, -2, -1), scene);
+  sunLight.position = new Vector3(15, 30, 15);
+  sunLight.intensity = 1.1;
+
+  const shadowGenerator = new ShadowGenerator(2048, sunLight);
+  shadowGenerator.useBlurExponentialShadowMap = true;
+  shadowGenerator.blurKernel = 32;
+
+  // ── Room Geometry Loading ─────────────────────────────────────────────────
+  const roomLoader = new RoomLoader(scene);
+  let roomMeshes: import('@babylonjs/core').AbstractMesh[] = [];
+  try {
+    roomMeshes = await roomLoader.load(roomId);
+    if (roomMeshes.length === 0) {
+      roomMeshes = createPlaceholderRoom(scene);
+    }
+  } catch {
+    console.warn(`[RoomScene] Room model not found for ${roomId}. Using placeholder room.`);
+    roomMeshes = createPlaceholderRoom(scene);
+  }
+
+  // Setup shadow receivers
+  for (const m of roomMeshes) {
+    if (m.metadata?.walkable || m.name === 'placeholder_ground' || m.name.startsWith('Walkable_')) {
+      m.receiveShadows = true;
+    }
+  }
+
+  // ── Local Avatar ──────────────────────────────────────────────────────────
+  const user = authService.user || {
+    id: 'anon',
+    username: 'Guest',
+    avatar: {},
+  };
+
+  const avatarController = new AvatarController(scene, {
+    id: user.id,
+    username: user.username,
+    avatarData: user.avatar as Record<string, unknown>,
+  });
+  avatarController.roomId = roomId;
+  await avatarController.init();
+
+  // Camera smooth follow
+  const cameraFollowObserver = scene.registerBeforeRender(() => {
+    if (avatarController.rootMesh) {
+      camera.target = Vector3.Lerp(camera.target, avatarController.rootMesh.position, 0.1);
+    }
+  });
+
+  // ── Remote Avatars ────────────────────────────────────────────────────────
+  const remoteAvatars = new Map<string, RemoteAvatar>();
+
+  function addOrUpdateRemoteAvatar(p: PlayerState) {
+    if (!p || p.id === user.id) return;
+
+    let remote = remoteAvatars.get(p.id);
+    if (!remote) {
+      remote = new RemoteAvatar(
+        scene,
+        {
+          id: p.id,
+          username: p.username,
+          avatarData: p.avatar as Record<string, unknown>,
+        },
+        {
+          x: p.x ?? 0,
+          y: p.y ?? 0,
+          z: p.z ?? 0,
+          rotY: p.rotY ?? 0,
+        }
+      );
+      remoteAvatars.set(p.id, remote);
     } else {
-      this.mapKey = 'personal-room';
+      remote.updatePosition(p.x ?? 0, p.y ?? 0, p.z ?? 0, p.rotY ?? 0);
     }
   }
 
-  create(): void {
-    // ── Ensure HUD elements are visible ──────────────────────────────────────
-    document.getElementById('lobby-panel')?.classList.add('hidden');
-    document.getElementById('login-panel')?.classList.add('hidden');
-    document.getElementById('game-container')?.classList.remove('hidden');
-    document.getElementById('room-nav')?.classList.remove('hidden');
-    document.getElementById('player-card')?.classList.remove('hidden');
-    document.getElementById('chat-panel')?.classList.remove('hidden');
+  // ── Input & Chat Controllers ──────────────────────────────────────────────
+  const inputController = new InputController(scene, avatarController, camera);
+  const chatOverlay = new ChatOverlay((msg: ChatMessage) => {
+    const remote = remoteAvatars.get(msg.playerId);
+    if (remote) {
+      remote.showSpeech(msg.text);
+    }
+  });
 
-    const user = authService.user;
-    const nameEl = document.querySelector('.player-card__username');
-    if (nameEl && user) nameEl.textContent = user.username;
+  // ── Dev Inspector Hotkey (Cmd+I / Ctrl+I) ──────────────────────────────────
+  const onKeyDown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      haven.toggleInspector();
+    }
+  };
+  window.addEventListener('keydown', onKeyDown);
 
-    // ── Tilemap ────────────────────────────────────────────────────────────
-    this.map = this.make.tilemap({ key: this.mapKey });
+  // ── Socket Multiplayer Sync ───────────────────────────────────────────────
+  const token = authService.token || authService.getToken() || '';
+  if (token) {
+    socketService.connect(token);
+  }
 
-    const tilesetKey = (this.mapKey === 'park' || this.mapKey === 'town-square')
-      ? 'tileset-outdoor'
-      : 'tileset-indoor';
+  // Join room on server
+  socketService.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId });
 
-    const tileset = this.map.addTilesetImage('tileset', tilesetKey)!;
+  const unsubs: Array<() => void> = [];
 
-    this.map.createLayer('Ground',  tileset, 0, 0);
-    this.wallsLayer = this.map.createLayer('Walls',   tileset, 0, 0)!;
-    this.map.createLayer('Objects', tileset, 0, 0);
-    this.map.createLayer('Overlay', tileset, 0, 0);
-
-    this.wallsLayer.setCollisionByExclusion([-1]);
-
-    // ── Camera ─────────────────────────────────────────────────────────────
-    this.cameras.main.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
-
-    // ── EasyStar pathfinding ────────────────────────────────────────────────
-    this.easystar = new EasyStar.js();
-    const grid = this.buildWalkGrid();
-    this.easystar.setGrid(grid);
-    this.easystar.setAcceptableTiles([0]);
-    this.easystar.enableDiagonals();
-    this.easystar.disableCornerCutting();
-
-    // ── Socket: join room ──────────────────────────────────────────────────
-    const sock = socketService.connect();
-
-    // ── Local player avatar ────────────────────────────────────────────────
-    const spawnX = this.map.widthInPixels  / 2;
-    const spawnY = this.map.heightInPixels / 2;
-    const username = user?.username ?? 'Player';
-
-    this.localAvatar = new Avatar(this, spawnX, spawnY, username, user?.avatar);
-    this.add.existing(this.localAvatar);
-    this.cameras.main.startFollow(this.localAvatar, true, 0.1, 0.1);
-
-    // ── Pointer click-to-move ──────────────────────────────────────────────
-    this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      if (ptr.rightButtonDown()) return;
-      const wx = ptr.worldX;
-      const wy = ptr.worldY;
-      const fromTX = Math.floor(this.localAvatar.x / TILE_SIZE);
-      const fromTY = Math.floor(this.localAvatar.y / TILE_SIZE);
-      const toTX   = Math.floor(wx / TILE_SIZE);
-      const toTY   = Math.floor(wy / TILE_SIZE);
-
-      this.easystar.findPath(fromTX, fromTY, toTX, toTY, (path) => {
-        if (path && path.length > 1) {
-          this.targetPath     = path.slice(1).map(p => ({
-            x: p.x * TILE_SIZE + TILE_SIZE / 2,
-            y: p.y * TILE_SIZE + TILE_SIZE / 2,
-          }));
-          this.pathStepIndex = 0;
+  // Initial room state (players list)
+  unsubs.push(
+    socketService.on<{ roomId: string; players: PlayerState[] }>(
+      SOCKET_EVENTS.ROOM_STATE,
+      (state) => {
+        if (state && Array.isArray(state.players)) {
+          for (const p of state.players) {
+            addOrUpdateRemoteAvatar(p);
+          }
         }
-      });
-      this.easystar.calculate();
-    });
-
-    // ── Socket listeners ────────────────────────────────────────────────────
-    this.unsubs.push(
-      socketService.on<{ players: PlayerState[]; furniture: unknown[] }>(
-        SOCKET_EVENTS.ROOM_STATE,
-        ({ players }) => this.syncRoomState(players),
-      ),
-      socketService.on<PlayerState>(
-        SOCKET_EVENTS.ROOM_PLAYER_JOINED,
-        (p) => this.addRemotePlayer(p),
-      ),
-      socketService.on<{ id: string }>(
-        SOCKET_EVENTS.ROOM_PLAYER_LEFT,
-        ({ id }) => this.removeRemotePlayer(id),
-      ),
-      socketService.on<PlayerState>(
-        SOCKET_EVENTS.PLAYER_POSITION,
-        (p) => this.updateRemotePlayer(p),
-      ),
-      socketService.on<ChatMessage>(
-        SOCKET_EVENTS.CHAT_MESSAGE,
-        (msg) => this.handleChat(msg),
-      ),
-      socketService.on<PlayerState>(
-        SOCKET_EVENTS.AVATAR_CHANGED,
-        (p) => this.avatars.get(p.id)?.updateAvatar(p.avatar),
-      ),
-    );
-
-    // Tell the server we've joined
-    sock.emit(SOCKET_EVENTS.AUTH_JOIN, {
-      token:  authService.token,
-      roomId: this.roomId,
-    });
-  }
-
-  update(_time: number, delta: number): void {
-    this.easystar.calculate();
-
-    if (this.targetPath.length > 0) {
-      const step = this.targetPath[this.pathStepIndex];
-      const dx = step.x - this.localAvatar.x;
-      const dy = step.y - this.localAvatar.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const speed = MOVE_SPEED * (delta / 1000);
-
-      if (dist <= speed) {
-        this.localAvatar.setPosition(step.x, step.y);
-        this.pathStepIndex++;
-        if (this.pathStepIndex >= this.targetPath.length) {
-          this.targetPath = [];
-          this.localAvatar.stopWalk();
-          this.emitPosition();
-        }
-      } else {
-        const nx = dx / dist;
-        const ny = dy / dist;
-        this.localAvatar.x += nx * speed;
-        this.localAvatar.y += ny * speed;
-
-        const dir = Math.abs(dx) > Math.abs(dy)
-          ? (dx > 0 ? 'right' : 'left')
-          : (dy > 0 ? 'down' : 'up');
-        this.localAvatar.playWalk(dir);
       }
-    }
+    )
+  );
 
-    // Depth-sort all avatars by Y
-    this.localAvatar.setDepthByY();
-    for (const av of this.avatars.values()) av.setDepthByY();
-  }
-
-  // ─── Private helpers ─────────────────────────────────────────────────────
-
-  private syncRoomState(players: PlayerState[]): void {
-    const userId = authService.user?.id;
-    for (const p of players) {
-      if (p.id === userId) continue;
-      if (!this.avatars.has(p.id)) this.addRemotePlayer(p);
-      else this.updateRemotePlayer(p);
-    }
-  }
-
-  private addRemotePlayer(p: PlayerState): void {
-    if (this.avatars.has(p.id)) return;
-    const av = new Avatar(this, p.x, p.y, p.username, p.avatar);
-    this.add.existing(av);
-    this.avatars.set(p.id, av);
-    if (p.isMoving) av.playWalk(p.direction);
-  }
-
-  private updateRemotePlayer(p: PlayerState): void {
-    const av = this.avatars.get(p.id);
-    if (!av) { this.addRemotePlayer(p); return; }
-    av.setPosition(p.x, p.y);
-    if (p.isMoving) av.playWalk(p.direction);
-    else            av.stopWalk(p.direction);
-  }
-
-  private removeRemotePlayer(id: string): void {
-    const av = this.avatars.get(id);
-    if (av) { av.destroy(); this.avatars.delete(id); }
-  }
-
-  private handleChat(msg: ChatMessage): void {
-    this.avatars.get(msg.playerId)?.showSpeechBubble(msg.text);
-    // UIScene picks up the same CHAT_MESSAGE event for the chat log
-  }
-
-  private emitPosition(): void {
-    socketService.emit(SOCKET_EVENTS.PLAYER_MOVE, {
-      x:         this.localAvatar.x,
-      y:         this.localAvatar.y,
-      direction: this.localAvatar.direction,
-      isMoving:  false,
-      roomId:    this.roomId,
-    });
-  }
-
-  private buildWalkGrid(): number[][] {
-    const rows = this.map.height;
-    const cols = this.map.width;
-    const grid: number[][] = [];
-
-    for (let row = 0; row < rows; row++) {
-      const rowArr: number[] = [];
-      for (let col = 0; col < cols; col++) {
-        const tile = this.wallsLayer.getTileAt(col, row);
-        rowArr.push(tile && tile.index !== -1 ? 1 : 0);
+  // Player joined
+  unsubs.push(
+    socketService.on<PlayerState>(SOCKET_EVENTS.ROOM_PLAYER_JOINED, (p) => {
+      addOrUpdateRemoteAvatar(p);
+    })
+  );
+  unsubs.push(
+    socketService.on<{ userId: string; username: string; position: { x: number; y: number; z: number; rotY: number }; avatarData?: any }>(
+      'player:join',
+      (p) => {
+        if (!p || p.userId === user.id) return;
+        addOrUpdateRemoteAvatar({
+          id: p.userId,
+          username: p.username,
+          avatar: p.avatarData || {},
+          x: p.position?.x ?? 0,
+          y: p.position?.y ?? 0,
+          z: p.position?.z ?? 0,
+          rotY: p.position?.rotY ?? 0,
+          direction: 'down',
+          isMoving: false,
+          roomId,
+        });
       }
-      grid.push(rowArr);
+    )
+  );
+
+  // Player moved
+  unsubs.push(
+    socketService.on<{
+      playerId: string;
+      userId?: string;
+      x: number;
+      y: number;
+      z?: number;
+      rotY?: number;
+    }>(SOCKET_EVENTS.PLAYER_POSITION, (pos) => {
+      const pid = pos.playerId || pos.userId;
+      if (!pid || pid === user.id) return;
+      const remote = remoteAvatars.get(pid);
+      if (remote) {
+        remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0);
+      }
+    })
+  );
+  unsubs.push(
+    socketService.on<{
+      playerId: string;
+      userId?: string;
+      x: number;
+      y: number;
+      z?: number;
+      rotY?: number;
+    }>('player:move', (pos) => {
+      const pid = pos.playerId || pos.userId;
+      if (!pid || pid === user.id) return;
+      const remote = remoteAvatars.get(pid);
+      if (remote) {
+        remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0);
+      }
+    })
+  );
+
+  // Player left
+  unsubs.push(
+    socketService.on<{ playerId: string }>(SOCKET_EVENTS.ROOM_PLAYER_LEFT, ({ playerId }) => {
+      const remote = remoteAvatars.get(playerId);
+      if (remote) {
+        remote.dispose();
+        remoteAvatars.delete(playerId);
+      }
+    })
+  );
+
+  // ── Disposal & Cleanup ────────────────────────────────────────────────────
+  scene.onDisposeObservable.add(() => {
+    window.removeEventListener('keydown', onKeyDown);
+    if (cameraFollowObserver) {
+      scene.unregisterBeforeRender(cameraFollowObserver);
     }
-    return grid;
-  }
+    for (const unsub of unsubs) {
+      unsub();
+    }
+    inputController.dispose();
+    chatOverlay.dispose();
+    avatarController.dispose();
+    for (const remote of remoteAvatars.values()) {
+      remote.dispose();
+    }
+    remoteAvatars.clear();
+    roomLoader.unload();
+  });
 
-  // ─── Cleanup ─────────────────────────────────────────────────────────────
-
-  override shutdown(): void {
-    for (const unsub of this.unsubs) unsub();
-    this.unsubs = [];
-    for (const av of this.avatars.values()) av.destroy();
-    this.avatars.clear();
-    this.input.off('pointerdown');
-  }
+  return scene;
 }

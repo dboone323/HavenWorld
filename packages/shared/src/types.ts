@@ -27,11 +27,50 @@ export interface AvatarData {
 
 export type Direction = 'down' | 'up' | 'left' | 'right';
 
+/**
+ * 3D world-space position used by Babylon.js.
+ * Units are meters. Y is the vertical axis (up).
+ * rotY is the avatar's Y-axis rotation in radians.
+ */
+export interface PlayerPosition3D {
+  x: number;     // world-space meters, horizontal (left/right)
+  y: number;     // world-space meters, vertical (height — usually 0 for ground)
+  z: number;     // world-space meters, horizontal (forward/back)
+  rotY: number;  // avatar facing direction in radians (Y-axis rotation)
+}
+
+/** player:move socket payload — updated for 3D */
+export interface PlayerMovePayload {
+  roomId: string;
+  x: number;
+  y: number;
+  z: number;
+  rotY: number;
+}
+
+/** player:join socket payload */
+export interface PlayerJoinPayload {
+  userId: string;
+  username: string;
+  position: PlayerPosition3D;
+  avatarData: AvatarCustomizationData;
+}
+
+/** Avatar customization data shared between client and server */
+export interface AvatarCustomizationData {
+  skinColor: string;
+  hairColor: string;
+  eyeColor: string;
+  bodyMorphs?: Record<string, number>;
+}
+
 export interface PlayerState {
   id: string;
   username: string;
   x: number;
   y: number;
+  z?: number;
+  rotY?: number;
   direction: Direction;
   isMoving: boolean;
   avatar: AvatarData;

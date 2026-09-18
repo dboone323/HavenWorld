@@ -1,0 +1,71 @@
+import {
+  Scene,
+  PointerEventTypes,
+  PointerInfo,
+  Observer,
+  PickingInfo,
+  Matrix,
+  Camera,
+} from '@babylonjs/core';
+import { AvatarController } from '../world/AvatarController';
+
+export class InputController {
+  private _scene: Scene;
+  private _avatar: AvatarController;
+  private _camera: Camera;
+  private _pointerObserver: Observer<PointerInfo> | null = null;
+  private _enabled = true;
+
+  constructor(scene: Scene, avatar: AvatarController, camera: Camera) {
+    this._scene = scene;
+    this._avatar = avatar;
+    this._camera = camera;
+    this._initPointer();
+  }
+
+  private _initPointer(): void {
+    this._pointerObserver = this._scene.onPointerObservable.add((pointerInfo) => {
+      if (!this._enabled) return;
+
+      // React only to pointer up (click / tap release)
+      if (pointerInfo.type === PointerEventTypes.POINTERUP) {
+        const evt = pointerInfo.event as PointerEvent;
+        // Only trigger on primary button (left click) or touch
+        if (evt.button !== undefined && evt.button !== 0) return;
+
+        const pick = pointerInfo.pickInfo;
+        if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) return;
+
+        const mesh = pick.pickedMesh;
+        const isWalkable =
+          mesh.metadata?.walkable === true ||
+          mesh.name.startsWith('Walkable_') ||
+          mesh.name.startsWith('NavMesh_') ||
+          mesh.name === 'placeholder_ground';
+
+        if (isWalkable) {
+          this._avatar.moveTo(pick.pickedPoint);
+        }
+      }
+    });
+  }
+
+  /**
+   * Programmatic raycast from screen pixel coordinates into the 3D scene.
+   */
+  public castRayFromScreen(x: number, y: number): PickingInfo | null {
+    const ray = this._scene.createPickingRay(x, y, Matrix.Identity(), this._camera);
+    return this._scene.pickWithRay(ray);
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this._enabled = enabled;
+  }
+
+  public dispose(): void {
+    if (this._pointerObserver) {
+      this._scene.onPointerObservable.remove(this._pointerObserver);
+      this._pointerObserver = null;
+    }
+  }
+}

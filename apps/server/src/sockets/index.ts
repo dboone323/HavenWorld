@@ -133,8 +133,10 @@ export function registerSocketHandlers(io: Server): void {
           id: userId,
           username,
           avatar: avatarData,
-          x: spawnX,
-          y: spawnY,
+          x: 0,
+          y: 0,
+          z: 0,
+          rotY: 0,
           direction: 'down',
           isMoving: false,
           roomId,
@@ -168,6 +170,12 @@ export function registerSocketHandlers(io: Server): void {
 
         // Notify all OTHER players in the room that someone new joined
         socket.to(roomId).emit(SOCKET_EVENTS.ROOM_PLAYER_JOINED, player);
+        socket.to(roomId).emit('player:join', {
+          userId,
+          username,
+          position: { x: player.x, y: player.y, z: player.z ?? 0, rotY: player.rotY ?? 0 },
+          avatarData,
+        });
 
         // Notify online friends
         const friendships = await prisma.friend.findMany({
@@ -207,9 +215,11 @@ export function registerSocketHandlers(io: Server): void {
       (data: {
         x: number;
         y: number;
-        direction: string;
+        z?: number;
+        rotY?: number;
+        direction?: string;
         roomId: string;
-        isMoving: boolean;
+        isMoving?: boolean;
       }) => {
         // Rate limit: max 20 position updates per second
         if (!checkMoveRateLimit(socket.id)) return;
@@ -218,26 +228,37 @@ export function registerSocketHandlers(io: Server): void {
         const currentRoom = roomManager.getPlayerRoom(socket.id);
         if (currentRoom !== data.roomId) return;
 
-        // Basic coordinate sanity check
-        if (data.x < 0 || data.y < 0 || data.x > 9600 || data.y > 9600) return;
+        // Basic server-side sanity clamp (prevent teleport exploits)
+        const MAX_COORD = 200;
+        const cx = Math.max(-MAX_COORD, Math.min(MAX_COORD, data.x));
+        const cy = Math.max(0, Math.min(10, data.y ?? 0));
+        const cz = Math.max(-MAX_COORD, Math.min(MAX_COORD, data.z ?? 0));
+        const cRotY = (data.rotY ?? 0) % (Math.PI * 2);
 
         // Update in-memory state
         roomManager.movePlayer(
           socket.id,
-          data.x,
-          data.y,
-          data.direction,
-          data.isMoving
+          cx,
+          cy,
+          data.direction ?? 'down',
+          data.isMoving ?? false,
+          cz,
+          cRotY
         );
 
-        // Broadcast to everyone else in the room
-        socket.to(data.roomId).emit(SOCKET_EVENTS.PLAYER_POSITION, {
+        // Broadcast to everyone else in the room (legacy & Phase 2 event)
+        const movePayload = {
           playerId: userId,
-          x: data.x,
-          y: data.y,
-          direction: data.direction,
-          isMoving: data.isMoving,
-        });
+          userId,
+          x: cx,
+          y: cy,
+          z: cz,
+          rotY: cRotY,
+          direction: data.direction ?? 'down',
+          isMoving: data.isMoving ?? false,
+        };
+        socket.to(data.roomId).emit(SOCKET_EVENTS.PLAYER_POSITION, movePayload);
+        socket.to(data.roomId).emit('player:move', movePayload);
       }
     );
 

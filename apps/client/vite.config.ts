@@ -9,8 +9,16 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../../packages/shared/src'),
     },
   },
+  optimizeDeps: {
+    exclude: ['@babylonjs/havok'],
+  },
+  assetsInlineLimit: 0,
   server: {
     port: 5173,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
@@ -31,12 +39,15 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
       },
       output: {
-        manualChunks(id) {
-          if (id.includes('phaser')) return 'phaser';
-          if (id.includes('socket.io-client')) return 'socketio';
+        manualChunks: {
+          babylon: [
+            '@babylonjs/core',
+            '@babylonjs/loaders',
+            '@babylonjs/materials',
+            '@babylonjs/gui',
+          ],
         },
       },
     },
   },
 });
-

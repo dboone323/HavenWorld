@@ -1,9 +1,8 @@
-import Phaser from 'phaser';
-import { BootScene }   from './scenes/BootScene';
-import { LoginScene }  from './scenes/LoginScene';
-import { LobbyScene }  from './scenes/LobbyScene';
-import { RoomScene }   from './scenes/RoomScene';
-import { UIScene }     from './scenes/UIScene';
+import { HavenEngine } from './engine/HavenEngine';
+import { SceneManager } from './engine/SceneManager';
+import { createLoginScene } from './scenes/LoginScene';
+import { createLobbyScene } from './scenes/LobbyScene';
+import { createRoomScene } from './scenes/RoomScene';
 import { mountLoginUI } from './ui/loginUI';
 import { AvatarCustomizer } from './ui/AvatarCustomizer';
 import { authService } from './services/auth';
@@ -13,38 +12,30 @@ import './style.css';
 const urlParams = new URLSearchParams(window.location.search);
 const verifyToken = urlParams.get('token');
 if (verifyToken) {
-  const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
+  const SERVER =
+    import.meta.env.VITE_SERVER_URL ||
+    (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
   window.location.href = `${SERVER}/api/auth/verify?token=${verifyToken}`;
 }
 
-// ── Phaser game configuration ──────────────────────────────────────────────
-
-const config: Phaser.Types.Core.GameConfig = {
-  type:            Phaser.AUTO,   // WebGL with Canvas fallback
-  width:           1024,
-  height:          768,
-  backgroundColor: '#1a1a2e',
-  parent:          'game-container',
-  scene: [BootScene, LoginScene, LobbyScene, RoomScene, UIScene],
-  scale: {
-    mode:            Phaser.Scale.FIT,
-    autoCenter:      Phaser.Scale.CENTER_BOTH,
-  },
-  physics: {
-    default: 'arcade',
-    arcade:  { gravity: { x: 0, y: 0 }, debug: false },
-  },
-};
-
 // ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  // Login UI HTML form setup
+  mountLoginUI();
 
-const game = new Phaser.Game(config);
+  // Get Canvas and initialize Babylon Engine
+  const canvas = document.getElementById('haven-canvas') as HTMLCanvasElement | null;
+  if (!canvas) {
+    console.error('[HavenWorld] Canvas element #haven-canvas not found.');
+    return;
+  }
 
-// ── DOM wiring ────────────────────────────────────────────────────────────
+  await HavenEngine.getInstance(canvas);
+  const sm = SceneManager.getInstance();
 
-window.addEventListener('DOMContentLoaded', () => {
-  // Login UI
-  mountLoginUI(game);
+  sm.register('login', createLoginScene);
+  sm.register('lobby', createLobbyScene);
+  sm.register('room', createRoomScene);
 
   // Avatar customizer (lazy init on first open)
   let customizer: AvatarCustomizer | null = null;
@@ -60,53 +51,45 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── In-game navigation buttons ──────────────────────────────────────────
   // Fast travel to Haven Park
   document.getElementById('btn-park')?.addEventListener('click', () => {
-    document.getElementById('lobby-panel')?.classList.add('hidden');
-    game.scene.start('RoomScene', { roomId: 'room-park', mapKey: 'park' });
-    if (!game.scene.isActive('UIScene')) {
-      game.scene.launch('UIScene');
-    }
+    sm.switchTo('room', { roomId: 'room-park' }).catch(console.error);
   });
 
   // Return to personal loft
   document.getElementById('btn-my-loft')?.addEventListener('click', () => {
-    document.getElementById('lobby-panel')?.classList.add('hidden');
     const loftId = authService.user?.personalRoom?.id;
     if (loftId) {
-      game.scene.start('RoomScene', { roomId: loftId, mapKey: 'personal-room' });
-      if (!game.scene.isActive('UIScene')) {
-        game.scene.launch('UIScene');
-      }
+      sm.switchTo('room', { roomId: loftId }).catch(console.error);
     }
   });
 
   // Open travel / lofts directory
   document.getElementById('btn-browse-lofts')?.addEventListener('click', () => {
-    game.scene.stop('RoomScene');
-    game.scene.stop('UIScene');
-    game.scene.start('LobbyScene');
-    document.getElementById('game-container')?.classList.add('hidden');
-    document.getElementById('chat-panel')?.classList.add('hidden');
-    document.getElementById('lobby-panel')?.classList.remove('hidden');
+    sm.switchTo('lobby').catch(console.error);
   });
 
   // Logout handler
   const handleLogout = () => {
     authService.logout();
-    game.scene.stop('RoomScene');
-    game.scene.stop('UIScene');
-    game.scene.stop('LobbyScene');
-    game.scene.start('LoginScene');
-    document.getElementById('lobby-panel')?.classList.add('hidden');
-    document.getElementById('game-container')?.classList.add('hidden');
-    document.getElementById('room-nav')?.classList.add('hidden');
-    document.getElementById('chat-panel')?.classList.add('hidden');
-    document.getElementById('avatar-panel')?.classList.add('hidden');
-    document.getElementById('player-card')?.classList.add('hidden');
+    sm.switchTo('login').catch(console.error);
     customizer = null;
   };
 
   document.getElementById('btn-nav-logout')?.addEventListener('click', handleLogout);
-  document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
-});
 
-export { game };
+  // ── Initial scene routing based on auth ──────────────────────────────────
+  try {
+    const user = await authService.me();
+    if (user) {
+      const loftId = user.personalRoom?.id;
+      if (loftId) {
+        await sm.switchTo('room', { roomId: loftId });
+      } else {
+        await sm.switchTo('lobby');
+      }
+    } else {
+      await sm.switchTo('login');
+    }
+  } catch {
+    await sm.switchTo('login');
+  }
+});

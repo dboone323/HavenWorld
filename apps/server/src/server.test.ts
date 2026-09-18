@@ -111,11 +111,13 @@ test('RoomManager manages in-memory player state, movement, and chat ring buffer
   assert.equal(roomManager.getUserId(socketId), 'user-100');
   assert.equal(roomManager.getOccupantCount(roomId), 1);
 
-  // Movement update
-  roomManager.movePlayer(socketId, 132, 180, 'right', true);
+  // Movement update with 3D coordinates
+  roomManager.movePlayer(socketId, 132, 0, 'right', true, 85, 1.57);
   const updatedPlayer = roomManager.getRoomState(roomId)?.players.get(socketId);
   assert.equal(updatedPlayer?.x, 132);
-  assert.equal(updatedPlayer?.y, 180);
+  assert.equal(updatedPlayer?.y, 0);
+  assert.equal(updatedPlayer?.z, 85);
+  assert.equal(updatedPlayer?.rotY, 1.57);
   assert.equal(updatedPlayer?.direction, 'right');
   assert.equal(updatedPlayer?.isMoving, true);
 

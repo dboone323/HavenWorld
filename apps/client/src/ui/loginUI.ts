@@ -1,4 +1,5 @@
 import { authService } from '../services/auth';
+import { SceneManager } from '../engine/SceneManager';
 
 type FormMode = 'login' | 'register';
 
@@ -9,9 +10,9 @@ type FormMode = 'login' | 'register';
  * - Tab switching between login / register forms
  * - Input validation
  * - API calls via authService
- * - Transition to LobbyScene on success
+ * - Transition to LobbyScene or RoomScene on success
  */
-export function mountLoginUI(game: Phaser.Game): void {
+export function mountLoginUI(): void {
   const panel       = document.getElementById('login-panel')!;
   const tabLogin    = document.getElementById('tab-login')!;
   const tabRegister = document.getElementById('tab-register')!;
@@ -123,15 +124,9 @@ export function mountLoginUI(game: Phaser.Game): void {
 
     const loftId = user?.personalRoom?.id;
     if (loftId) {
-      document.getElementById('game-container')?.classList.remove('hidden');
-      document.getElementById('room-nav')?.classList.remove('hidden');
-      document.getElementById('chat-panel')?.classList.remove('hidden');
-      game.scene.start('RoomScene', { roomId: loftId, mapKey: 'personal-room' });
-      if (!game.scene.isActive('UIScene')) {
-        game.scene.launch('UIScene');
-      }
+      SceneManager.getInstance().switchTo('room', { roomId: loftId }).catch(console.error);
     } else {
-      game.scene.start('LobbyScene');
+      SceneManager.getInstance().switchTo('lobby').catch(console.error);
     }
   }
 }

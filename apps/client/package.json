@@ -5,18 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node -e \"const fs=require('fs'); const p=require.resolve('@babylonjs/havok'); const dir=require('path').dirname(p); const files=['HavokPhysics.wasm','HavokPhysics.js.wasm']; files.forEach(f=>{ const src=require('path').join(dir,'lib/esm/HavokPhysics.wasm'); if(fs.existsSync(src)) fs.copyFileSync(src, 'public/'+f); });\"",
     "build": "vite build",
     "lint": "echo 'Client lint passed'",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@babylonjs/core": "^9.27.1",
+    "@babylonjs/gui": "^9.27.1",
+    "@babylonjs/havok": "^1.3.14",
+    "@babylonjs/loaders": "^9.27.1",
+    "@babylonjs/materials": "^9.27.1",
     "@havenworld/shared": "workspace:*",
     "alpinejs": "^3.17.3",
-    "easystarjs": "^0.4.4",
-    "phaser": "^4.2.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@babylonjs/inspector": "^9.27.1",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.0",
