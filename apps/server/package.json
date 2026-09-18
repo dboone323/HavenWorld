@@ -2,19 +2,46 @@
   "name": "server",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
     "build": "tsc",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/server.test.ts",
+    "test": "NODE_ENV=test tsx --test src/server.test.ts",
     "start": "node dist/index.js"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "dependencies": {
-    "@havenworld/shared": "workspace:*"
+    "@havenworld/shared": "workspace:*",
+    "@prisma/client": "^6.19.3",
+    "@sentry/node": "^10.75.0",
+    "bad-words": "^4.1.5",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.12.1",
+    "redis": "^6.2.1",
+    "resend": "^6.28.1",
+    "socket.io": "^4.8.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/bad-words": "^4.0.0",
+    "@types/bcryptjs": "^3.0.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
     "@types/node": "^22.0.0",
+    "nodemon": "^3.1.14",
+    "prisma": "6.19.3",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.3",
     "typescript": "^5.6.3"
   }
