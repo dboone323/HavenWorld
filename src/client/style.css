@@ -118,20 +118,17 @@ body, html {
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 2px 0;
+  max-width: 100%;
+  flex-shrink: 1;
 }
 
-.currency-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-weight: 700;
-  color: #fbbf24;
-  font-size: 14px;
+.top-actions::-webkit-scrollbar {
+  display: none;
 }
 
 .action-btn {
@@ -144,15 +141,40 @@ body, html {
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .action-btn:hover {
   background: rgba(255, 255, 255, 0.15);
   transform: translateY(-1px);
+}
+
+.action-btn:active, .primary-btn:active, .chip-danger:active, .emote-btn:active {
+  transform: translateY(1px) scale(0.98) !important;
+}
+
+.action-btn:disabled, .primary-btn:disabled, .chip-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  filter: grayscale(0.6);
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.home-btn {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+  border-color: rgba(168, 85, 247, 0.45);
+  color: #e0e7ff;
+}
+.home-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(168, 85, 247, 0.4));
+  border-color: rgba(168, 85, 247, 0.65);
 }
 
 .bonus-btn {
@@ -174,7 +196,7 @@ body, html {
   font-family: var(--font-display);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
 .primary-btn:hover {
@@ -461,6 +483,7 @@ body, html {
   justify-content: center;
   align-items: center;
   z-index: 50;
+  cursor: pointer;
 }
 
 .hidden {
@@ -474,6 +497,7 @@ body, html {
   width: 440px;
   padding: 24px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  cursor: default;
 }
 
 .modal-header {

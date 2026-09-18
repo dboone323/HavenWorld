@@ -29,3 +29,19 @@ test('parseCommand splits command + args and lowercases', () => {
 test('DEFAULT_MAX_LEN is 140', () => {
   assert.equal(DEFAULT_MAX_LEN, 140);
 });
+
+test('replaceEmojiShortcodes maps standard shortcodes to Unicode emojis', () => {
+  import('../src/shared/chat.ts').then(({ replaceEmojiShortcodes }) => {
+    assert.equal(replaceEmojiShortcodes('Hello :wave: with :heart: and :pizza:!'), 'Hello 👋 with 💖 and 🍕!');
+    assert.equal(replaceEmojiShortcodes('No shortcodes here'), 'No shortcodes here');
+    assert.equal(replaceEmojiShortcodes(':unknown_tag:'), ':unknown_tag:');
+  });
+});
+
+test('formatMeAction wraps third-person emote with asterisks', () => {
+  import('../src/shared/chat.ts').then(({ formatMeAction }) => {
+    assert.equal(formatMeAction('Daniel', 'dances happily'), '*Daniel dances happily*');
+    assert.equal(formatMeAction('', 'waves'), '*Traveler waves*');
+  });
+});
+

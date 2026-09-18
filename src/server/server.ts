@@ -497,6 +497,19 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
   // Notify others that the new player has arrived
   rooms.broadcast('plaza', { type: 'PLAYER_JOINED', payload: { player: serializePlayer(player) } }, ws);
 
+  // Notify online friends that player is online
+  db.getFriends(playerId).then(friends => {
+    for (const f of friends) {
+      const friendPlayer = globalPlayers.get(f.friendId);
+      if (friendPlayer?.ws) {
+        rooms.send(friendPlayer.ws, {
+          type: 'FRIEND_ONLINE',
+          payload: { friendId: playerId, friendName: player.name }
+        });
+      }
+    }
+  }).catch(() => {});
+
   // Switch to active message dispatcher and drain any queued early messages
   isReady = true;
   ws.off('message', onEarlyMessage);
@@ -530,6 +543,19 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
     rooms.broadcast(player.room, { type: 'PLAYER_LEFT', payload: { playerId: player.id } });
     rooms.leave(player);
     globalPlayers.delete(playerId);
+
+    // Notify online friends that player disconnected
+    db.getFriends(playerId).then(friends => {
+      for (const f of friends) {
+        const friendPlayer = globalPlayers.get(f.friendId);
+        if (friendPlayer?.ws) {
+          rooms.send(friendPlayer.ws, {
+            type: 'FRIEND_OFFLINE',
+            payload: { friendId: playerId, friendName: player.name }
+          });
+        }
+      }
+    }).catch(() => {});
   });
 }
 

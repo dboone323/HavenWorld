@@ -28,3 +28,41 @@ export function parseCommand(text) {
   const [command, ...rest] = raw.slice(1).split(' ');
   return { command: command.toLowerCase(), args: rest.join(' ').trim() };
 }
+
+export const EMOJI_SHORTCODES = {
+  ':wave:': '👋',
+  ':heart:': '💖',
+  ':love:': '❤️',
+  ':laugh:': '😂',
+  ':smile:': '😊',
+  ':cool:': '😎',
+  ':sad:': '😢',
+  ':cry:': '😭',
+  ':fire:': '🔥',
+  ':pizza:': '🍕',
+  ':coffee:': '☕',
+  ':sparkles:': '✨',
+  ':star:': '⭐',
+  ':fish:': '🎣',
+  ':cat:': '🐱',
+  ':dog:': '🐶',
+  ':100:': '💯',
+  ':party:': '🎉',
+  ':clap:': '👏',
+  ':eyes:': '👀',
+  ':check:': '✅',
+};
+
+export function replaceEmojiShortcodes(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text.replace(/:[a-zA-Z0-9_+-]+:/g, (match) => {
+    return EMOJI_SHORTCODES[match] || match;
+  });
+}
+
+export function formatMeAction(sender, action) {
+  const safeSender = String(sender || 'Traveler').trim();
+  const safeAction = String(action || '').trim();
+  return `*${safeSender} ${safeAction}*`;
+}
+

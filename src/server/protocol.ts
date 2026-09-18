@@ -17,12 +17,14 @@ import { CATALOG_ITEMS, getRotatingFeaturedStock, getTimeUntilNextRotation } fro
 import { calculateSalvageYield, canCraftRecipe, deductCraftingMaterials } from '../shared/crafting.ts';
 import { petInteract } from '../shared/pet.ts';
 import { FISH_SPECIES, rollCatch, generateWeight } from '../shared/fishing.ts';
+import { formatMeAction, replaceEmojiShortcodes } from '../shared/chat.ts';
 import type { Player } from './rooms.ts';
 import type { PlacedFurniture, Avatar, ShopItem, InventoryItem, FriendEntry, PendingRequest, MessageRecord } from '../shared/types.ts';
 import type { WebSocket } from 'ws';
 
 export const shardManager = new ShardManager();
 const playerFishingCooldowns = new Map<string, number>();
+const chatRateLimits = new Map<string, { count: number; resetAt: number }>();
 
 export interface DispatchContext {
   rooms: RoomManager;
@@ -172,6 +174,23 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
           return;
         }
       }
+      // Rate limiting: 5 messages per 3-second window per socket (Phase 1 Build Guide Step 26)
+      const now = Date.now();
+      const rateRec = chatRateLimits.get(player.id) ?? { count: 0, resetAt: now + 3000 };
+      if (now > rateRec.resetAt) {
+        rateRec.count = 0;
+        rateRec.resetAt = now + 3000;
+      }
+      rateRec.count++;
+      chatRateLimits.set(player.id, rateRec);
+      if (rateRec.count > 5) {
+        rooms.send(player.ws, {
+          type: 'CHAT_ERROR',
+          payload: { code: 'RATE_LIMITED', message: 'Slow down! Please wait a moment before sending more messages.' }
+        });
+        return;
+      }
+
       const raw = (msg.payload && msg.payload.text) || '';
       const { text } = moderateChat(raw);
       if (!text) return;
@@ -179,12 +198,14 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       let chatText = text;
       let radius = DEFAULT_AUDIBLE_RADIUS;
 
-      // In-game commands: /name <n>, /status <text>, /jump, /wave, /dance, /hug, /run, /lie, /shout <text>
+      // In-game commands: /name <n>, /status <text>, /me <action>, /jump, /wave, /dance, /hug, /run, /lie, /shout <text>
       if (text.startsWith('/')) {
         const cmd = parseCommand(text);
         if (cmd && (cmd.command === 'shout' || cmd.command === 's')) {
           chatText = cmd.args;
           radius = DEFAULT_SHOUT_RADIUS;
+        } else if (cmd && cmd.command === 'me' && cmd.args) {
+          chatText = formatMeAction(player.name, cmd.args);
         } else if (cmd?.command === 'status') {
           await handleIdentity('UPDATE_IDENTITY', { statusMessage: cmd.args || '' }, player, ctx);
           return;

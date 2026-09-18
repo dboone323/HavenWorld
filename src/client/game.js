@@ -8,7 +8,7 @@ import { drawModularAvatar, drawAura } from './shared/avatar.js';
 import { toScreen as isoToScreen, toGrid as isoToGrid } from './shared/iso.js';
 import { calculateFacing, getWalkBob, stepToward, frameDt, fadeAlpha } from './shared/movement.js';
 import { RECIPES, pickRecipe, matchRecipe, scoreCoins } from './shared/pizza.js';
-import { escapeHtml } from './shared/chat.js';
+import { escapeHtml, replaceEmojiShortcodes } from './shared/chat.js';
 import { initAudio, playFootstep, playFurniPop, playCoinChime, playChatPing, playDoorwayWhoosh, playSitSound, playSwitchClick, toggleMuted, getMuted } from './shared/audio.js';
 import { PASSPORT_STAMPS, createDefaultPassport, recordPassportAction, getPassportProgress } from './shared/passport.js';
 import { computeJumpOffset, computeWaveAngle, computeDanceOffset, computeShadowScale } from './shared/emotes.js';
@@ -24,6 +24,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
   let selfId = null;
   let authToken = null; // WS auth token (persisted account player ID, if logged in)
   let authPlayerId = null; // Persisted account player ID (if logged in)
+  let myLoftRoomId = null; // Personal sanctuary loft room ID
 
   const initialSavedName = (typeof localStorage !== 'undefined' && localStorage.getItem('haven_player_name')) || '';
 
@@ -137,14 +138,18 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
   // Emotes whose animation replaces the locomotion pose in the world renderer.
   const POSE_EMOTES = ['dance', 'run', 'lie'];
 
+  let dpr = window.devicePixelRatio || 1;
+
   // Bind canvas-derived origin to the shared pure isometric converters.
-  // Dynamically centers any room size (12x12 to 20x20) within the viewport.
+  // Dynamically centers any room size (12x12 to 20x20) within the viewport in CSS pixels.
   function origin() {
     const gw = getRoomGridWidth();
     const gh = getRoomGridHeight();
     const roomDepth = (gw + gh) * (TILE_HEIGHT / 4);
-    const targetY = Math.max(90, Math.min(canvas.height * 0.28, (canvas.height - roomDepth) / 2 + 10));
-    return { x: canvas.width / 2, y: targetY };
+    const viewWidth = canvas.parentElement ? canvas.parentElement.clientWidth : (canvas.width / dpr);
+    const viewHeight = canvas.parentElement ? canvas.parentElement.clientHeight : (canvas.height / dpr);
+    const targetY = Math.max(90, Math.min(viewHeight * 0.28, (viewHeight - roomDepth) / 2 + 10));
+    return { x: viewWidth / 2, y: targetY };
   }
   function toScreen(gx, gy) {
     const o = origin();
@@ -155,10 +160,15 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     return isoToGrid(sx, sy, o.x, o.y, TILE_WIDTH, TILE_HEIGHT);
   }
 
-  // Resize Canvas
+  // Resize Canvas with Retina / High-DPI support
   function resizeCanvas() {
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
+    dpr = window.devicePixelRatio || 1;
+    const width = canvas.parentElement ? canvas.parentElement.clientWidth : window.innerWidth;
+    const height = canvas.parentElement ? canvas.parentElement.clientHeight : window.innerHeight;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
   }
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
@@ -245,6 +255,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
 
         // If the server sent us a personal loft room ID, add it to the dropdown
         if (msg.payload.playerLoftRoomId) {
+          myLoftRoomId = msg.payload.playerLoftRoomId;
           addLoftToRoomSelector(msg.payload.playerLoftRoomId, msg.payload.playerLoftName);
         }
 
@@ -253,6 +264,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
         if (roomSelect) {
           roomSelect.value = currentRoom.id;
         }
+        updateRoomOccupancyUI();
         break;
       }
 
@@ -261,6 +273,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
         if (p.id !== selfId) {
           otherPlayers.set(p.id, p);
           appendChatMessage('system', `${p.name} walked into the room.`);
+          updateRoomOccupancyUI();
         }
         break;
       }
@@ -409,6 +422,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
             addLoftToRoomSelector(currentRoom.id, currentRoom.name);
           }
         }
+        updateRoomOccupancyUI();
         break;
       }
 
@@ -484,6 +498,27 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
         if (p) {
           appendChatMessage('system', `${p.name} left the room.`);
           otherPlayers.delete(msg.payload.playerId);
+          updateRoomOccupancyUI();
+        }
+        break;
+      }
+
+      case 'FRIEND_ONLINE': {
+        const name = msg.payload?.friendName || 'A friend';
+        showToast(`🎉 ${name} is now online!`, '👥');
+        appendChatMessage('system', `👥 ${name} came online.`);
+        break;
+      }
+
+      case 'FRIEND_OFFLINE': {
+        const name = msg.payload?.friendName || 'A friend';
+        showToast(`👋 ${name} went offline.`, '👥');
+        break;
+      }
+
+      case 'CHAT_ERROR': {
+        if (msg.payload?.code === 'RATE_LIMITED') {
+          showToast(msg.payload.message || 'Slow down! Please wait.', '⏳');
         }
         break;
       }
@@ -792,6 +827,20 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     }
   }
 
+  function updateRoomOccupancyUI() {
+    const roomSelect = document.getElementById('room-select');
+    if (!roomSelect || !currentRoom) return;
+    const totalCount = 1 + otherPlayers.size;
+    for (let i = 0; i < roomSelect.options.length; i++) {
+      const opt = roomSelect.options[i];
+      if (opt.value === currentRoom.id) {
+        const cleanName = opt.textContent.replace(/\s*\(\d+\s+online\)/, '');
+        opt.textContent = `${cleanName} (${totalCount} online)`;
+        break;
+      }
+    }
+  }
+
   function showDailyBonusPopup(message, nextClaimAvailable) {
     dailyPopupMsg.textContent = message;
     const now = Date.now();
@@ -910,7 +959,9 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
   }
 
   function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
     // Draw Isometric Floor & Grid
     drawIsometricFloor();
@@ -984,6 +1035,8 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
 
     // Render cinematic room transition overlay (fade-in / fade-out)
     drawRoomTransition();
+
+    ctx.restore();
   }
 
   function triggerPlayerEmote(p, emote) {
@@ -2623,8 +2676,9 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
 
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const text = chatInput.value.trim();
-    if (!text) return;
+    const raw = chatInput.value.trim();
+    if (!raw) return;
+    const text = replaceEmojiShortcodes(raw);
     chatInput.value = '';
 
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -2696,6 +2750,31 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
       ws.send(JSON.stringify({
         type: 'SWITCH_ROOM',
         payload: { roomId: targetRoom }
+      }));
+    }
+  });
+
+  // Quick Home Navigation (Build Guide Step 22)
+  document.getElementById('btn-quick-home')?.addEventListener('click', () => {
+    if (!myLoftRoomId) {
+      const roomSelect = document.getElementById('room-select');
+      const loftOption = Array.from(roomSelect?.options || []).find(opt => opt.value.startsWith('loft_'));
+      if (loftOption) myLoftRoomId = loftOption.value;
+    }
+    if (!myLoftRoomId) {
+      showToast('Personal sanctuary loft not ready yet. Please wait...', '🏠');
+      return;
+    }
+    if (currentRoom && currentRoom.id === myLoftRoomId) {
+      showToast('You are already in your personal sanctuary loft!', '🏠');
+      return;
+    }
+    showToast('Teleporting to personal sanctuary...', '✨');
+    startRoomTransition('Personal Sanctuary Loft');
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'SWITCH_ROOM',
+        payload: { roomId: myLoftRoomId }
       }));
     }
   });
@@ -2814,6 +2893,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
       signupForm.classList.add('hidden');
       document.getElementById('btn-tab-login').style.opacity = '1';
       document.getElementById('btn-tab-signup').style.opacity = '0.6';
+      setTimeout(() => document.getElementById('login-username')?.focus(), 50);
     }
   });
 
@@ -2821,11 +2901,8 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     accountModal.classList.add('hidden');
   });
 
-  // Account modal close when clicking outside
-  accountModal.addEventListener('click', (e) => {
-    if (e.target === accountModal) {
-      accountModal.classList.add('hidden');
-    }
+  document.getElementById('btn-close-account-footer')?.addEventListener('click', () => {
+    accountModal.classList.add('hidden');
   });
 
   // Tab switching
@@ -2834,6 +2911,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     signupForm.classList.add('hidden');
     loginErrorEl.style.display = 'none';
     signupErrorEl.style.display = 'none';
+    setTimeout(() => document.getElementById('login-username')?.focus(), 50);
   });
 
   document.getElementById('btn-tab-signup').addEventListener('click', () => {
@@ -2841,6 +2919,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     loginForm.classList.add('hidden');
     loginErrorEl.style.display = 'none';
     signupErrorEl.style.display = 'none';
+    setTimeout(() => document.getElementById('signup-username')?.focus(), 50);
   });
 
   // Login form submit
@@ -2933,7 +3012,9 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
 
   document.getElementById('btn-avatar').addEventListener('click', () => {
     avatarModal.classList.remove('hidden');
-    document.getElementById('cust-name').value = selfPlayer.name;
+    const nameInput = document.getElementById('cust-name');
+    nameInput.value = selfPlayer.name;
+    setTimeout(() => nameInput.focus(), 50);
     renderAvatarPreview();
   });
 
@@ -3264,11 +3345,13 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
   // Spacebar reel hotkey while fishing modal is open
   window.addEventListener('keydown', (e) => {
     if (fishingState === 'reeling' && e.code === 'Space') {
+      e.preventDefault();
       isReelPressed = true;
     }
   });
   window.addEventListener('keyup', (e) => {
     if (e.code === 'Space') {
+      if (fishingState === 'reeling') e.preventDefault();
       isReelPressed = false;
     }
   });
@@ -3375,6 +3458,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
 
   document.getElementById('btn-friends').addEventListener('click', () => {
     friendsModal.classList.remove('hidden');
+    setTimeout(() => friendNameInput?.focus(), 50);
     sendWs({ type: 'GET_FRIENDS_LIST', payload: null });
     sendWs({ type: 'GET_PRIVATE_MESSAGES', payload: null });
   });
@@ -3654,6 +3738,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     btnPassport.addEventListener('click', () => {
       renderPassportUI();
       passportModal.classList.remove('hidden');
+      setTimeout(() => document.getElementById('status-message-input')?.focus(), 50);
     });
   }
   const btnClosePassport = document.getElementById('btn-close-passport');
@@ -4104,6 +4189,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     marketplaceModal?.classList.remove('hidden');
     sendWs({ type: 'BROWSE_MARKETPLACE', payload: {} });
     populateMarketSellDropdown();
+    setTimeout(() => marketSearchInput?.focus(), 50);
   });
 
   btnCloseMarketplace?.addEventListener('click', () => {
@@ -4119,6 +4205,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     tabMarketSell.classList.remove('active');
     marketBrowsePanel?.classList.remove('hidden');
     marketSellPanel?.classList.add('hidden');
+    setTimeout(() => marketSearchInput?.focus(), 50);
   });
 
   tabMarketSell?.addEventListener('click', () => {
@@ -4128,6 +4215,7 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     marketBrowsePanel?.classList.add('hidden');
     populateMarketSellDropdown();
     renderMyMarketplaceListings();
+    setTimeout(() => document.getElementById('market-price-input')?.focus(), 50);
   });
 
   marketSearchInput?.addEventListener('input', () => {
@@ -4441,6 +4529,83 @@ import { FISH_SPECIES, rollCatch, updateProgress, generateWeight } from './share
     wbCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); moveDraw(e); }, { passive: false });
     window.addEventListener('touchend', endDraw);
   }
+
+  // ==========================================================================
+  // Universal Modal & Overlay Dismissal (Escape Key & Backdrop Clicks)
+  // ==========================================================================
+  function closeTopActiveModal() {
+    // 1. Context menu
+    if (playerContextMenu && !playerContextMenu.classList.contains('hidden')) {
+      playerContextMenu.classList.add('hidden');
+      return true;
+    }
+    // 2. Decor palette
+    const decorPalette = document.getElementById('decor-palette');
+    if (decorPalette && !decorPalette.classList.contains('hidden')) {
+      decorPalette.classList.add('hidden');
+      editMode = false;
+      document.getElementById('btn-edit-mode')?.classList.remove('active');
+      return true;
+    }
+    // 3. Open modal overlays (topmost first)
+    const openModals = Array.from(document.querySelectorAll('.modal-overlay:not(.hidden)'));
+    if (openModals.length > 0) {
+      const topModal = openModals[openModals.length - 1];
+      topModal.classList.add('hidden');
+      if (topModal.id === 'fishing-modal') stopFishingActivity();
+      if (topModal.id === 'minigame-modal') resetKitchen();
+      return true;
+    }
+    return false;
+  }
+
+  // Universal backdrop click dismissal for all modal overlays
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.classList.add('hidden');
+        if (overlay.id === 'fishing-modal') stopFishingActivity();
+        if (overlay.id === 'minigame-modal') resetKitchen();
+      }
+    });
+  });
+
+  // Dismiss context menu when clicking outside anywhere on the window
+  window.addEventListener('click', (e) => {
+    if (playerContextMenu && !playerContextMenu.classList.contains('hidden')) {
+      if (!playerContextMenu.contains(e.target) && e.target !== canvas) {
+        playerContextMenu.classList.add('hidden');
+      }
+    }
+  });
+
+  // Global Keyboard Shortcuts (Escape to dismiss, Enter to focus chat)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+        active.blur();
+        e.preventDefault();
+        return;
+      }
+      if (closeTopActiveModal()) {
+        e.preventDefault();
+      }
+    } else if (e.key === 'Enter') {
+      const active = document.activeElement;
+      const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+      if (!isInput) {
+        const anyModalOpen = document.querySelector('.modal-overlay:not(.hidden)');
+        if (!anyModalOpen) {
+          const chatInput = document.getElementById('chat-input');
+          if (chatInput) {
+            e.preventDefault();
+            chatInput.focus();
+          }
+        }
+      }
+    }
+  });
 
   // Auto-connect immediately: use saved account or persistent guest session
   const storedToken = localStorage.getItem('haven_token');
