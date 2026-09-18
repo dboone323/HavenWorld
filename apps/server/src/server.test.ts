@@ -9,11 +9,33 @@ test('SERVER_CONFIG has valid defaults', () => {
   assert.ok(['development', 'production', 'test'].includes(SERVER_CONFIG.nodeEnv));
 });
 
-test('SOCKET_EVENTS contains required multiplayer lifecycle and room events', () => {
-  assert.equal(SOCKET_EVENTS.CONNECT, 'connect');
-  assert.equal(SOCKET_EVENTS.DISCONNECT, 'disconnect');
-  assert.equal(SOCKET_EVENTS.ROOM_JOIN, 'room:join');
-  assert.equal(SOCKET_EVENTS.PLAYER_MOVE, 'player:move');
+test('SOCKET_EVENTS contains all 14 Part 3 Section 5.2 events', () => {
+  // Auth
+  assert.equal(SOCKET_EVENTS.AUTH_JOIN,  'auth:join');
+  assert.equal(SOCKET_EVENTS.AUTH_ERROR, 'auth:error');
+
+  // Room
+  assert.equal(SOCKET_EVENTS.ROOM_STATE,         'room:state');
+  assert.equal(SOCKET_EVENTS.ROOM_PLAYER_JOINED,  'room:player_joined');
+  assert.equal(SOCKET_EVENTS.ROOM_PLAYER_LEFT,    'room:player_left');
+
+  // Player
+  assert.equal(SOCKET_EVENTS.PLAYER_MOVE,     'player:move');
+  assert.equal(SOCKET_EVENTS.PLAYER_POSITION, 'player:position');
+
+  // Chat
+  assert.equal(SOCKET_EVENTS.CHAT_SEND,    'chat:send');
   assert.equal(SOCKET_EVENTS.CHAT_MESSAGE, 'chat:message');
-  assert.ok(Object.keys(SOCKET_EVENTS).length >= 10);
+  assert.equal(SOCKET_EVENTS.CHAT_ERROR,   'chat:error');
+
+  // Avatar
+  assert.equal(SOCKET_EVENTS.AVATAR_UPDATE,  'avatar:update');
+  assert.equal(SOCKET_EVENTS.AVATAR_CHANGED, 'avatar:changed');
+
+  // Friends
+  assert.equal(SOCKET_EVENTS.FRIEND_ONLINE,  'friend:online');
+  assert.equal(SOCKET_EVENTS.FRIEND_OFFLINE, 'friend:offline');
+
+  // Confirm exactly 14 events
+  assert.equal(Object.keys(SOCKET_EVENTS).length, 14);
 });

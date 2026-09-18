@@ -1,42 +1,30 @@
+// Section 5.2 Socket Event Constants — exactly 14 events
 export const SOCKET_EVENTS = {
-  // Connection / Lifecycle
-  CONNECT: 'connect',
-  DISCONNECT: 'disconnect',
-  ERROR: 'error',
-
   // Authentication & Session
-  AUTH_REQUEST: 'auth:request',
-  AUTH_SUCCESS: 'auth:success',
-  AUTH_FAILURE: 'auth:failure',
+  AUTH_JOIN:  'auth:join',
+  AUTH_ERROR: 'auth:error',
 
   // Room & State
-  ROOM_JOIN: 'room:join',
-  ROOM_JOINED: 'room:joined',
-  ROOM_LEAVE: 'room:leave',
-  ROOM_STATE: 'room:state',
-  ROOM_SYNC: 'room:sync',
+  ROOM_STATE:         'room:state',
+  ROOM_PLAYER_JOINED: 'room:player_joined',
+  ROOM_PLAYER_LEFT:   'room:player_left',
 
-  // Player Movement & State
-  PLAYER_MOVE: 'player:move',
-  PLAYER_MOVED: 'player:moved',
-  PLAYER_STATE: 'player:state',
-  PLAYER_JOINED: 'player:joined',
-  PLAYER_LEFT: 'player:left',
+  // Player Movement
+  PLAYER_MOVE:     'player:move',
+  PLAYER_POSITION: 'player:position',
 
-  // Chat & Communication
+  // Chat
+  CHAT_SEND:    'chat:send',
   CHAT_MESSAGE: 'chat:message',
-  CHAT_BROADCAST: 'chat:broadcast',
-  CHAT_WHISPER: 'chat:whisper',
+  CHAT_ERROR:   'chat:error',
 
-  // Friends & Social
-  FRIEND_REQUEST: 'friend:request',
-  FRIEND_STATUS: 'friend:status',
+  // Avatar
+  AVATAR_UPDATE:  'avatar:update',
+  AVATAR_CHANGED: 'avatar:changed',
 
-  // Room Items & Furniture
-  FURNITURE_PLACE: 'furniture:place',
-  FURNITURE_MOVE: 'furniture:move',
-  FURNITURE_REMOVE: 'furniture:remove',
-  FURNITURE_UPDATE: 'furniture:update',
+  // Friends
+  FRIEND_ONLINE:  'friend:online',
+  FRIEND_OFFLINE: 'friend:offline',
 } as const;
 
 export type SocketEventType = typeof SOCKET_EVENTS[keyof typeof SOCKET_EVENTS];
