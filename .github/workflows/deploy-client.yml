@@ -28,6 +28,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          projectName: havenworld
+          projectName: havenworld-game
           directory: apps/client/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
