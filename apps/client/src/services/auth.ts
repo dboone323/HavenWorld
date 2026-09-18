@@ -24,7 +24,8 @@ let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const API = '/api';
+const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+const API = `${SERVER}/api`;
 
 function scheduleRefresh(expiresIn: number): void {
   if (_refreshTimer) clearTimeout(_refreshTimer);
@@ -45,15 +46,20 @@ export const authService = {
   get user():         AuthUser | null { return _user; },
   get isLoggedIn():   boolean         { return _accessToken !== null; },
 
-  async register(username: string, email: string, password: string): Promise<AuthUser> {
+  async register(
+    username: string,
+    email: string,
+    password: string,
+    inviteCode?: string
+  ): Promise<AuthUser> {
     const res = await fetch(`${API}/auth/register`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, email, password }),
+      body:    JSON.stringify({ username, email, password, inviteCode }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Registration failed' }));
-      throw new Error(err.message ?? 'Registration failed');
+      throw new Error(err.message || err.error || 'Registration failed');
     }
     const data: { user: AuthUser } & TokenPayload = await res.json();
     _applyTokens(data);

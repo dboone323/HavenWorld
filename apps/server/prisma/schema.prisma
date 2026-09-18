@@ -1,0 +1,242 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PLAYER
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  MUTED
+  BANNED
+}
+
+enum ItemCategory {
+  HAIR
+  EYES
+  CLOTHING_HEAD
+  CLOTHING_FACE
+  CLOTHING_BODY
+  CLOTHING_LEGS
+  CLOTHING_FEET
+  CLOTHING_BACK
+  CLOTHING_HAND
+  FURNITURE
+  DECORATION
+}
+
+enum ItemRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum ReportReason {
+  HARASSMENT
+  SPAM
+  INAPPROPRIATE_CONTENT
+  IMPERSONATION
+  CHEATING
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id               String       @id @default(uuid())
+  username         String       @unique
+  email            String       @unique
+  passwordHash     String
+  role             Role         @default(PLAYER)
+  status           UserStatus   @default(ACTIVE)
+  emailVerified    Boolean      @default(false)
+  emailVerifyToken String?
+  mutedUntil       DateTime?
+  createdAt        DateTime     @default(now())
+  lastLoginAt      DateTime?
+  avatar           Avatar?
+  inventory        Inventory[]
+  ownedRooms       Room[]       @relation("RoomOwner")
+  placedFurniture  RoomFurniture[]
+  sentMessages     ChatMessage[]
+  sentReports      Report[]     @relation("Reporter")
+  receivedReports  Report[]     @relation("Reported")
+  initiatedFriends Friend[]     @relation("Requester")
+  receivedFriends  Friend[]     @relation("Addressee")
+  createdInviteCodes InviteCode[] @relation("InviteCreator")
+  usedInviteCode   InviteCode?  @relation("InviteUser")
+
+  @@map("users")
+}
+
+model Avatar {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bodyType    String   @default("default")
+  skinTone    String   @default("light")
+  hairStyle   String   @default("hair-short-01")
+  hairColor   String   @default("brown")
+  eyeStyle    String   @default("eyes-default")
+  eyeColor    String   @default("brown")
+  outfitHead  String?
+  outfitFace  String?
+  outfitBody  String?
+  outfitLegs  String?
+  outfitFeet  String?
+  outfitBack  String?
+  outfitHand  String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("avatars")
+}
+
+model Item {
+  id            String        @id @default(uuid())
+  name          String
+  description   String        @default("")
+  category      ItemCategory
+  rarity        ItemRarity    @default(COMMON)
+  isTradeable   Boolean       @default(false)
+  spriteKey     String
+  createdAt     DateTime      @default(now())
+  inventories   Inventory[]
+  roomFurniture RoomFurniture[]
+
+  @@map("items")
+}
+
+model Inventory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  quantity   Int      @default(1)
+  acquiredAt DateTime @default(now())
+  isEquipped Boolean  @default(false)
+
+  @@unique([userId, itemId])
+  @@map("inventories")
+}
+
+model Room {
+  id            String          @id @default(uuid())
+  name          String
+  description   String          @default("")
+  ownerId       String?
+  owner         User?           @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  isPublic      Boolean         @default(false)
+  maxOccupants  Int             @default(50)
+  theme         String          @default("default")
+  width         Int             @default(20)
+  height        Int             @default(15)
+  backgroundKey String          @default("map-lobby")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  furniture     RoomFurniture[]
+  chatMessages  ChatMessage[]
+
+  @@map("rooms")
+}
+
+model RoomFurniture {
+  id        String   @id @default(uuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id])
+  placedBy  String
+  placer    User     @relation(fields: [placedBy], references: [id])
+  x         Int
+  y         Int
+  z         Int      @default(0)
+  rotation  Int      @default(0)
+  layer     Int      @default(0)
+  placedAt  DateTime @default(now())
+
+  @@map("room_furniture")
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  roomId     String?
+  room       Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  senderId   String
+  sender     User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content    String
+  isFiltered Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@map("chat_messages")
+}
+
+model Friend {
+  id          String       @id @default(uuid())
+  requesterId String
+  requester   User         @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addresseeId String
+  addressee   User         @relation("Addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      FriendStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([requesterId, addresseeId])
+  @@map("friends")
+}
+
+model Report {
+  id             String       @id @default(uuid())
+  reporterId     String
+  reporter       User         @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUserId String
+  reportedUser   User         @relation("Reported", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reason         ReportReason
+  description    String       @default("")
+  status         ReportStatus @default(OPEN)
+  moderatorNotes String?
+  createdAt      DateTime     @default(now())
+  resolvedAt     DateTime?
+
+  @@index([status, createdAt])
+  @@map("reports")
+}
+
+model InviteCode {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  createdBy String
+  creator   User      @relation("InviteCreator", fields: [createdBy], references: [id])
+  usedById  String?   @unique
+  usedBy    User?     @relation("InviteUser", fields: [usedById], references: [id])
+  usedAt    DateTime?
+  expiresAt DateTime
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  @@index([code, isActive])
+  @@map("invite_codes")
+}

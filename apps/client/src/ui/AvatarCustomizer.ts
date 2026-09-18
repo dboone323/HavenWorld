@@ -122,7 +122,8 @@ export class AvatarCustomizer {
 
   private async save(): Promise<void> {
     try {
-      const res = await fetch('/api/users/me/avatar', {
+      const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+      const res = await fetch(`${SERVER}/api/users/me/avatar`, {
         method:  'PUT',
         headers: {
           'Content-Type':  'application/json',
