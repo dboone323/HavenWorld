@@ -1,12 +1,12 @@
 # HavenWorld Roadmap
 
 ## Phase 0 — Foundation (Current)
-- [ ] Local dev environment (Mac)
-- [ ] Oracle Cloud VM provisioned (Linux)
-- [ ] PostgreSQL + Redis on Oracle VM
-- [ ] Nginx + SSL on Oracle VM
-- [ ] CI/CD pipelines configured
-- [ ] Landing page at havenworld.pages.dev
+- [x] Local dev environment (Mac)
+- [x] Oracle Cloud VM provisioned (Linux)
+- [x] PostgreSQL + Redis on Oracle VM
+- [x] Nginx + SSL on Oracle VM
+- [x] CI/CD pipelines configured
+- [x] Landing page at havenworld-game.pages.dev
 
 ## Phase 1 — Core Loop Alpha
 - [ ] User registration with invite codes
