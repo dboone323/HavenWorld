@@ -1,295 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HavenWorld — A new kind of social world</title>
-  <meta name="description" content="HavenWorld is an open-source, community-driven social virtual world. Customize your avatar, decorate your personal room, and connect with friends in real-time.">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      background-color: #0d0d1a;
-      color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      align-items: center;
-      padding: 2rem 1.5rem;
-      position: relative;
-      overflow-x: hidden;
-    }
-
-    /* Ambient background glow */
-    body::before {
-      content: '';
-      position: absolute;
-      top: -20%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 700px;
-      height: 700px;
-      background: radial-gradient(circle, rgba(78, 205, 196, 0.12) 0%, rgba(13, 13, 26, 0) 70%);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    header {
-      width: 100%;
-      max-width: 1100px;
-      display: flex;
-      justify-content: flex-end;
-      z-index: 1;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.4rem 0.9rem;
-      font-size: 0.85rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: #4ecdc4;
-      background: rgba(78, 205, 196, 0.1);
-      border: 1px solid rgba(78, 205, 196, 0.35);
-      border-radius: 9999px;
-      box-shadow: 0 0 16px rgba(78, 205, 196, 0.15);
-    }
-
-    .badge::before {
-      content: '';
-      display: inline-block;
-      width: 7px;
-      height: 7px;
-      background-color: #4ecdc4;
-      border-radius: 50%;
-      box-shadow: 0 0 8px #4ecdc4;
-      animation: pulse 2s infinite ease-in-out;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.8); }
-    }
-
-    main {
-      max-width: 760px;
-      text-align: center;
-      margin: auto;
-      padding: 3rem 0;
-      z-index: 1;
-    }
-
-    .logo-container {
-      margin-bottom: 1.25rem;
-    }
-
-    h1 {
-      font-size: 3.5rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: #4ecdc4;
-      text-shadow: 0 0 35px rgba(78, 205, 196, 0.35);
-      line-height: 1.1;
-    }
-
-    .tagline {
-      font-size: 1.35rem;
-      font-weight: 500;
-      color: #cbd5e1;
-      margin-top: 1rem;
-      margin-bottom: 1.75rem;
-      letter-spacing: -0.01em;
-    }
-
-    .description {
-      font-size: 1.1rem;
-      line-height: 1.7;
-      color: #94a3b8;
-      max-width: 640px;
-      margin: 0 auto 2.5rem;
-    }
-
-    .cta-group {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 1.25rem;
-      margin-bottom: 2.5rem;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.6rem;
-      padding: 0.85rem 1.75rem;
-      font-size: 1rem;
-      font-weight: 600;
-      border-radius: 10px;
-      text-decoration: none;
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-
-    .btn-primary {
-      background-color: #4ecdc4;
-      color: #0d0d1a;
-      box-shadow: 0 4px 20px rgba(78, 205, 196, 0.3);
-    }
-
-    .btn-primary:hover {
-      background-color: #5fe3d9;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 25px rgba(78, 205, 196, 0.45);
-    }
-
-    .btn-secondary {
-      background-color: #1a1a2e;
-      color: #e2e8f0;
-      border: 1px solid #2d2d4a;
-    }
-
-    .btn-secondary:hover {
-      background-color: #24243e;
-      border-color: #4ecdc4;
-      color: #4ecdc4;
-      transform: translateY(-2px);
-    }
-
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      margin-top: 3rem;
-      text-align: left;
-    }
-
-    .feature-card {
-      background: rgba(22, 22, 40, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 12px;
-      padding: 1.25rem;
-      backdrop-filter: blur(8px);
-    }
-
-    .feature-card h3 {
-      font-size: 0.95rem;
-      color: #4ecdc4;
-      margin-bottom: 0.4rem;
-    }
-
-    .feature-card p {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      line-height: 1.5;
-    }
-
-    footer {
-      width: 100%;
-      max-width: 1100px;
-      padding-top: 2rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      gap: 1rem;
-      font-size: 0.875rem;
-      color: #64748b;
-      z-index: 1;
-    }
-
-    .footer-links {
-      display: flex;
-      gap: 1.5rem;
-    }
-
-    .footer-links a {
-      color: #94a3b8;
-      text-decoration: none;
-      transition: color 0.15s ease;
-    }
-
-    .footer-links a:hover {
-      color: #4ecdc4;
-    }
-
-    @media (max-width: 640px) {
-      h1 {
-        font-size: 2.5rem;
-      }
-      .tagline {
-        font-size: 1.15rem;
-      }
-      .description {
-        font-size: 1rem;
-      }
-      footer {
-        flex-direction: column;
-        text-align: center;
-      }
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="HavenWorld — a cozy social world where you can hang out, explore, and express yourself." />
+  <title>HavenWorld</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>🌿</text></svg>" />
 </head>
 <body>
-  <header>
-    <div class="badge">Alpha Coming Soon</div>
-  </header>
 
-  <main>
-    <div class="logo-container">
-      <h1>HavenWorld</h1>
+  <!-- ══ Game Canvas ══════════════════════════════════════════════════════ -->
+  <div id="game-container" class="hidden"></div>
+
+  <!-- ══ Login Panel ══════════════════════════════════════════════════════ -->
+  <div id="login-panel" class="panel hidden">
+    <h1 style="text-align:center; margin-bottom:1.5rem; color:#4ecdc4; font-size:1.75rem;">🌿 HavenWorld</h1>
+
+    <div class="login-tabs">
+      <button id="tab-login"    class="tab tab--active">Sign In</button>
+      <button id="tab-register" class="tab">Register</button>
     </div>
-    
-    <p class="tagline">A new kind of social world — coming soon</p>
-    
-    <p class="description">
-      HavenWorld is an open-source, community-driven social virtual world where players craft expressive avatars, design personal sanctuary rooms, and explore lively public destinations in real time. Powered by modern web technology, it brings rich multiplayer connection right into your browser with zero downloads required.
+
+    <!-- Login form -->
+    <form id="form-login">
+      <div class="form-group">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+      </div>
+      <button type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Sign In">Sign In</button>
+    </form>
+
+    <!-- Register form -->
+    <form id="form-register" class="hidden">
+      <div class="form-group">
+        <label for="reg-username">Username</label>
+        <input id="reg-username" type="text" autocomplete="username" placeholder="CoolHaven42" required />
+      </div>
+      <div class="form-group">
+        <label for="reg-email">Email</label>
+        <input id="reg-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+      </div>
+      <div class="form-group">
+        <label for="reg-password">Password</label>
+        <input id="reg-password" type="password" autocomplete="new-password" placeholder="Min 8 characters" required />
+      </div>
+      <div class="form-group">
+        <label for="reg-confirm">Confirm Password</label>
+        <input id="reg-confirm" type="password" autocomplete="new-password" placeholder="Repeat password" required />
+      </div>
+      <button type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Create Account">Create Account</button>
+    </form>
+
+    <p id="login-error" class="error-text" style="min-height:1.2em;"></p>
+
+    <p style="text-align:center; margin-top:1rem; font-size:0.75rem; color:#7070a0;">
+      By continuing you agree to our
+      <a href="terms.html" style="color:#4ecdc4;" target="_blank">Terms</a> &amp;
+      <a href="privacy.html" style="color:#4ecdc4;" target="_blank">Privacy Policy</a>.
     </p>
+  </div>
 
-    <div class="cta-group">
-      <a href="https://discord.gg/havenworld" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.893.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
-        Join our community
-      </a>
-
-      <a href="https://github.com/dboone323/HavenWorld" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-        Star us on GitHub
-      </a>
-    </div>
-
-    <div class="features-grid">
-      <div class="feature-card">
-        <h3>🎨 9-Layer Customization</h3>
-        <p>Design a unique persona with layered hair, eyes, skin, and apparel.</p>
-      </div>
-      <div class="feature-card">
-        <h3>🏡 Sanctuaries & Lofts</h3>
-        <p>Your own private retreat to decorate with custom furniture and themes.</p>
-      </div>
-      <div class="feature-card">
-        <h3>⚡ Real-Time Multiplayer</h3>
-        <p>Synchronized movement, interactive public rooms, and live proximity chat.</p>
+  <!-- ══ Lobby Panel ═══════════════════════════════════════════════════════ -->
+  <div id="lobby-panel" class="hidden">
+    <div class="lobby-header">
+      <span class="lobby-title">🌐 Choose a Room</span>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <button id="btn-logout" class="btn btn--ghost" style="font-size:0.8rem;">Sign Out</button>
       </div>
     </div>
-  </main>
+    <div id="room-grid"></div>
+  </div>
 
-  <footer>
-    <div>&copy; 2026 HavenWorld. Open source & community-driven.</div>
-    <div class="footer-links">
-      <a href="/terms.html">Terms of Service</a>
-      <a href="/privacy.html">Privacy Policy</a>
+  <!-- ══ Room Nav (in-game top bar) ════════════════════════════════════════ -->
+  <div id="room-nav" class="hidden">
+    <button id="btn-lobby"  class="btn btn--ghost" style="font-size:0.8rem;">🗺 Lobby</button>
+    <button id="btn-avatar" class="btn btn--ghost" style="font-size:0.8rem;">👗 Wardrobe</button>
+    <button id="btn-logout" class="btn btn--ghost" style="font-size:0.8rem;">✕ Sign Out</button>
+  </div>
+
+  <!-- ══ Player Card (in-game top right) ═══════════════════════════════════ -->
+  <div id="player-card" class="hidden">
+    <span>🌿</span>
+    <span class="player-card__username"></span>
+  </div>
+
+  <!-- ══ Chat Panel ════════════════════════════════════════════════════════ -->
+  <div id="chat-panel" class="hidden">
+    <div id="chat-log" aria-live="polite" aria-label="Chat messages"></div>
+    <p id="chat-error" class="hidden"></p>
+    <div class="chat-input-row">
+      <input id="chat-input" type="text" maxlength="200" placeholder="Say something…" aria-label="Chat input" />
+      <button id="chat-send" class="btn btn--teal" style="padding:0.3rem 0.7rem; font-size:0.8rem;">Send</button>
     </div>
-  </footer>
+  </div>
+
+  <!-- ══ Avatar Customizer Panel ═══════════════════════════════════════════ -->
+  <div id="avatar-panel" class="hidden"></div>
+
+  <!-- ══ Entry Point ════════════════════════════════════════════════════════ -->
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
