@@ -42,7 +42,7 @@ export class Avatar extends Phaser.GameObjects.Container {
     x:        number,
     y:        number,
     username: string,
-    avatar:   AvatarData,
+    avatar?:  AvatarData | null,
   ) {
     super(scene, x, y);
 
@@ -109,7 +109,7 @@ export class Avatar extends Phaser.GameObjects.Container {
     }, BUBBLE_DURATION);
   }
 
-  updateAvatar(avatar: AvatarData): void {
+  updateAvatar(avatar?: AvatarData | null): void {
     // Set tint / frame based on skin-tone for the body layer
     // (In a real build, skins map to atlas variants; here we use tint)
     const bodyLayer = this.layers['body'];
@@ -121,7 +121,8 @@ export class Avatar extends Phaser.GameObjects.Container {
         dark:     0x8d5524,
         deep:     0x4a2912,
       };
-      const tint = tintMap[avatar.skinTone] ?? 0xffe0bd;
+      const skinTone = avatar?.skinTone ?? 'light';
+      const tint = tintMap[skinTone] ?? 0xffe0bd;
       bodyLayer.setTint(tint);
     }
   }

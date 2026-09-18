@@ -3,11 +3,12 @@ import type { AvatarData } from '@shared/types';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AuthUser {
-  id:       string;
-  username: string;
-  email:    string;
-  role?:    string;
-  avatar:   AvatarData;
+  id:           string;
+  username:     string;
+  email:        string;
+  role?:        string;
+  avatar?:      AvatarData;
+  personalRoom?: { id: string; name: string };
 }
 
 // ─── Module-scoped state (memory only — never touches localStorage) ──────────

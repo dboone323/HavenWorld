@@ -42,9 +42,9 @@ class RoomManager {
     this.socketToRoom.delete(socketId);
     this.socketToUser.delete(socketId);
 
-    // Public rooms are kept alive when empty (saves re-loading furniture)
-    // Personal rooms are cleaned up when empty to free memory
-    if (room && room.players.size === 0 && roomId.startsWith('personal-')) {
+    // Public community space (Haven Park) is kept alive when empty
+    // Personal lofts are cleaned up when empty to free memory
+    if (room && room.players.size === 0 && roomId !== 'room-park') {
       this.rooms.delete(roomId);
     }
     return player ? { roomId, playerId: player.id } : null;

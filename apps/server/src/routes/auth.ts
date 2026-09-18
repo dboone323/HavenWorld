@@ -143,11 +143,11 @@ router.post('/register', async (req: Request, res: Response) => {
       },
     });
 
-    // Create personal room
+    // Create personal loft
     await tx.room.create({
       data: {
-        name: `${username}'s Room`,
-        description: 'My personal HavenWorld space.',
+        name: `${username}'s Loft`,
+        description: `${username}'s personal space in HavenWorld.`,
         ownerId: newUser.id,
         isPublic: false,
         maxOccupants: 10,
@@ -253,6 +253,13 @@ router.post('/login', async (req: Request, res: Response) => {
   // Find by email — never reveal which field was wrong
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
+    include: {
+      avatar: true,
+      ownedRooms: {
+        where: { backgroundKey: 'map-personal-room' },
+        take: 1,
+      },
+    },
   });
 
   if (!user) {
@@ -284,6 +291,23 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   }
 
+  let personalRoom = user.ownedRooms?.[0];
+  if (!personalRoom) {
+    personalRoom = await prisma.room.create({
+      data: {
+        name: `${user.username}'s Loft`,
+        description: `${user.username}'s personal space in HavenWorld.`,
+        ownerId: user.id,
+        isPublic: false,
+        maxOccupants: 10,
+        width: 10,
+        height: 8,
+        backgroundKey: 'map-personal-room',
+        theme: 'personal',
+      },
+    });
+  }
+
   const { accessToken, refreshToken } = generateTokens(user.id, user.username, user.role);
 
   // Store refresh token in Redis (7-day TTL)
@@ -304,6 +328,11 @@ router.post('/login', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       role: user.role,
+      avatar: user.avatar,
+      personalRoom: {
+        id: personalRoom.id,
+        name: personalRoom.name,
+      },
     },
   });
 });

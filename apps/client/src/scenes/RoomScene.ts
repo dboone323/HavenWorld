@@ -48,16 +48,39 @@ export class RoomScene extends Phaser.Scene {
 
   init(data: RoomSceneData): void {
     this.roomId = data.roomId;
-    this.mapKey  = data.mapKey;
+    // Resolve to a valid cached tilemap key
+    if (data.mapKey === 'park' || data.roomId === 'room-park') {
+      this.mapKey = 'park';
+    } else if (data.mapKey === 'lobby' || data.roomId === 'room-lobby') {
+      this.mapKey = 'lobby';
+    } else if (data.mapKey === 'cafe' || data.roomId === 'room-cafe') {
+      this.mapKey = 'cafe';
+    } else if (data.mapKey === 'town-square' || data.roomId === 'room-town-square') {
+      this.mapKey = 'town-square';
+    } else {
+      this.mapKey = 'personal-room';
+    }
   }
 
   create(): void {
+    // ── Ensure HUD elements are visible ──────────────────────────────────────
+    document.getElementById('lobby-panel')?.classList.add('hidden');
+    document.getElementById('login-panel')?.classList.add('hidden');
+    document.getElementById('game-container')?.classList.remove('hidden');
+    document.getElementById('room-nav')?.classList.remove('hidden');
+    document.getElementById('player-card')?.classList.remove('hidden');
+    document.getElementById('chat-panel')?.classList.remove('hidden');
+
+    const user = authService.user;
+    const nameEl = document.querySelector('.player-card__username');
+    if (nameEl && user) nameEl.textContent = user.username;
+
     // ── Tilemap ────────────────────────────────────────────────────────────
     this.map = this.make.tilemap({ key: this.mapKey });
 
-    const tilesetKey = this.mapKey === 'lobby' || this.mapKey === 'cafe'
-      ? 'tileset-indoor'
-      : 'tileset-outdoor';
+    const tilesetKey = (this.mapKey === 'park' || this.mapKey === 'town-square')
+      ? 'tileset-outdoor'
+      : 'tileset-indoor';
 
     const tileset = this.map.addTilesetImage('tileset', tilesetKey)!;
 
@@ -85,9 +108,9 @@ export class RoomScene extends Phaser.Scene {
     // ── Local player avatar ────────────────────────────────────────────────
     const spawnX = this.map.widthInPixels  / 2;
     const spawnY = this.map.heightInPixels / 2;
-    const user   = authService.user!;
+    const username = user?.username ?? 'Player';
 
-    this.localAvatar = new Avatar(this, spawnX, spawnY, user.username, user.avatar);
+    this.localAvatar = new Avatar(this, spawnX, spawnY, username, user?.avatar);
     this.add.existing(this.localAvatar);
     this.cameras.main.startFollow(this.localAvatar, true, 0.1, 0.1);
 

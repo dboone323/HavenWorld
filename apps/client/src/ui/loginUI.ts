@@ -112,15 +112,27 @@ export function mountLoginUI(game: Phaser.Game): void {
   function transitionToLobby(): void {
     // Show player card
     const pc = document.getElementById('player-card');
-    if (pc) {
-      const user = authService.user!;
+    const user = authService.user;
+    if (pc && user) {
       const usernameEl = pc.querySelector('.player-card__username');
       if (usernameEl) usernameEl.textContent = user.username;
       pc.classList.remove('hidden');
     }
 
     panel.classList.add('hidden');
-    game.scene.start('LobbyScene');
+
+    const loftId = user?.personalRoom?.id;
+    if (loftId) {
+      document.getElementById('game-container')?.classList.remove('hidden');
+      document.getElementById('room-nav')?.classList.remove('hidden');
+      document.getElementById('chat-panel')?.classList.remove('hidden');
+      game.scene.start('RoomScene', { roomId: loftId, mapKey: 'personal-room' });
+      if (!game.scene.isActive('UIScene')) {
+        game.scene.launch('UIScene');
+      }
+    } else {
+      game.scene.start('LobbyScene');
+    }
   }
 }
 

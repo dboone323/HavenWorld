@@ -57,29 +57,56 @@ window.addEventListener('DOMContentLoaded', () => {
     panel.classList.toggle('hidden');
   });
 
-  // Logout
-  document.getElementById('btn-logout')?.addEventListener('click', () => {
-    // authService.logout triggers auth:logout event → socket disconnect
+  // ── In-game navigation buttons ──────────────────────────────────────────
+  // Fast travel to Haven Park
+  document.getElementById('btn-park')?.addEventListener('click', () => {
+    document.getElementById('lobby-panel')?.classList.add('hidden');
+    game.scene.start('RoomScene', { roomId: 'room-park', mapKey: 'park' });
+    if (!game.scene.isActive('UIScene')) {
+      game.scene.launch('UIScene');
+    }
+  });
+
+  // Return to personal loft
+  document.getElementById('btn-my-loft')?.addEventListener('click', () => {
+    document.getElementById('lobby-panel')?.classList.add('hidden');
+    const loftId = authService.user?.personalRoom?.id;
+    if (loftId) {
+      game.scene.start('RoomScene', { roomId: loftId, mapKey: 'personal-room' });
+      if (!game.scene.isActive('UIScene')) {
+        game.scene.launch('UIScene');
+      }
+    }
+  });
+
+  // Open travel / lofts directory
+  document.getElementById('btn-browse-lofts')?.addEventListener('click', () => {
+    game.scene.stop('RoomScene');
+    game.scene.stop('UIScene');
+    game.scene.start('LobbyScene');
+    document.getElementById('game-container')?.classList.add('hidden');
+    document.getElementById('chat-panel')?.classList.add('hidden');
+    document.getElementById('lobby-panel')?.classList.remove('hidden');
+  });
+
+  // Logout handler
+  const handleLogout = () => {
     authService.logout();
     game.scene.stop('RoomScene');
     game.scene.stop('UIScene');
+    game.scene.stop('LobbyScene');
     game.scene.start('LoginScene');
+    document.getElementById('lobby-panel')?.classList.add('hidden');
     document.getElementById('game-container')?.classList.add('hidden');
     document.getElementById('room-nav')?.classList.add('hidden');
     document.getElementById('chat-panel')?.classList.add('hidden');
     document.getElementById('avatar-panel')?.classList.add('hidden');
     document.getElementById('player-card')?.classList.add('hidden');
     customizer = null;
-  });
+  };
 
-  // Return to lobby
-  document.getElementById('btn-lobby')?.addEventListener('click', () => {
-    game.scene.stop('RoomScene');
-    game.scene.stop('UIScene');
-    game.scene.start('LobbyScene');
-    document.getElementById('game-container')?.classList.add('hidden');
-    document.getElementById('chat-panel')?.classList.add('hidden');
-  });
+  document.getElementById('btn-nav-logout')?.addEventListener('click', handleLogout);
+  document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
 });
 
 export { game };

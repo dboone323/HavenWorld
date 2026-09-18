@@ -5,18 +5,25 @@ import { roomManager } from '../services/RoomManager';
 
 const router = Router();
 
-// GET /api/rooms — list all public rooms with live occupant counts
-router.get('/', requireAuth, async (_req, res) => {
+// GET /api/rooms — list public rooms or community lofts with live occupant counts
+router.get('/', requireAuth, async (req, res) => {
+  const isLofts = req.query.type === 'lofts';
+
   const rooms = await prisma.room.findMany({
-    where: { isPublic: true },
+    where: isLofts
+      ? { backgroundKey: 'map-personal-room' }
+      : { isPublic: true },
     select: {
       id: true,
       name: true,
       description: true,
       maxOccupants: true,
       theme: true,
+      backgroundKey: true,
+      ownerId: true,
     },
     orderBy: { name: 'asc' },
+    take: isLofts ? 50 : 10,
   });
 
   // Inject live player count from RoomManager in-memory state
@@ -42,11 +49,6 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   });
 
   if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  // Private rooms can only be seen by their owner
-  if (!room.isPublic && room.ownerId !== req.user!.userId) {
-    return res.status(403).json({ error: 'This room is private.', code: 'ROOM_PRIVATE' });
-  }
 
   return res.json(room);
 });

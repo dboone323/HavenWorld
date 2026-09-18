@@ -140,6 +140,15 @@ export function registerSocketHandlers(io: Server): void {
           roomId,
         };
 
+        // Clean up previous room if switching rooms on the same socket
+        const prev = roomManager.leaveRoom(socket.id);
+        if (prev && prev.roomId !== roomId) {
+          socket.leave(prev.roomId);
+          socket.to(prev.roomId).emit(SOCKET_EVENTS.ROOM_PLAYER_LEFT, {
+            playerId: prev.playerId,
+          });
+        }
+
         // Join the Socket.io room and register in RoomManager
         socket.join(roomId);
         roomManager.joinRoom(roomId, socket.id, player);

@@ -12,7 +12,7 @@ async function main() {
       id: 'room-lobby',
       name: 'The Lobby',
       description: 'The main gathering place for all HavenWorld visitors.',
-      isPublic: true,
+      isPublic: false,
       maxOccupants: 50,
       width: 20,
       height: 15,
@@ -23,7 +23,7 @@ async function main() {
       id: 'room-town-square',
       name: 'Town Square',
       description: 'The heart of HavenWorld — meet friends and explore.',
-      isPublic: true,
+      isPublic: false,
       maxOccupants: 100,
       width: 30,
       height: 20,
@@ -33,9 +33,9 @@ async function main() {
     {
       id: 'room-park',
       name: 'Haven Park',
-      description: 'A peaceful outdoor space to relax and socialize.',
+      description: 'A serene community park with trees, benches, and a water spot for fishing.',
       isPublic: true,
-      maxOccupants: 50,
+      maxOccupants: 100,
       width: 25,
       height: 18,
       backgroundKey: 'map-park',
@@ -45,7 +45,7 @@ async function main() {
       id: 'room-cafe',
       name: 'The Cozy Café',
       description: 'Grab a virtual coffee and catch up with friends.',
-      isPublic: true,
+      isPublic: false,
       maxOccupants: 30,
       width: 15,
       height: 12,
@@ -61,6 +61,7 @@ async function main() {
       update: {
         name: room.name,
         description: room.description,
+        isPublic: room.isPublic,
       },
     });
   }

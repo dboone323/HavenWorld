@@ -71,19 +71,26 @@
   <!-- ══ Lobby Panel ═══════════════════════════════════════════════════════ -->
   <div id="lobby-panel" class="hidden">
     <div class="lobby-header">
-      <span class="lobby-title">🌐 Choose a Room</span>
+      <span class="lobby-title">🌐 Travel &amp; Directory</span>
       <div style="display:flex; gap:0.5rem; align-items:center;">
-        <button id="btn-logout" class="btn btn--ghost" style="font-size:0.8rem;">Sign Out</button>
+        <button id="btn-close-lobby" class="btn btn--ghost" style="font-size:0.8rem;">✕ Close</button>
+        <button id="btn-lobby-logout" class="btn btn--ghost" style="font-size:0.8rem;">Sign Out</button>
       </div>
+    </div>
+    <div class="login-tabs" style="margin-bottom: 1rem;">
+      <button id="tab-rooms-public" class="tab tab--active">Public Space</button>
+      <button id="tab-rooms-lofts" class="tab">Community Lofts</button>
     </div>
     <div id="room-grid"></div>
   </div>
 
   <!-- ══ Room Nav (in-game top bar) ════════════════════════════════════════ -->
   <div id="room-nav" class="hidden">
-    <button id="btn-lobby"  class="btn btn--ghost" style="font-size:0.8rem;">🗺 Lobby</button>
+    <button id="btn-park" class="btn btn--ghost" style="font-size:0.8rem;">🌳 Haven Park</button>
+    <button id="btn-my-loft" class="btn btn--ghost" style="font-size:0.8rem;">🏠 My Loft</button>
+    <button id="btn-browse-lofts" class="btn btn--ghost" style="font-size:0.8rem;">🌐 Visit Lofts</button>
     <button id="btn-avatar" class="btn btn--ghost" style="font-size:0.8rem;">👗 Wardrobe</button>
-    <button id="btn-logout" class="btn btn--ghost" style="font-size:0.8rem;">✕ Sign Out</button>
+    <button id="btn-nav-logout" class="btn btn--ghost" style="font-size:0.8rem;">✕ Sign Out</button>
   </div>
 
   <!-- ══ Player Card (in-game top right) ═══════════════════════════════════ -->
