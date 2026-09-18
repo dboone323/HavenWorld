@@ -26,7 +26,8 @@ export const socketService = {
       _socket.disconnect();
     }
 
-    _socket = io(window.location.origin, {
+    const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+    _socket = io(SERVER || window.location.origin, {
       path:          '/socket.io',
       transports:    ['websocket', 'polling'],
       reconnection:  true,

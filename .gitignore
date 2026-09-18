@@ -5,6 +5,8 @@
 # Environment variables & secrets (CRITICAL: Never commit API secrets or keys)
 .env
 .env*.local
+.env.development
+.env.production
 *.env
 !.env.example
 *.pem

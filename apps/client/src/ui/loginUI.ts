@@ -21,6 +21,12 @@ export function mountLoginUI(game: Phaser.Game): void {
 
   let mode: FormMode = 'login';
 
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('verified') === 'true') {
+    errEl.style.color = '#4ecdc4';
+    errEl.textContent = 'Email verified successfully! Please sign in.';
+  }
+
   // ── Tab switching ─────────────────────────────────────────────────────────
   tabLogin.addEventListener('click', () => setMode('login'));
   tabRegister.addEventListener('click', () => setMode('register'));
@@ -63,6 +69,8 @@ export function mountLoginUI(game: Phaser.Game): void {
     const email    = (document.getElementById('reg-email')    as HTMLInputElement).value.trim();
     const password = (document.getElementById('reg-password') as HTMLInputElement).value;
     const confirm  = (document.getElementById('reg-confirm')  as HTMLInputElement).value;
+    const inviteEl = document.getElementById('reg-invite') as HTMLInputElement | null;
+    const inviteCode = inviteEl?.value.trim() || undefined;
 
     if (!username || !email || !password) {
       showError('All fields are required.');
@@ -79,8 +87,8 @@ export function mountLoginUI(game: Phaser.Game): void {
 
     setLoading(true);
     try {
-      await authService.register(username, email, password);
-      transitionToLobby();
+      await authService.register(username, email, password, inviteCode);
+      showError('Account created! Please check your email to verify before logging in.');
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {

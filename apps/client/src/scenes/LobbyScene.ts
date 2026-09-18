@@ -26,7 +26,8 @@ export class LobbyScene extends Phaser.Scene {
     grid.innerHTML = '<p class="loading-text">Loading rooms…</p>';
 
     try {
-      const res = await fetch('/api/rooms', {
+      const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
+      const res = await fetch(`${SERVER}/api/rooms`, {
         headers: {
           Authorization: `Bearer ${authService.token ?? ''}`,
         },
