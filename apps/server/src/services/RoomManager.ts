@@ -128,6 +128,17 @@ class RoomManager {
     });
     return result;
   }
+
+  getPlayer(userId: string): (PlayerState & { roomId: string }) | undefined {
+    for (const [roomId, room] of this.rooms) {
+      for (const player of room.players.values()) {
+        if (player.id === userId) {
+          return { ...player, roomId };
+        }
+      }
+    }
+    return undefined;
+  }
 }
 
 export const roomManager = new RoomManager();

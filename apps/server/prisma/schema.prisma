@@ -64,6 +64,39 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum RoomPrivacy {
+  PUBLIC
+  FRIENDS_ONLY
+  PASSWORD_PROTECTED
+  LOCKED
+}
+
+enum TradeStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum PetType {
+  CAT
+  DOG
+  BABY_DRAGON
+}
+
+enum PetState {
+  IDLE
+  WANDER
+  FOLLOW
+  SLEEP
+  REACT
+}
+
+enum ClubRole {
+  OWNER
+  OFFICER
+  MEMBER
+}
+
 model User {
   id               String       @id @default(uuid())
   username         String       @unique
@@ -76,6 +109,14 @@ model User {
   mutedUntil       DateTime?
   createdAt        DateTime     @default(now())
   lastLoginAt      DateTime?
+
+  // Phase 3 Economy & Prestige
+  havenCoins       Int          @default(100)
+  havenGems        Int          @default(0)
+  isVIP            Boolean      @default(false)
+  vipSince         DateTime?
+
+  // Existing Relations
   avatar           Avatar?
   inventory        Inventory[]
   ownedRooms       Room[]       @relation("RoomOwner")
@@ -87,6 +128,32 @@ model User {
   receivedFriends  Friend[]     @relation("Addressee")
   createdInviteCodes InviteCode[] @relation("InviteCreator")
   usedInviteCode   InviteCode?  @relation("InviteUser")
+
+  // Phase 3 Relations
+  fishCatches        FishCatch[]
+  fishingLeaderboard FishingLeaderboard[]
+  roomDecorators     RoomDecorator[]
+  guestbookEntries   GuestbookEntry[]
+  tipsSent           TipTransaction[]     @relation("TipSender")
+  tipsReceived       TipTransaction[]     @relation("TipReceiver")
+  tradesInitiated    TradeLog[]           @relation("TradeInitiator")
+  tradesReceived     TradeLog[]           @relation("TradeReceiver")
+  loginStreak        DailyLoginStreak?
+  giftsSent          GiftTransaction[]    @relation("GiftSender")
+  giftsReceived      GiftTransaction[]    @relation("GiftReceiver")
+  pets               Pet[]
+  minigameSessions   MinigameSession[]
+  weeklyEarningsCaps WeeklyEarningsCap[]
+  materialInventory  MaterialInventory?
+  craftingQueues     CraftingQueue[]
+  achievements       Achievement[]
+  passportFrame      PassportFrame?
+  seasonalProgress   SeasonalProgress[]
+  clubsOwned         Club[]               @relation("ClubOwner")
+  clubMembership     ClubMember?
+  dailyQuests        DailyQuestProgress[]
+  photos             GalleryPhoto[]
+  photoLikes         PhotoLike[]
 
   @@map("users")
 }
@@ -164,8 +231,22 @@ model Room {
   backgroundKey String          @default("map-lobby")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+
+  // Phase 3 Privacy & Ambiance
+  privacy       RoomPrivacy     @default(PUBLIC)
+  passwordHash  String?
+  awayMessage   String?
+  moodPreset    String          @default("day")
+
+  // Existing Relations
   furniture     RoomFurniture[]
   chatMessages  ChatMessage[]
+
+  // Phase 3 Relations
+  decorators       RoomDecorator[]
+  accessLogs       RoomAccessLog[]
+  guestbookEntries GuestbookEntry[]
+  club             Club?
 
   @@map("rooms")
 }
@@ -250,4 +331,325 @@ model InviteCode {
 
   @@index([code, isActive])
   @@map("invite_codes")
+}
+
+// ── Phase 3 Models ──────────────────────────────────────────────────────────
+
+// §1 Fishing
+model FishCatch {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  species     String
+  weightLbs   Float
+  coinsEarned Int
+  caughtAt    DateTime @default(now())
+
+  @@index([userId, caughtAt])
+  @@map("fish_catches")
+}
+
+model FishingLeaderboard {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  species   String
+  weightLbs Float
+  weekOf    DateTime
+
+  @@unique([userId, weekOf])
+  @@index([weekOf, weightLbs])
+  @@map("fishing_leaderboards")
+}
+
+// §2 Loft Privacy & Doorbell
+model RoomDecorator {
+  id        String   @id @default(uuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grantedAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@map("room_decorators")
+}
+
+model RoomAccessLog {
+  id        String   @id @default(uuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  visitorId String
+  visitedAt DateTime @default(now())
+
+  @@index([roomId, visitedAt])
+  @@map("room_access_logs")
+}
+
+// §3 Guestbook & Tip Jar
+model GuestbookEntry {
+  id           String   @id @default(uuid())
+  roomId       String
+  room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorName   String
+  authorAvatar String?
+  message      String   @db.VarChar(120)
+  createdAt    DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@map("guestbook_entries")
+}
+
+model TipTransaction {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("TipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User     @relation("TipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  amount     Int
+  roomId     String
+  createdAt  DateTime @default(now())
+
+  @@index([receiverId, createdAt])
+  @@map("tip_transactions")
+}
+
+// §5 Anti-Scam P2P Trading
+model TradeLog {
+  id             String      @id @default(uuid())
+  initiatorId    String
+  initiator      User        @relation("TradeInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  receiverId     String
+  receiver       User        @relation("TradeReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  initiatorItems Json
+  receiverItems  Json
+  initiatorCoins Int         @default(0)
+  receiverCoins  Int         @default(0)
+  status         TradeStatus
+  createdAt      DateTime    @default(now())
+  completedAt    DateTime?
+
+  @@index([initiatorId, createdAt])
+  @@index([receiverId, createdAt])
+  @@map("trade_logs")
+}
+
+// §6 Dual-Currency Economy
+model DailyLoginStreak {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  lastLoginDate DateTime
+
+  @@map("daily_login_streaks")
+}
+
+model GiftTransaction {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("GiftSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User     @relation("GiftReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  itemId     String
+  message    String?  @db.VarChar(140)
+  createdAt  DateTime @default(now())
+
+  @@index([receiverId, createdAt])
+  @@map("gift_transactions")
+}
+
+// §7 Pet Companions
+model Pet {
+  id           String    @id @default(uuid())
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  petType      PetType
+  name         String    @db.VarChar(16)
+  happiness    Int       @default(100)
+  hunger       Int       @default(100)
+  accessoryIds Json      @default("[]")
+  lastFedAt    DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+
+  @@index([ownerId])
+  @@map("pets")
+}
+
+// §8 Pizza Chef
+model MinigameSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameType    String
+  coinsEarned Int
+  score       Int
+  duration    Int
+  completedAt DateTime @default(now())
+
+  @@index([userId, gameType, completedAt])
+  @@map("minigame_sessions")
+}
+
+model WeeklyEarningsCap {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameType String
+  earned   Int      @default(0)
+  weekOf   DateTime
+
+  @@unique([userId, gameType, weekOf])
+  @@map("weekly_earnings_caps")
+}
+
+// §9 Workshop Crafting
+model MaterialInventory {
+  id           String @id @default(uuid())
+  userId       String @unique
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scrapMetal   Int    @default(0)
+  timber       Int    @default(0)
+  fabric       Int    @default(0)
+  crystalShard Int    @default(0)
+
+  @@map("material_inventories")
+}
+
+model CraftingQueue {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipeId    String
+  startedAt   DateTime @default(now())
+  completesAt DateTime
+  claimed     Boolean  @default(false)
+
+  @@index([userId, claimed])
+  @@map("crafting_queues")
+}
+
+// §10 Passport & Achievements
+model Achievement {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stamp    String
+  earnedAt DateTime @default(now())
+
+  @@unique([userId, stamp])
+  @@map("achievements")
+}
+
+model PassportFrame {
+  id      String @id @default(uuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  frameId String @default("default")
+
+  @@map("passport_frames")
+}
+
+// §12 Seasonal Events
+model SeasonalEvent {
+  id        String             @id @default(uuid())
+  name      String
+  theme     String
+  startsAt  DateTime
+  endsAt    DateTime
+  isActive  Boolean            @default(false)
+  rewards   Json
+  progress  SeasonalProgress[]
+
+  @@map("seasonal_events")
+}
+
+model SeasonalProgress {
+  id       String        @id @default(uuid())
+  userId   String
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId  String
+  event    SeasonalEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tier     Int           @default(0)
+  currency Int           @default(0)
+
+  @@unique([userId, eventId])
+  @@map("seasonal_progress")
+}
+
+// §13 Clubs
+model Club {
+  id        String       @id @default(uuid())
+  name      String       @unique @db.VarChar(24)
+  motto     String?      @db.VarChar(80)
+  tag       String?      @db.VarChar(5)
+  ownerId   String
+  owner     User         @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  roomId    String?      @unique
+  room      Room?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  createdAt DateTime     @default(now())
+  members   ClubMember[]
+
+  @@map("clubs")
+}
+
+model ClubMember {
+  id       String   @id @default(uuid())
+  clubId   String
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId   String   @unique
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     ClubRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  @@map("club_members")
+}
+
+// §15 Daily Quests
+model DailyQuestProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questId     String
+  progress    Int      @default(0)
+  goal        Int
+  completed   Boolean  @default(false)
+  rewardCoins Int
+  rewardGems  Int      @default(0)
+  questDate   DateTime
+
+  @@unique([userId, questId, questDate])
+  @@map("daily_quest_progress")
+}
+
+// §16 Photo Gallery
+model GalleryPhoto {
+  id             String      @id @default(uuid())
+  authorId       String
+  author         User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  imageUrl       String
+  caption        String?     @db.VarChar(80)
+  likes          Int         @default(0)
+  roomName       String
+  perceptualHash String?
+  createdAt      DateTime    @default(now())
+  photoLikes     PhotoLike[]
+
+  @@index([createdAt])
+  @@index([likes])
+  @@map("gallery_photos")
+}
+
+model PhotoLike {
+  id      String       @id @default(uuid())
+  photoId String
+  photo   GalleryPhoto @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([photoId, userId])
+  @@map("photo_likes")
 }

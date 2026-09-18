@@ -15,6 +15,12 @@ import roomRoutes from './routes/rooms';
 import friendRoutes from './routes/friends';
 import reportRoutes from './routes/reports';
 import adminRoutes from './routes/admin';
+import shopRoutes from './routes/shop';
+import passportRoutes from './routes/passport';
+import galleryRoutes from './routes/gallery';
+import questRoutes from './routes/quests';
+import clubRoutes from './routes/clubs';
+import { PetManager } from './services/PetManager';
 import { registerSocketHandlers } from './sockets';
 
 export const SERVER_CONFIG = {
@@ -114,6 +120,11 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/shop', shopRoutes);
+app.use('/api/passport', passportRoutes);
+app.use('/api/gallery', galleryRoutes);
+app.use('/api/quests', questRoutes);
+app.use('/api/clubs', clubRoutes);
 
 // ── 404 catch-all ────────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -144,6 +155,9 @@ async function start() {
     await connectRedis();
     await prisma.$connect();
     console.log('[DB] PostgreSQL connected');
+
+    // Initialize autonomous systems
+    PetManager.init();
 
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] HavenWorld listening on port ${PORT}`);

@@ -6,6 +6,16 @@ import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import type { PlayerState, FurnitureState, AvatarData, ChatMessage } from '@havenworld/shared';
+import { FishingService } from '../services/FishingService';
+import { PrivacyManager } from '../services/PrivacyManager';
+import { GuestbookService } from '../services/GuestbookService';
+import { TradeManager } from '../services/TradeManager';
+import { PetManager } from '../services/PetManager';
+import { MinigameService } from '../services/MinigameService';
+import { WorkshopService } from '../services/WorkshopService';
+import { ClubService } from '../services/ClubService';
+import { QuestService } from '../services/QuestService';
+import { AchievementService } from '../services/AchievementService';
 
 // ── Socket authentication middleware ──────────────────────────────────────────
 // Every socket connection must provide a valid JWT access token.
@@ -58,6 +68,7 @@ export function registerSocketHandlers(io: Server): void {
       role: string;
     };
     console.log(`[Socket] Connected: ${username} (${socket.id})`);
+    socket.join(`user:${userId}`);
 
     // ── auth:join ─────────────────────────────────────────────────────────────
     socket.on(SOCKET_EVENTS.AUTH_JOIN, async ({ roomId }: { roomId: string }) => {
@@ -495,9 +506,239 @@ export function registerSocketHandlers(io: Server): void {
       }
     );
 
+    // ── Phase 3: Fishing Mini-Game (§1) ──────────────────────────────────────
+    socket.on(SOCKET_EVENTS.CAST_LINE, ({ roomId }: { roomId: string }) => {
+      FishingService.startSession(userId, roomId);
+    });
+
+    socket.on(SOCKET_EVENTS.REEL_POSITION, ({ value }: { value: number }) => {
+      FishingService.updateReelPosition(userId, value);
+    });
+
+    socket.on(SOCKET_EVENTS.CANCEL_FISHING, () => {
+      FishingService.cancelSession(userId);
+    });
+
+    // ── Phase 3: Loft Privacy & Doorbell (§2) ────────────────────────────────
+    socket.on(SOCKET_EVENTS.RING_DOORBELL, async ({ roomId }: { roomId: string }) => {
+      try {
+        await PrivacyManager.ringDoorbell(userId, roomId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Doorbell error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.DOORBELL_DECISION, async (data: { roomId: string; visitorId: string; admit: boolean }) => {
+      try {
+        await PrivacyManager.decideDoorbell(userId, data.visitorId, data.roomId, data.admit);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Doorbell decision error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.SET_ROOM_PRIVACY, async (data: { roomId: string; mode: any; password?: string; awayMessage?: string }) => {
+      try {
+        await PrivacyManager.setRoomPrivacy(userId, data.roomId, data.mode, data.password, data.awayMessage);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Privacy error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.GRANT_DECORATOR, async (data: { roomId: string; targetUserId: string }) => {
+      try {
+        await PrivacyManager.grantDecorator(userId, data.roomId, data.targetUserId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Decorator grant error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.REVOKE_DECORATOR, async (data: { roomId: string; targetUserId: string }) => {
+      try {
+        await PrivacyManager.revokeDecorator(userId, data.roomId, data.targetUserId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Decorator revoke error' });
+      }
+    });
+
+    // ── Phase 3: Guestbook & Tip Jar (§3) ────────────────────────────────────
+    socket.on(SOCKET_EVENTS.SIGN_GUESTBOOK, async (data: { roomId: string; message: string }) => {
+      try {
+        await GuestbookService.signBook(data.roomId, userId, data.message);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Guestbook error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.TIP_OWNER, async (data: { roomId: string; amount: number }) => {
+      try {
+        await GuestbookService.tipOwner(userId, data.roomId, data.amount);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.TIP_ERROR, { message: err?.message || 'Tip error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.GET_GUESTBOOK, async (data: { roomId: string; page?: number }) => {
+      try {
+        const pageData = await GuestbookService.getPage(data.roomId, data.page || 1);
+        socket.emit(SOCKET_EVENTS.GUESTBOOK_PAGE, pageData);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Failed to load guestbook' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.DELETE_GUESTBOOK_ENTRY, async (data: { entryId: string }) => {
+      try {
+        await GuestbookService.deleteEntry(data.entryId, userId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Delete error' });
+      }
+    });
+
+    // ── Phase 3: Anti-Scam P2P Trading (§5) ──────────────────────────────────
+    socket.on(SOCKET_EVENTS.TRADE_REQUEST, (data: { targetUserId: string }) => {
+      try {
+        TradeManager.requestTrade(userId, data.targetUserId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Trade request error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.TRADE_ACCEPT, () => {
+      TradeManager.acceptTrade(userId);
+    });
+
+    socket.on(SOCKET_EVENTS.TRADE_DECLINE, () => {
+      TradeManager.cancelTrade(userId, 'Trade declined');
+    });
+
+    socket.on(SOCKET_EVENTS.OFFER_ITEM, (data: { slotIndex: number; inventoryItemId: string; name: string; assetUrl?: string }) => {
+      TradeManager.offerItem(userId, data.slotIndex, data.inventoryItemId, data.name, data.assetUrl);
+    });
+
+    socket.on(SOCKET_EVENTS.OFFER_COINS, (data: { amount: number }) => {
+      TradeManager.offerCoins(userId, data.amount);
+    });
+
+    socket.on(SOCKET_EVENTS.TRADE_READY, () => {
+      TradeManager.setReady(userId);
+    });
+
+    socket.on(SOCKET_EVENTS.TRADE_CONFIRM, async () => {
+      await TradeManager.confirmTrade(userId);
+    });
+
+    socket.on(SOCKET_EVENTS.TRADE_CANCEL, () => {
+      TradeManager.cancelTrade(userId, 'Trade cancelled by player');
+    });
+
+    // ── Phase 3: Pet Companions (§7) ─────────────────────────────────────────
+    socket.on(SOCKET_EVENTS.ADOPT_PET, async (data: { petType: any; name: string }) => {
+      try {
+        await PetManager.adoptPet(userId, data.petType, data.name);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Pet adoption error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.NAME_PET, async (data: { petId: string; name: string }) => {
+      try {
+        await PetManager.namePet(userId, data.petId, data.name);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Pet rename error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.FEED_PET, async (data: { petId: string }) => {
+      try {
+        await PetManager.feedPet(userId, data.petId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Pet feeding error' });
+      }
+    });
+
+    // ── Phase 3: Pizza Chef Mini-Game (§8) ───────────────────────────────────
+    socket.on(SOCKET_EVENTS.PIZZA_ORDER_SUBMIT, async (data: any) => {
+      try {
+        const result = await MinigameService.submitPizzaOrder(userId, data);
+        socket.emit(SOCKET_EVENTS.PIZZA_ORDER_RESULT, result);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Pizza submission error' });
+      }
+    });
+
+    // ── Phase 3: Workshop Crafting & Recycling (§9) ──────────────────────────
+    socket.on(SOCKET_EVENTS.RECYCLE_ITEM, async (data: { inventoryItemId: string }) => {
+      try {
+        await WorkshopService.recycleItem(userId, data.inventoryItemId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Recycling error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.START_CRAFT, async (data: { recipeId: string }) => {
+      try {
+        await WorkshopService.startCraft(userId, data.recipeId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Crafting start error' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.CLAIM_CRAFT, async (data: { craftingQueueId: string }) => {
+      try {
+        await WorkshopService.claimCraft(userId, data.craftingQueueId);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Claim craft error' });
+      }
+    });
+
+    // ── Phase 3: Loft Ambient Moods (§11) ────────────────────────────────────
+    socket.on(SOCKET_EVENTS.SET_ROOM_MOOD, async (data: { roomId: string; mood: string }) => {
+      try {
+        const room = await prisma.room.findUnique({ where: { id: data.roomId } });
+        if (!room || room.ownerId !== userId) return;
+
+        await prisma.room.update({
+          where: { id: data.roomId },
+          data: { moodPreset: data.mood },
+        });
+
+        io.to(`room:${data.roomId}`).emit(SOCKET_EVENTS.ROOM_MOOD_CHANGED, {
+          roomId: data.roomId,
+          mood: data.mood,
+        });
+
+        await QuestService.incrementProgress(userId, 'CHANGE_MOOD', 1);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Mood change error' });
+      }
+    });
+
+    // ── Phase 3: Emote Wheel (§14) ───────────────────────────────────────────
+    socket.on(SOCKET_EVENTS.EMOTE_TRIGGERED, (data: { emoteId: string }) => {
+      const p = roomManager.getPlayer(userId);
+      if (p?.roomId) {
+        io.to(`room:${p.roomId}`).emit(SOCKET_EVENTS.AVATAR_EMOTE, {
+          userId,
+          emoteId: data.emoteId,
+        });
+      }
+    });
+
+    // ── Phase 3: Club Chat (§13) ─────────────────────────────────────────────
+    socket.on(SOCKET_EVENTS.CLUB_CHAT_SEND, async (data: { clubId: string; content: string }) => {
+      try {
+        await ClubService.sendClubMessage(userId, data.clubId, data.content);
+      } catch (err: any) {
+        socket.emit('error', { message: err?.message || 'Club message error' });
+      }
+    });
+
     // ── disconnect ────────────────────────────────────────────────────────────
     socket.on('disconnect', async (reason) => {
       console.log(`[Socket] Disconnected: ${username} (${reason})`);
+
+      FishingService.cancelSession(userId);
+      TradeManager.cancelTrade(userId, 'Player disconnected');
 
       const left = roomManager.leaveRoom(socket.id);
       if (left) {

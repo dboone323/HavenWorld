@@ -5,6 +5,11 @@ import { createLobbyScene } from './scenes/LobbyScene';
 import { createRoomScene } from './scenes/RoomScene';
 import { mountLoginUI } from './ui/loginUI';
 import { AvatarCustomizer } from './ui/AvatarCustomizer';
+import { EmoteWheel } from './ui/EmoteWheel';
+import { QuestHUD } from './ui/QuestHUD';
+import { ShopModal } from './ui/ShopModal';
+import { PassportModal } from './passport/PassportModal';
+import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
 import './style.css';
 
@@ -47,6 +52,25 @@ window.addEventListener('DOMContentLoaded', async () => {
       });
     }
     customizer.open();
+  });
+
+  // Phase 3 persistent UI controllers
+  new EmoteWheel();
+  new QuestHUD();
+  const shopModal = new ShopModal();
+  const passportModal = new PassportModal();
+  const pizzaScene = new PizzaScene();
+
+  document.getElementById('btn-shop')?.addEventListener('click', () => {
+    shopModal.open().catch(console.error);
+  });
+
+  document.getElementById('btn-passport')?.addEventListener('click', () => {
+    passportModal.open().catch(console.error);
+  });
+
+  document.getElementById('btn-pizza')?.addEventListener('click', () => {
+    pizzaScene.open();
   });
 
   // ── In-game navigation buttons ──────────────────────────────────────────

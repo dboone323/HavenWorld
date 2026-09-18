@@ -8,7 +8,7 @@ import {
   DirectionalLight,
   ShadowGenerator,
 } from '@babylonjs/core';
-import { SOCKET_EVENTS, type PlayerState, type ChatMessage } from '@havenworld/shared';
+import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
 import { RoomLoader } from '../world/RoomLoader';
 import { createPlaceholderRoom } from '../world/PlaceholderRoom';
@@ -16,6 +16,9 @@ import { AvatarController } from '../world/AvatarController';
 import { RemoteAvatar } from '../world/RemoteAvatar';
 import { FurnitureManager } from '../world/FurnitureManager';
 import { RoomEditor } from '../world/RoomEditor';
+import { FishingController } from '../fishing/FishingController';
+import { MoodSystem } from '../rooms/MoodSystem';
+import { audioEngine } from '../audio/AudioEngine';
 import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
@@ -180,9 +183,41 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     btnDecorate.classList.add('hidden');
   }
 
+  // ── Phase 3: Fishing Dock ────────────────────────────────────────────────
+  const btnFishing = document.getElementById('btn-fishing');
+  const isPark = roomId === 'room-park';
+  const fishingController = new FishingController(scene);
+
+  const startFishingHandler = () => {
+    fishingController.startFishing(roomId);
+  };
+
+  if (isPark && btnFishing) {
+    btnFishing.classList.remove('hidden');
+    btnFishing.addEventListener('click', startFishingHandler);
+  } else if (btnFishing) {
+    btnFishing.classList.add('hidden');
+  }
+
+  // ── Phase 3: Loft Ambient Moods ──────────────────────────────────────────
+  const moodSystem = new MoodSystem(scene);
+
+  // ── Phase 3: Procedural Footstep Audio Loop ──────────────────────────────
+  let footstepTimer = 0;
+  const footstepObserver = scene.registerBeforeRender(() => {
+    if (avatarController.isMoving) {
+      footstepTimer += scene.getEngine().getDeltaTime();
+      if (footstepTimer >= 350) {
+        audioEngine.playFootstep();
+        footstepTimer = 0;
+      }
+    }
+  });
+
   // ── Input & Chat Controllers ──────────────────────────────────────────────
   const inputController = new InputController(scene, avatarController, camera);
   const chatOverlay = new ChatOverlay((msg: ChatMessage) => {
+    audioEngine.playChatMessage();
     const remote = remoteAvatars.get(msg.playerId);
     if (remote) {
       remote.showSpeech(msg.text);
@@ -324,6 +359,52 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   unsubs.push(socketService.on<{ userId: string; avatarData?: any }>(SOCKET_EVENTS.AVATAR_UPDATE, onAvatarUpdate));
   unsubs.push(socketService.on<{ userId: string; avatarData?: any }>('avatar:update', onAvatarUpdate));
 
+  // Ambient mood changed
+  unsubs.push(
+    socketService.on<{ roomId: string; mood: MoodId }>(
+      SOCKET_EVENTS.ROOM_MOOD_CHANGED,
+      (data) => {
+        if (data.roomId === roomId) {
+          moodSystem.applyMood(data.mood);
+        }
+      }
+    )
+  );
+
+  // Doorbell ring notice (for loft owner)
+  unsubs.push(
+    socketService.on<{ visitorId: string; visitorName: string; roomId: string }>(
+      SOCKET_EVENTS.DOORBELL_RING,
+      (data) => {
+        if (data.roomId === roomId) {
+          audioEngine.playDoorbell();
+          const admit = confirm(`🔔 ${data.visitorName} is at your loft door! Admit visitor?`);
+          socketService.emit(SOCKET_EVENTS.DOORBELL_DECISION, {
+            roomId,
+            visitorId: data.visitorId,
+            admit,
+          });
+        }
+      }
+    )
+  );
+
+  // Avatar Emote received
+  unsubs.push(
+    socketService.on<{ userId: string; emoteId: string }>(
+      SOCKET_EVENTS.AVATAR_EMOTE,
+      (data) => {
+        audioEngine.playPetHappy();
+        if (data.userId !== user.id) {
+          const remote = remoteAvatars.get(data.userId);
+          if (remote) {
+            remote.showSpeech(`[Emote: ${data.emoteId}]`);
+          }
+        }
+      }
+    )
+  );
+
   // ── Disposal & Cleanup ────────────────────────────────────────────────────
   scene.onDisposeObservable.add(() => {
     window.removeEventListener('keydown', onKeyDown);
@@ -331,12 +412,20 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       btnDecorate.removeEventListener('click', toggleDecorate);
       btnDecorate.classList.add('hidden');
     }
+    if (btnFishing) {
+      btnFishing.removeEventListener('click', startFishingHandler);
+      btnFishing.classList.add('hidden');
+    }
     if (cameraFollowObserver) {
       scene.unregisterBeforeRender(cameraFollowObserver);
+    }
+    if (footstepObserver) {
+      scene.unregisterBeforeRender(footstepObserver);
     }
     for (const unsub of unsubs) {
       unsub();
     }
+    fishingController.dispose();
     roomEditor?.dispose();
     furnitureManager.clear();
     inputController.dispose();

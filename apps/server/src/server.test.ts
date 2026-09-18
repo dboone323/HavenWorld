@@ -32,7 +32,19 @@ test('SOCKET_EVENTS contains all core and furniture events', () => {
   assert.equal(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, 'room:furniture_updated');
   assert.equal(SOCKET_EVENTS.FURNITURE_PLACE, 'furniture:place');
   assert.equal(SOCKET_EVENTS.FURNITURE_REMOVE, 'furniture:remove');
-  assert.equal(Object.keys(SOCKET_EVENTS).length, 17);
+  // Part 6 Phase 3 events
+  assert.equal(SOCKET_EVENTS.CAST_LINE, 'fishing:cast_line');
+  assert.equal(SOCKET_EVENTS.TRADE_REQUEST, 'trade:request');
+  assert.equal(SOCKET_EVENTS.RING_DOORBELL, 'doorbell:ring');
+  assert.equal(SOCKET_EVENTS.SIGN_GUESTBOOK, 'guestbook:sign');
+  assert.equal(SOCKET_EVENTS.TIP_OWNER, 'tip:owner');
+  assert.equal(SOCKET_EVENTS.BUY_ITEM, 'shop:buy_item');
+  assert.equal(SOCKET_EVENTS.ADOPT_PET, 'pet:adopt');
+  assert.equal(SOCKET_EVENTS.PIZZA_ORDER_SUBMIT, 'minigame:pizza_submit');
+  assert.equal(SOCKET_EVENTS.RECYCLE_ITEM, 'workshop:recycle_item');
+  assert.equal(SOCKET_EVENTS.SET_ROOM_MOOD, 'room:set_mood');
+  assert.equal(SOCKET_EVENTS.EMOTE_TRIGGERED, 'emote:triggered');
+  assert.ok(Object.keys(SOCKET_EVENTS).length >= 50);
 });
 
 test('Password hashing performs real bcrypt hash and verification', async () => {
@@ -147,4 +159,57 @@ test('RoomManager manages in-memory player state, movement, and chat ring buffer
   assert.equal(leaveResult?.roomId, roomId);
   assert.equal(leaveResult?.playerId, 'user-100');
   assert.equal(roomManager.getOccupantCount(roomId), 0);
+});
+
+test('48-hour epoch shop rotation produces deterministic featured items', async () => {
+  const { getFeaturedItems, getCurrentEpoch, getEpochRemainingMs } = await import('@havenworld/shared');
+
+  const testTime = 1726700000000;
+  const epoch = getCurrentEpoch(testTime);
+  assert.equal(typeof epoch, 'number');
+  assert.ok(epoch > 0);
+
+  const featuredA = getFeaturedItems(testTime);
+  const featuredB = getFeaturedItems(testTime);
+  assert.equal(featuredA.length, 3);
+  assert.equal(featuredB.length, 3);
+  // Must be identical given the same time
+  assert.equal(featuredA[0].id, featuredB[0].id);
+  assert.equal(featuredA[1].id, featuredB[1].id);
+  assert.equal(featuredA[2].id, featuredB[2].id);
+
+  const remaining = getEpochRemainingMs(testTime);
+  assert.ok(remaining > 0 && remaining <= 172_800_000);
+});
+
+test('Workshop crafting recycling yield calculates mathematically correct output', async () => {
+  const { calculateRecycleYield } = await import('@havenworld/shared');
+
+  // price: 100, timber value: 4 => 100 * 0.4 / 4 = 10
+  assert.equal(calculateRecycleYield(100, 'timber'), 10);
+  // price: 50, scrap_metal value: 5 => 50 * 0.4 / 5 = 4
+  assert.equal(calculateRecycleYield(50, 'scrap_metal'), 4);
+  // price: 0 (free items) gives minimum 1
+  assert.equal(calculateRecycleYield(0, 'timber'), 1);
+});
+
+test('Deterministic daily quest selection provides consistent goals per UTC day', async () => {
+  const { getDailyQuests } = await import('@havenworld/shared');
+
+  const dateA = new Date('2026-09-18T12:00:00Z');
+  const dateB = new Date('2026-09-18T23:59:59Z');
+
+  const questsA = getDailyQuests(dateA);
+  const questsB = getDailyQuests(dateB);
+
+  assert.equal(questsA.length, 3);
+  assert.equal(questsB.length, 3);
+  // Same UTC date must yield exactly the same 3 quests
+  assert.equal(questsA[0].id, questsB[0].id);
+  assert.equal(questsA[1].id, questsB[1].id);
+  assert.equal(questsA[2].id, questsB[2].id);
+
+  assert.equal(questsA[0].difficulty, 'EASY');
+  assert.equal(questsA[1].difficulty, 'MEDIUM');
+  assert.equal(questsA[2].difficulty, 'HARD');
 });

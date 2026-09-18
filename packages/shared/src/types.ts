@@ -74,11 +74,6 @@ export interface FurniturePlacement {
 
 export type Direction = 'down' | 'up' | 'left' | 'right';
 
-/**
- * 3D world-space position used by Babylon.js.
- * Units are meters. Y is the vertical axis (up).
- * rotY is the avatar's Y-axis rotation in radians.
- */
 export interface PlayerPosition3D {
   x: number;     // world-space meters, horizontal (left/right)
   y: number;     // world-space meters, vertical (height — usually 0 for ground)
@@ -86,7 +81,7 @@ export interface PlayerPosition3D {
   rotY: number;  // avatar facing direction in radians (Y-axis rotation)
 }
 
-/** player:move socket payload — updated for 3D */
+/** player:move socket payload */
 export interface PlayerMovePayload {
   roomId: string;
   x: number;
@@ -103,7 +98,6 @@ export interface PlayerJoinPayload {
   avatarData: AvatarCustomizationData;
 }
 
-/** Avatar customization data shared between client and server */
 export interface AvatarCustomizationData {
   skinColor: string;
   hairColor: string;
@@ -155,7 +149,7 @@ export interface RoomData {
   id: string;
   name: string;
   description?: string;
-  map?: string; // tilemap key e.g. 'lobby', 'park'
+  map?: string;
   backgroundKey?: string;
   ownerId?: string | null;
   capacity?: number;
@@ -167,4 +161,233 @@ export interface RoomData {
   furniture?: FurnitureState[];
   chatHistory?: ChatMessage[];
   occupants?: number;
+  privacy?: RoomPrivacyMode;
+  moodPreset?: string;
+  awayMessage?: string | null;
+}
+
+// ── Phase 3 Systems ─────────────────────────────────────────────────────────
+
+// §1 Fishing
+export interface FishCatchData {
+  id: string;
+  userId: string;
+  species: string;
+  weightLbs: number;
+  coinsEarned: number;
+  caughtAt: string;
+}
+
+export interface FishingLeaderboardData {
+  id: string;
+  userId: string;
+  username?: string;
+  weightLbs: number;
+  species: string;
+  weekOf: string;
+}
+
+// §2 Loft Privacy & Doorbell
+export type RoomPrivacyMode = 'PUBLIC' | 'FRIENDS_ONLY' | 'PASSWORD_PROTECTED' | 'LOCKED';
+
+export interface RoomDecoratorData {
+  id: string;
+  roomId: string;
+  userId: string;
+  grantedAt: string;
+}
+
+export interface RoomAccessLogData {
+  id: string;
+  roomId: string;
+  visitorId: string;
+  visitorName?: string;
+  visitedAt: string;
+}
+
+// §3 Guestbook & Tip Jar
+export interface GuestbookEntryData {
+  id: string;
+  roomId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string | null;
+  message: string;
+  createdAt: string;
+}
+
+export interface TipTransactionData {
+  id: string;
+  senderId: string;
+  senderName?: string;
+  receiverId: string;
+  amount: number;
+  roomId: string;
+  createdAt: string;
+}
+
+// §5 Anti-Scam P2P Trading
+export type TradeStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
+
+export interface TradeOfferItem {
+  slotIndex: number;
+  inventoryItemId: string;
+  name: string;
+  assetUrl?: string;
+}
+
+export interface TradeStateData {
+  tradeId: string;
+  initiatorId: string;
+  receiverId: string;
+  initiatorItems: TradeOfferItem[];
+  receiverItems: TradeOfferItem[];
+  initiatorCoins: number;
+  receiverCoins: number;
+  initiatorReady: boolean;
+  receiverReady: boolean;
+  initiatorConfirmed: boolean;
+  receiverConfirmed: boolean;
+  state: 'OFFER_PHASE' | 'LOCKED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+  countdownSeconds?: number;
+}
+
+// §6 Dual-Currency Economy & Shop
+export interface DailyLoginStreakData {
+  currentStreak: number;
+  longestStreak: number;
+  lastLoginDate: string;
+  claimedToday: boolean;
+}
+
+// §7 Pet Companions
+export type PetType = 'CAT' | 'DOG' | 'BABY_DRAGON';
+export type PetState = 'IDLE' | 'WANDER' | 'FOLLOW' | 'SLEEP' | 'REACT';
+
+export interface PetData {
+  id: string;
+  ownerId: string;
+  petType: PetType;
+  name: string;
+  happiness: number; // 0–100
+  hunger: number;    // 0–100
+  state: PetState;
+  x?: number;
+  y?: number;
+  z?: number;
+  targetX?: number;
+  targetY?: number;
+  targetZ?: number;
+}
+
+// §8 Pizza Chef
+export interface PizzaOrderSubmitPayload {
+  recipeId: string;
+  ingredients: string[];
+  durationMs: number;
+}
+
+// §9 Workshop Crafting
+export interface MaterialInventoryData {
+  scrapMetal: number;
+  timber: number;
+  fabric: number;
+  crystalShard: number;
+}
+
+export interface CraftingQueueItemData {
+  id: string;
+  recipeId: string;
+  recipeName?: string;
+  startedAt: string;
+  completesAt: string;
+  claimed: boolean;
+}
+
+// §10 Passport & Achievements
+export interface AchievementStampData {
+  id: string;
+  stamp: string;
+  earnedAt: string;
+}
+
+export interface PassportData {
+  userId: string;
+  username: string;
+  joinDate: string;
+  isVIP: boolean;
+  frameId: string;
+  stamps: AchievementStampData[];
+  fishCount: number;
+  totalTips: number;
+  completedTrades: number;
+}
+
+// §11 Loft Ambient Moods
+export type MoodId =
+  | 'day'
+  | 'dusk'
+  | 'night'
+  | 'cyber_neon'
+  | 'golden_hour'
+  | 'haunted'
+  | 'arctic'
+  | 'cozy_evening';
+
+// §12 Seasonal Events
+export interface SeasonalEventData {
+  id: string;
+  name: string;
+  theme: string;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+}
+
+// §13 Clubs
+export type ClubRole = 'OWNER' | 'OFFICER' | 'MEMBER';
+
+export interface ClubData {
+  id: string;
+  name: string;
+  motto?: string | null;
+  tag?: string | null;
+  ownerId: string;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface ClubMemberData {
+  id: string;
+  clubId: string;
+  userId: string;
+  username?: string;
+  role: ClubRole;
+  joinedAt: string;
+}
+
+// §15 Daily Quests
+export interface DailyQuestProgressData {
+  id: string;
+  questId: string;
+  title: string;
+  description: string;
+  progress: number;
+  goal: number;
+  completed: boolean;
+  rewardCoins: number;
+  rewardGems: number;
+}
+
+// §16 Photo Gallery
+export interface GalleryPhotoData {
+  id: string;
+  authorId: string;
+  authorName: string;
+  imageUrl: string;
+  caption?: string | null;
+  likes: number;
+  roomName: string;
+  createdAt: string;
+  isLikedByMe?: boolean;
 }
