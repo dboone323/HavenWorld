@@ -1,0 +1,49 @@
+name: Deploy Server to Oracle VM
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/server/**', 'packages/shared/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter server lint
+
+      - run: pnpm --filter server test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH Deploy to Oracle VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            cd /opt/havenworld
+            git pull origin main
+            pnpm install --frozen-lockfile
+            cd apps/server
+            npx prisma migrate deploy
+            pnpm build
+            pm2 restart havenworld-server || pm2 start dist/index.js --name havenworld-server
+            pm2 save

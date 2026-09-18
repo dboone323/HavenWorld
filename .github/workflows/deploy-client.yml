@@ -1,0 +1,33 @@
+name: Deploy Client to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/client/**', 'packages/shared/**']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter client build
+
+      - uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: havenworld
+          directory: apps/client/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

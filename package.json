@@ -1,85 +1,19 @@
 {
   "name": "havenworld",
-  "version": "0.1.0",
-  "description": "Cozy social virtual world hybrid of MegaPlanet and YoWorld",
-  "main": "electron/main.js",
-  "type": "module",
-  "scripts": {
-    "start": "node src/server/server.ts",
-    "dev": "concurrently \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "node --watch src/server/server.ts",
-    "dev:web": "vite",
-    "lint": "node --check src/server/server.ts && node --check src/server/db.ts && node --check src/server/rooms.ts && node --check src/server/moderation.ts && node --check src/server/protocol.ts",
-    "tsc": "tsc --noEmit",
-    "test": "DB_FORCE_SQLITE=1 node --test tests/admin-dashboard.test.mjs tests/audio.test.mjs tests/authority.test.mjs tests/chat.test.mjs tests/chat-refinements.test.mjs tests/club-haven.test.mjs tests/db.test.mjs tests/dual-currency.test.mjs tests/emotes.test.mjs tests/fishing-activity.test.mjs tests/fishing.test.mjs tests/guestbook.test.mjs tests/identity-integration.mjs tests/identity-status.test.mjs tests/identity.test.mjs tests/invite-system.test.mjs tests/iso.test.mjs tests/loft-permissions.test.mjs tests/marketplace.test.mjs tests/moderation.test.mjs tests/movement.test.mjs tests/passport.test.mjs tests/pathfinding.test.mjs tests/pet-ai.test.mjs tests/pizza.test.mjs tests/protocol.test.mjs tests/pwa.test.mjs tests/recycling-crafting.test.mjs tests/rooms.test.mjs tests/rotation-expansion.test.mjs tests/sharding.test.mjs tests/spatial.test.mjs tests/trade.test.mjs tests/viewport-3d.test.mjs && node tests/integration-runner.mjs",
-    "test:watch": "node --test --watch tests/*.test.mjs tests/identity-*.mjs",
-    "test:integration": "node tests/integration-runner.mjs",
-    "test:browser": "node tests/browser-integration.test.mjs && node tests/browser-full.test.mjs && node tests/identity-browser.mjs && node tests/browser-loft-economy.mjs",
-    "test:coverage": "c8 sh -c 'node --test tests/*.test.mjs tests/identity-*.mjs && node tests/integration-runner.mjs'",
-    "ci": "npm run test",
-    "pack:web": "vite build && cp -f src/client/sw.js src/client/manifest.webmanifest src/client/icon.svg dist/",
-    "build:web": "vite build && cp -f src/client/sw.js src/client/manifest.webmanifest src/client/icon.svg dist/",
-    "pack:desktop": "electron .",
-    "dev:desktop": "electron .",
-    "build:desktop": "electron-builder build",
-    "cap": "cap",
-    "cap:ios": "cap add ios && cap sync ios",
-    "cap:dev": "cap sync ios && cap open ios"
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "ws": "^8.18.0"
-  },
-  "keywords": [
-    "virtual-world",
-    "social-mmo",
-    "yoworld",
-    "megaplanet",
-    "miniplanet",
-    "cozy-games",
-    "websockets",
-    "html5-canvas",
-    "supabase",
-    "cloudflare"
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
   ],
-  "author": "Daniel Stevens",
-  "license": "MIT",
-  "devDependencies": {
-    "@capacitor/android": "^7.0.0",
-    "@capacitor/cli": "^7.0.0",
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/ios": "^7.0.0",
-    "@types/express": "^5.0.6",
-    "@types/ws": "^8.18.1",
-    "c8": "^12.0.0",
-    "concurrently": "^10.0.5",
-    "electron": "^44.4.1",
-    "electron-builder": "^26.0.0",
-    "electron-updater": "^6.8.9",
-    "playwright": "^1.63.0",
-    "typescript": "^5.6.3",
-    "vite": "^8.3.0"
-  },
-  "build": {
-    "appId": "com.havenworld.game",
-    "productName": "HavenWorld",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "src/server/**/*",
-      "src/shared/**/*",
-      "package.json",
-      "package-lock.json",
-      "tsconfig.json"
-    ],
-    "extraMetadata": {
-      "main": "electron/main.js"
-    },
-    "asar": true
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm --filter './apps/*' build",
+    "test": "pnpm --filter './apps/*' test",
+    "lint": "pnpm --filter './apps/*' lint"
   }
 }
