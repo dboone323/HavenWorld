@@ -36,14 +36,14 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ORACLE_HOST }}
-          username: ubuntu
+          username: havenworld
           key: ${{ secrets.ORACLE_SSH_KEY }}
           script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             cd /opt/havenworld
             git pull origin main
             pnpm install --frozen-lockfile
-            cd apps/server
-            npx prisma migrate deploy
             pnpm build
-            pm2 restart havenworld-server || pm2 start dist/index.js --name havenworld-server
+            pm2 restart havenworld-server || pm2 start ecosystem.config.js
             pm2 save
