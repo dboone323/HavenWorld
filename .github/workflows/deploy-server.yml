@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths: ['apps/server/**', 'packages/shared/**']
+  workflow_dispatch:
 
 jobs:
   test:
