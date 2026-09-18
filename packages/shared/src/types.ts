@@ -1,53 +1,53 @@
+// Section 5.2 Core Data Models
+
 export interface AvatarData {
-  gender?: string;
-  skinTone?: string;
-  body?: string;
-  eyes?: string;
-  hairStyle?: string;
-  hairColor?: string;
-  clothingTop?: string;
-  clothingBottom?: string;
-  shoes?: string;
-  accessory?: string;
-  layers?: Record<string, string>;
+  hair:        string;
+  eyes:        string;
+  top:         string;
+  bottom:      string;
+  shoes:       string;
+  hat:         string;
+  accessory:   string;
+  skinTone:    string;
 }
+
+export type Direction = 'down' | 'up' | 'left' | 'right';
 
 export interface PlayerState {
-  id: string;
-  username: string;
-  x: number;
-  y: number;
-  facing?: 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
-  state?: 'idle' | 'walking' | 'sitting' | 'dancing';
-  roomId?: string;
-  avatar: AvatarData;
-}
-
-export interface RoomFurniture {
-  id: string;
-  itemId: string;
-  x: number;
-  y: number;
-  rotation: number;
-}
-
-export interface RoomData {
-  id: string;
-  name: string;
-  type: 'public' | 'personal';
-  capacity: number;
-  tilemap?: string;
-  players: Record<string, PlayerState>;
-  furniture: RoomFurniture[];
+  id:         string;
+  username:   string;
+  x:          number;
+  y:          number;
+  direction:  Direction;
+  isMoving:   boolean;
+  avatar:     AvatarData;
+  roomId:     string;
 }
 
 export interface ChatMessage {
-  id: string;
-  senderId: string;
-  senderName: string;
-  roomId: string;
-  message: string;
+  id:        string;
+  playerId:  string;
+  username:  string;
+  text:      string;
   timestamp: number;
-  isWhisper?: boolean;
-  targetId?: string;
+  roomId:    string;
+}
+
+export interface FurnitureState {
+  id:       string;
+  type:     string;
+  x:        number;
+  y:        number;
+  depth:    number;
+  ownerId:  string;
+}
+
+export interface RoomData {
+  id:          string;
+  name:        string;
+  map:         string;   // tilemap key e.g. 'lobby', 'park'
+  ownerId:     string | null;
+  capacity:    number;
+  players:     PlayerState[];
+  furniture:   FurnitureState[];
 }
