@@ -21,10 +21,91 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
       status: true,
       createdAt: true,
       lastLoginAt: true,
+      havenCoins: true,
+      havenGems: true,
+      isVIP: true,
     },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  return res.json(user);
+  return res.json({
+    ...user,
+    coinBalance: user.havenCoins,
+  });
+});
+
+// POST /api/users/daily-claim — claim daily login reward
+router.post('/daily-claim', requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.user!.userId;
+  const now = new Date();
+
+  // Find or create daily login streak record
+  let streak = await prisma.dailyLoginStreak.findUnique({
+    where: { userId },
+  });
+
+  if (streak) {
+    const lastDate = new Date(streak.lastLoginDate);
+    const isSameDay =
+      lastDate.getFullYear() === now.getFullYear() &&
+      lastDate.getMonth() === now.getMonth() &&
+      lastDate.getDate() === now.getDate();
+
+    if (isSameDay) {
+      return res.json({
+        alreadyClaimed: true,
+        streak: streak.currentStreak,
+        coinsAwarded: 0,
+      });
+    }
+
+    // Check if streak was missed (more than 48h)
+    const diffHours = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
+    const newStreak = diffHours <= 48 ? streak.currentStreak + 1 : 1;
+    const coinsAwarded = Math.min(newStreak, 7) * 20;
+
+    streak = await prisma.dailyLoginStreak.update({
+      where: { userId },
+      data: {
+        currentStreak: newStreak,
+        longestStreak: Math.max(newStreak, streak.longestStreak),
+        lastLoginDate: now,
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { havenCoins: { increment: coinsAwarded } },
+    });
+
+    return res.json({
+      alreadyClaimed: false,
+      streak: newStreak,
+      coinsAwarded,
+    });
+  } else {
+    const newStreak = 1;
+    const coinsAwarded = 20;
+
+    streak = await prisma.dailyLoginStreak.create({
+      data: {
+        userId,
+        currentStreak: newStreak,
+        longestStreak: newStreak,
+        lastLoginDate: now,
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { havenCoins: { increment: coinsAwarded } },
+    });
+
+    return res.json({
+      alreadyClaimed: false,
+      streak: newStreak,
+      coinsAwarded,
+    });
+  }
 });
 
 // GET /api/users/me/avatar — current user avatar config

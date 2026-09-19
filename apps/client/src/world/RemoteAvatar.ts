@@ -9,7 +9,8 @@ import {
   Scalar,
 } from '@babylonjs/core';
 import { AdvancedDynamicTexture, TextBlock, Rectangle } from '@babylonjs/gui';
-import type { AvatarData, UserProfile } from './AvatarController';
+import type { AvatarData } from '@havenworld/shared';
+import type { UserProfile } from './AvatarController';
 
 export class RemoteAvatar {
   public rootMesh: TransformNode;
@@ -78,6 +79,8 @@ export class RemoteAvatar {
 
     body.material = mat;
     head.material = mat;
+    body.metadata = { isRemoteAvatar: true, userId: this.userId, username: this.username };
+    head.metadata = { isRemoteAvatar: true, userId: this.userId, username: this.username };
     this._meshes = [body, head];
   }
 

@@ -25,9 +25,13 @@ import passportRoutes from './routes/passport';
 import galleryRoutes from './routes/gallery';
 import questRoutes from './routes/quests';
 import clubRoutes from './routes/clubs';
+import workshopRoutes from './routes/workshop';
 import testRoutes from './routes/testRoutes';
 import { PetManager } from './services/PetManager';
+import { FishingService } from './services/FishingService';
+import { ShopService } from './services/ShopService';
 import { registerSocketHandlers } from './sockets';
+import cron from 'node-cron';
 
 export const SERVER_CONFIG = {
   port: parseInt(process.env.PORT ?? '3000', 10),
@@ -103,6 +107,7 @@ app.use('/api/passport', passportRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/quests', questRoutes);
 app.use('/api/clubs', clubRoutes);
+app.use('/api/workshop', workshopRoutes);
 
 if (process.env.NODE_ENV === 'test') {
   app.use('/api/test', testRoutes);
@@ -128,6 +133,22 @@ async function start() {
 
     // Initialize autonomous systems
     PetManager.init();
+
+    // ── Scheduled Cron Jobs ───────────────────────────────────────────────────
+    // Weekly fishing leaderboard reset: Sunday midnight
+    cron.schedule('0 0 * * 0', () => {
+      FishingService.resetWeeklyLeaderboard();
+    });
+
+    // Hourly pet happiness & hunger decay
+    cron.schedule('0 * * * *', () => {
+      PetManager.decayAllPets();
+    });
+
+    // Flash sale check: every 30 minutes
+    cron.schedule('*/30 * * * *', () => {
+      ShopService.processFlashSales();
+    });
 
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] HavenWorld listening on port ${PORT}`);

@@ -7,6 +7,7 @@ import {
   HemisphericLight,
   DirectionalLight,
   ShadowGenerator,
+  PointerEventTypes,
 } from '@babylonjs/core';
 import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
@@ -23,6 +24,16 @@ import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
+import { API_URL } from '../config';
+import { DailyLoginModal } from '../ui/DailyLoginModal';
+import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
+import { showToast } from '../ui/ToastNotification';
+import { AvatarContextMenu } from '../ui/AvatarContextMenu';
+import { PetController } from '../pets/PetController';
+import { PetManagementPanel } from '../ui/PetManagementPanel';
+import { WorkshopPanel } from '../ui/WorkshopPanel';
+import { ClubPanel } from '../clubs/ClubPanel';
+import { GalleryPanel } from '../gallery/GalleryPanel';
 
 export async function createRoomScene(haven: HavenEngine, data?: { roomId?: string }): Promise<Scene> {
   const scene = new Scene(haven.engine);
@@ -82,7 +93,8 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   const roomLoader = new RoomLoader(scene);
   let roomMeshes: import('@babylonjs/core').AbstractMesh[] = [];
   try {
-    roomMeshes = await roomLoader.load(roomId);
+    const loadResult = await roomLoader.load(roomId);
+    roomMeshes = loadResult.allMeshes || [];
     if (roomMeshes.length === 0) {
       roomMeshes = createPlaceholderRoom(scene);
     }
@@ -114,11 +126,12 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   await avatarController.init();
 
   // Camera smooth follow
-  const cameraFollowObserver = scene.registerBeforeRender(() => {
+  const cameraFollowCallback = () => {
     if (avatarController.rootMesh) {
       camera.target = Vector3.Lerp(camera.target, avatarController.rootMesh.position, 0.1);
     }
-  });
+  };
+  scene.registerBeforeRender(cameraFollowCallback);
 
   // ── Remote Avatars ────────────────────────────────────────────────────────
   const remoteAvatars = new Map<string, RemoteAvatar>();
@@ -183,6 +196,51 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     btnDecorate.classList.add('hidden');
   }
 
+  // ── Subscriptions & Cleanup array ─────────────────────────────────────────
+  const unsubs: Array<() => void> = [];
+
+  // ── Coin Balance HUD ─────────────────────────────────────────────────────
+  const coinAmount = document.getElementById('coin-amount');
+  authService.getToken().then((tokenVal) => {
+    if (coinAmount && tokenVal) {
+      fetch(`${API_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${tokenVal}` },
+      })
+        .then((r) => r.json())
+        .then((me) => {
+          if (typeof me?.coinBalance === 'number') {
+            coinAmount.textContent = String(me.coinBalance);
+          }
+        })
+        .catch(() => { /* non-critical */ });
+    }
+  });
+
+  // ── Daily Login Streak Modal ──────────────────────────────────────────────
+  // Fires POST /api/users/daily-claim — shows modal only if today's reward wasn't collected yet
+  DailyLoginModal.tryShow().catch(() => { /* non-critical */ });
+
+  // ── Loft Settings Button (owner only) ────────────────────────────────────
+  const btnLoftSettings = document.getElementById('btn-loft-settings');
+  let loftSettings: LoftSettingsPanel | null = null;
+  if (isOwner && btnLoftSettings) {
+    btnLoftSettings.classList.remove('hidden');
+    loftSettings = new LoftSettingsPanel({
+      roomId,
+      ownerId: user.id,
+      onPrivacyChange: (mode, password) => {
+        socketService.emit(SOCKET_EVENTS.SET_ROOM_PRIVACY, { roomId, mode, password });
+      },
+      onMoodChange: (mood) => {
+        socketService.emit(SOCKET_EVENTS.SET_ROOM_MOOD, { roomId, mood });
+        moodSystem.applyMood(mood);
+      },
+    });
+    btnLoftSettings.addEventListener('click', () => loftSettings?.show());
+  } else if (btnLoftSettings) {
+    btnLoftSettings.classList.add('hidden');
+  }
+
   // ── Phase 3: Fishing Dock ────────────────────────────────────────────────
   const btnFishing = document.getElementById('btn-fishing');
   const isPark = roomId === 'room-park';
@@ -199,12 +257,48 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     btnFishing.classList.add('hidden');
   }
 
+  // ── Pet Companion UI & Controller ────────────────────────────────────────
+  const btnPets = document.getElementById('btn-pets');
+  const petHandler = () => {
+    PetManagementPanel.show();
+  };
+  if (btnPets) {
+    btnPets.addEventListener('click', petHandler);
+  }
+
+  // ── Workshop, Clubs, Gallery Navigation Buttons ───────────────────────────
+  const btnWorkshop = document.getElementById('btn-workshop');
+  const workshopHandler = () => WorkshopPanel.show();
+  btnWorkshop?.addEventListener('click', workshopHandler);
+
+  const btnClubs = document.getElementById('btn-clubs');
+  const clubsHandler = () => ClubPanel.show();
+  btnClubs?.addEventListener('click', clubsHandler);
+
+  const btnGallery = document.getElementById('btn-gallery');
+  const galleryHandler = () => GalleryPanel.show();
+  btnGallery?.addEventListener('click', galleryHandler);
+
+  let localPet: PetController | null = null;
+  // Listen for pet adoption event to spawn pet live
+  unsubs.push(
+    socketService.on<{ id: string; petType: any; name: string; happiness: number; hunger: number }>(
+      SOCKET_EVENTS.PET_ADOPTED,
+      (pet) => {
+        if (localPet) localPet.dispose();
+        if (avatarController.rootMesh) {
+          localPet = new PetController(scene, pet, avatarController.rootMesh);
+        }
+      }
+    )
+  );
+
   // ── Phase 3: Loft Ambient Moods ──────────────────────────────────────────
   const moodSystem = new MoodSystem(scene);
 
   // ── Phase 3: Procedural Footstep Audio Loop ──────────────────────────────
   let footstepTimer = 0;
-  const footstepObserver = scene.registerBeforeRender(() => {
+  const footstepCallback = () => {
     if (avatarController.isMoving) {
       footstepTimer += scene.getEngine().getDeltaTime();
       if (footstepTimer >= 350) {
@@ -212,15 +306,62 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
         footstepTimer = 0;
       }
     }
-  });
+  };
+  scene.registerBeforeRender(footstepCallback);
 
   // ── Input & Chat Controllers ──────────────────────────────────────────────
   const inputController = new InputController(scene, avatarController, camera);
-  const chatOverlay = new ChatOverlay((msg: ChatMessage) => {
+  const chatOverlay = new ChatOverlay(null, (msg: ChatMessage) => {
     audioEngine.playChatMessage();
-    const remote = remoteAvatars.get(msg.playerId);
-    if (remote) {
-      remote.showSpeech(msg.text);
+    const pid = msg.playerId || msg.senderId;
+    const txt = msg.text || msg.content;
+    if (pid && txt) {
+      const remote = remoteAvatars.get(pid);
+      if (remote) {
+        remote.showSpeech(txt);
+      }
+    }
+  });
+
+  // ── Interaction & Context Menu Pointer Observable ────────────────────────
+  const pointerObserver = scene.onPointerObservable.add((pointerInfo) => {
+    // Right-click on meshes (POINTERDOWN with right button or POINTERTAP)
+    if (pointerInfo.type === PointerEventTypes.POINTERDOWN && pointerInfo.event.button === 2) {
+      const pick = scene.pick(scene.pointerX, scene.pointerY);
+      if (pick?.hit && pick.pickedMesh) {
+        const meta = pick.pickedMesh.metadata;
+        if (meta?.isRemoteAvatar && meta?.userId && meta?.username) {
+          AvatarContextMenu.show({
+            x: pointerInfo.event.clientX,
+            y: pointerInfo.event.clientY,
+            targetUserId: meta.userId,
+            targetUsername: meta.username,
+          });
+        }
+      }
+    }
+
+    // Left-click on interactive trigger meshes
+    if (pointerInfo.type === PointerEventTypes.POINTERPICK) {
+      const meshName = pointerInfo.pickInfo?.pickedMesh?.name;
+      if (!meshName) return;
+
+      if (meshName.includes('fishing_dock') || meshName === 'fishing-dock') {
+        fishingController.startFishing(roomId);
+      } else if (meshName.includes('loft_door') || meshName === 'loft-door') {
+        socketService.emit(SOCKET_EVENTS.RING_DOORBELL, { roomId });
+        audioEngine.playDoorbell();
+        showToast({ icon: '🔔', title: 'Doorbell Rang', subtitle: 'Waiting for owner to answer...' });
+      } else if (meshName.includes('guestbook') || meshName === 'guestbook-mesh') {
+        socketService.emit(SOCKET_EVENTS.GET_GUESTBOOK, { roomId, page: 1 });
+      } else if (meshName.includes('tip_jar') || meshName === 'tip-jar-mesh') {
+        const amount = prompt('Enter tip amount in Haven Coins:');
+        if (amount && parseInt(amount, 10) > 0) {
+          socketService.emit(SOCKET_EVENTS.TIP_OWNER, { roomId, amount: parseInt(amount, 10) });
+        }
+      } else if (meshName.includes('pizza_station') || meshName === 'pizza-station') {
+        document.getElementById('btn-pizza')?.click();
+      }
     }
   });
 
@@ -234,15 +375,10 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   window.addEventListener('keydown', onKeyDown);
 
   // ── Socket Multiplayer Sync ───────────────────────────────────────────────
-  const token = authService.token || authService.getToken() || '';
-  if (token) {
-    socketService.connect(token);
-  }
+  socketService.connect();
 
   // Join room on server
   socketService.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId });
-
-  const unsubs: Array<() => void> = [];
 
   // Initial room state (players list)
   unsubs.push(
@@ -265,8 +401,8 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     })
   );
   unsubs.push(
-    socketService.on<{ userId: string; username: string; position: { x: number; y: number; z: number; rotY: number }; avatarData?: any }>(
-      'player:join',
+    socketService.on<any>(
+      'player:join' as any,
       (p) => {
         if (!p || p.userId === user.id) return;
         addOrUpdateRemoteAvatar({
@@ -405,6 +541,33 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     )
   );
 
+  // Achievement Unlocked Toast
+  unsubs.push(
+    socketService.on<{ title: string; description?: string; badgeIcon?: string }>(
+      SOCKET_EVENTS.ACHIEVEMENT_UNLOCKED,
+      (data) => {
+        showToast({
+          icon: data.badgeIcon || '🏆',
+          title: 'Achievement Unlocked!',
+          subtitle: data.title + (data.description ? ` — ${data.description}` : ''),
+        });
+      }
+    )
+  );
+
+  // Daily / Coins Reward Update
+  unsubs.push(
+    socketService.on<{ coins: number }>(
+      SOCKET_EVENTS.DAILY_REWARD,
+      (data) => {
+        const coinAmountEl = document.getElementById('coin-amount');
+        if (coinAmountEl && typeof data.coins === 'number') {
+          coinAmountEl.textContent = String(data.coins);
+        }
+      }
+    )
+  );
+
   // ── Disposal & Cleanup ────────────────────────────────────────────────────
   scene.onDisposeObservable.add(() => {
     window.removeEventListener('keydown', onKeyDown);
@@ -416,11 +579,23 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       btnFishing.removeEventListener('click', startFishingHandler);
       btnFishing.classList.add('hidden');
     }
-    if (cameraFollowObserver) {
-      scene.unregisterBeforeRender(cameraFollowObserver);
+    if (btnPets) {
+      btnPets.removeEventListener('click', petHandler);
     }
-    if (footstepObserver) {
-      scene.unregisterBeforeRender(footstepObserver);
+    if (btnWorkshop) {
+      btnWorkshop.removeEventListener('click', workshopHandler);
+    }
+    if (btnClubs) {
+      btnClubs.removeEventListener('click', clubsHandler);
+    }
+    if (btnGallery) {
+      btnGallery.removeEventListener('click', galleryHandler);
+    }
+    localPet?.dispose();
+    scene.unregisterBeforeRender(cameraFollowCallback);
+    scene.unregisterBeforeRender(footstepCallback);
+    if (pointerObserver) {
+      scene.onPointerObservable.remove(pointerObserver);
     }
     for (const unsub of unsubs) {
       unsub();

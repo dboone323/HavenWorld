@@ -73,4 +73,29 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// POST /api/clubs/:id/join — join an existing open club
+router.post('/:id/join', requireAuth, async (req: AuthRequest, res) => {
+  const clubId = req.params.id as string;
+  const userId = req.user!.userId;
+
+  try {
+    const existing = await prisma.clubMember.findUnique({ where: { userId } });
+    if (existing) return res.status(400).json({ error: 'You are already a member of a club' });
+
+    const memberCount = await prisma.clubMember.count({ where: { clubId } });
+    if (memberCount >= 50) return res.status(400).json({ error: 'Club is full (max 50 members)' });
+
+    const member = await prisma.clubMember.create({
+      data: {
+        clubId,
+        userId,
+        role: 'MEMBER',
+      },
+    });
+    return res.status(201).json(member);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Failed to join club' });
+  }
+});
+
 export default router;

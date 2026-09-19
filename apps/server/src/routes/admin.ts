@@ -7,9 +7,9 @@ import { prisma } from '../prisma';
 
 const router = Router();
 
-// All admin routes require authentication + fresh DB ADMIN role verification
+// All admin routes require authentication + ADMIN or MODERATOR role (from live DB read on sensitive routes)
 router.use(requireAuth);
-router.use(requireAdmin);
+router.use(requireRole(['ADMIN', 'MODERATOR']));
 
 // ── INVITE CODE MANAGEMENT (ADMIN only) ──────────────────────────────────────
 const generateInviteSchema = z.object({

@@ -192,4 +192,32 @@ export class PetManager {
       });
     }
   }
+
+  /**
+   * Hourly decay of hunger and happiness across all pets in the database
+   */
+  static async decayAllPets(): Promise<void> {
+    try {
+      // Decrement hunger and happiness by 5, clamped at 0
+      const pets = await prisma.pet.findMany({
+        select: { id: true, hunger: true, happiness: true },
+      });
+
+      for (const pet of pets) {
+        const newHunger = Math.max(0, pet.hunger - 5);
+        const newHappiness = Math.max(0, pet.happiness - 3);
+
+        await prisma.pet.update({
+          where: { id: pet.id },
+          data: {
+            hunger: newHunger,
+            happiness: newHappiness,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[PetManager] Error decaying pet stats:', err);
+    }
+  }
 }
+

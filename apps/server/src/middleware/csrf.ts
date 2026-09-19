@@ -48,20 +48,19 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   const cookieToken = req.cookies?.csrf_token;
   const headerToken = req.headers['x-csrf-token'];
 
-  // If client has csrf_token cookie or refresh_token cookie, enforce CSRF validation
-  if (cookieToken || req.cookies?.refresh_token) {
-    if (!cookieToken || !headerToken) {
-      res.status(403).json({ error: 'CSRF_TOKEN_MISSING' });
-      return;
-    }
+  // Always enforce CSRF double-submit on every state-changing request.
+  // Login/register are bypassed above (they issue the initial token).
+  if (!cookieToken || !headerToken) {
+    res.status(403).json({ error: 'CSRF_TOKEN_MISSING' });
+    return;
+  }
 
-    const cookieBuf = Buffer.from(String(cookieToken), 'utf8');
-    const headerBuf = Buffer.from(String(headerToken), 'utf8');
+  const cookieBuf = Buffer.from(String(cookieToken), 'utf8');
+  const headerBuf = Buffer.from(String(headerToken), 'utf8');
 
-    if (cookieBuf.length !== headerBuf.length || !crypto.timingSafeEqual(cookieBuf, headerBuf)) {
-      res.status(403).json({ error: 'CSRF_TOKEN_INVALID' });
-      return;
-    }
+  if (cookieBuf.length !== headerBuf.length || !crypto.timingSafeEqual(cookieBuf, headerBuf)) {
+    res.status(403).json({ error: 'CSRF_TOKEN_INVALID' });
+    return;
   }
 
   next();

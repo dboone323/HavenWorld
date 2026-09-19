@@ -15,6 +15,19 @@ updates:
     labels:
       - 'dependencies'
       - 'security'
+    groups:
+      patch-updates:
+        update-types:
+          - 'patch'
+    ignore:
+      - dependency-name: 'socket.io'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
+      - dependency-name: 'socket.io-client'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
 
   # Maintain GitHub Actions dependencies
   - package-ecosystem: 'github-actions'

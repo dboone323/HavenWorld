@@ -259,4 +259,23 @@ export class ShopService {
       return giftRecord;
     });
   }
+
+  /**
+   * Process rotating flash sales or sales events
+   */
+  static async processFlashSales(): Promise<void> {
+    try {
+      const io = getIO();
+      const featured = getFeaturedItems();
+      if (io && featured.length > 0) {
+        io.emit(SOCKET_EVENTS.FLASH_SALE_START, {
+          featuredItem: featured[0],
+          endsInMs: getEpochRemainingMs(),
+        });
+      }
+    } catch (err) {
+      console.error('[ShopService] Error processing flash sales:', err);
+    }
+  }
 }
+

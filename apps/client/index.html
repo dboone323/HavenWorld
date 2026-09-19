@@ -94,6 +94,11 @@
     <button id="btn-decorate" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-decorate">🛋️ Decorate</button>
     <button id="btn-fishing" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-fishing">🎣 Go Fishing</button>
     <button id="btn-pizza" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-pizza">🍕 Pizza Chef</button>
+    <button id="btn-workshop" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-workshop">🔨 Workshop</button>
+    <button id="btn-pets" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-pets">🐾 Pets</button>
+    <button id="btn-clubs" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-clubs">🏰 Clubs</button>
+    <button id="btn-gallery" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-gallery">📷 Gallery</button>
+    <button id="btn-loft-settings" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-loft-settings">⚙️ Settings</button>
     <button id="btn-shop" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-shop">🛍️ Emporium</button>
     <button id="btn-passport" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-passport">🛂 Passport</button>
     <button id="btn-avatar" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-avatar">👗 Wardrobe</button>
@@ -101,10 +106,18 @@
   </div>
 
   <!-- ══ Player Card (in-game top right) ═══════════════════════════════════ -->
-  <div id="player-card" class="hidden" data-testid="player-card">
+  <div id="player-card" class="hidden" data-testid="player-card" style="display: flex; gap: 0.5rem; align-items: center;">
     <span>🌿</span>
     <span class="player-card__username" data-testid="player-card-username"></span>
+    <span id="coin-balance" class="player-card__coins" style="margin-left: 0.5rem; font-weight: 600; color: #ffd700;">🪙 <span id="coin-amount">100</span></span>
   </div>
+
+  <!-- ══ Modals & Panels ═══════════════════════════════════════════════════ -->
+  <div id="workshop-panel" class="hidden" data-testid="workshop-panel"></div>
+  <div id="pet-panel" class="hidden" data-testid="pet-panel"></div>
+  <div id="club-panel" class="hidden" data-testid="club-panel"></div>
+  <div id="gallery-panel" class="hidden" data-testid="gallery-panel"></div>
+  <div id="loft-settings-panel" class="hidden" data-testid="loft-settings-panel"></div>
 
   <!-- ══ Chat Panel ════════════════════════════════════════════════════════ -->
   <div id="chat-panel" class="hidden" data-testid="chat-panel">

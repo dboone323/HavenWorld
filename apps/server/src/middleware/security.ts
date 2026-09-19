@@ -46,7 +46,7 @@ export const apiRateLimiter = rateLimit({
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'test' ? 500 : 60,
+  max: process.env.NODE_ENV === 'test' ? 500 : 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'AUTH_RATE_LIMIT_EXCEEDED', retryAfter: 900 },
@@ -77,7 +77,7 @@ export function applySecurityMiddleware(app: Application): void {
     helmet({
       contentSecurityPolicy: false, // CSP managed at Nginx layer
       hsts: false, // HSTS managed at Nginx layer with preload
-      crossOriginEmbedderPolicy: false, // Permissive for game assets
+      crossOriginEmbedderPolicy: true, // Required for SharedArrayBuffer / game asset isolation
     })
   );
 

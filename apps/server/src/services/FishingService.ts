@@ -243,4 +243,39 @@ export class FishingService {
       },
     });
   }
+
+  /**
+   * Resets the weekly leaderboard: rewards top 3 fishers and archives/clears
+   */
+  static async resetWeeklyLeaderboard(): Promise<void> {
+    try {
+      const topCatches = await this.getWeeklyLeaderboard();
+      if (topCatches.length > 0) {
+        // Award prize coins to top 3
+        const prizes = [500, 250, 100];
+        for (let i = 0; i < Math.min(topCatches.length, 3); i++) {
+          const winner = topCatches[i];
+          const prize = prizes[i];
+          await prisma.user.update({
+            where: { id: winner.userId },
+            data: { havenCoins: { increment: prize } },
+          });
+        }
+      }
+
+      // Reset leaderboard entries for the upcoming week
+      const startOfWeek = new Date();
+      startOfWeek.setUTCHours(0, 0, 0, 0);
+      startOfWeek.setUTCDate(startOfWeek.getUTCDate() - startOfWeek.getUTCDay());
+
+      await prisma.fishingLeaderboard.deleteMany({
+        where: {
+          weekOf: { lt: startOfWeek },
+        },
+      });
+      console.log('[FishingService] Weekly leaderboard reset successfully');
+    } catch (err) {
+      console.error('[FishingService] Error resetting weekly leaderboard:', err);
+    }
+  }
 }

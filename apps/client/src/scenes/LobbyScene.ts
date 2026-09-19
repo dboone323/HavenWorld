@@ -88,7 +88,7 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
           headers: { Authorization: `Bearer ${token}` },
           credentials: 'include',
         }),
-        fetch(`${SERVER}/api/rooms?type=lofts`, {
+        fetch(`${SERVER_URL}/api/rooms?type=lofts`, {
           headers: { Authorization: `Bearer ${token}` },
           credentials: 'include',
         }),

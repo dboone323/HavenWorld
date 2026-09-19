@@ -43,8 +43,11 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             cd /opt/havenworld
-            git pull origin main
+            sudo -u havenworld git pull origin main
             pnpm install --frozen-lockfile
-            pnpm build
+            pnpm --filter '@havenworld/shared' build
+            pnpm --filter server exec prisma migrate deploy
+            pnpm --filter server build
+            mkdir -p /opt/havenworld/logs
             pm2 restart havenworld-server || pm2 start ecosystem.config.js
             pm2 save

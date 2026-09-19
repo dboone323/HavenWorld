@@ -14,7 +14,6 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@babylonjs/havok'],
   },
-  assetsInlineLimit: 0,
   server: {
     port: 5173,
     headers: {
@@ -34,6 +33,7 @@ export default defineConfig({
     },
   },
   build: {
+    assetsInlineLimit: 0,
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {

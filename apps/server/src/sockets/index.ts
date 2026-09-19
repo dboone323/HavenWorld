@@ -6,6 +6,17 @@ import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import type { PlayerState, FurnitureState, AvatarData, ChatMessage } from '@havenworld/shared';
+import {
+  JoinRoomSchema, MoveSchema, ChatSchema,
+  FurniturePlaceSchema, FurnitureRemoveSchema,
+  CastLineSchema, ReelPositionSchema,
+  SetPrivacySchema, DoorbellSchema, DoorbellDecisionSchema, GrantDecoratorSchema,
+  GuestbookSignSchema, TipSchema, GetGuestbookSchema, DeleteGuestbookEntrySchema,
+  TradeRequestSchema, OfferItemSchema, OfferCoinsSchema,
+  AdoptPetSchema, NamePetSchema, FeedPetSchema,
+  PizzaOrderSchema, RecycleItemSchema, StartCraftSchema, ClaimCraftSchema,
+  SetMoodSchema, EmoteSchema, ClubChatSchema,
+} from './socketSchemas';
 import { FishingService } from '../services/FishingService';
 import { PrivacyManager } from '../services/PrivacyManager';
 import { GuestbookService } from '../services/GuestbookService';
@@ -114,7 +125,13 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── auth:join ─────────────────────────────────────────────────────────────
-    socket.on(SOCKET_EVENTS.AUTH_JOIN, async ({ roomId }: { roomId: string }) => {
+    socket.on(SOCKET_EVENTS.AUTH_JOIN, async (rawData: unknown) => {
+      const parsed = JoinRoomSchema.safeParse(rawData);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD', details: parsed.error.flatten() });
+        return;
+      }
+      const { roomId } = parsed.data;
       try {
         // Check ban status
         const dbUser = await prisma.user.findUnique({
@@ -298,15 +315,10 @@ export function registerSocketHandlers(io: Server): void {
     // ── player:move ───────────────────────────────────────────────────────────
     socket.on(
       SOCKET_EVENTS.PLAYER_MOVE,
-      (data: {
-        x: number;
-        y: number;
-        z?: number;
-        rotY?: number;
-        direction?: string;
-        roomId: string;
-        isMoving?: boolean;
-      }) => {
+      (rawData: unknown) => {
+        const parsed = MoveSchema.safeParse(rawData);
+        if (!parsed.success) return; // silently drop malformed move packets
+        const data = parsed.data;
         // Rate limit: max 20 position updates per second
         if (!checkMoveRateLimit(socket.id)) return;
 
@@ -381,7 +393,13 @@ export function registerSocketHandlers(io: Server): void {
     // ── chat:send ─────────────────────────────────────────────────────────────
     socket.on(
       SOCKET_EVENTS.CHAT_SEND,
-      async (data: { content: string; roomId?: string }) => {
+      async (rawData: unknown) => {
+        const parsed = ChatSchema.safeParse(rawData);
+        if (!parsed.success) {
+          socket.emit(SOCKET_EVENTS.CHAT_ERROR, { code: 'INVALID_PAYLOAD' });
+          return;
+        }
+        const data = parsed.data;
         // Rate limit: 5 messages per 3 seconds
         if (!checkRateLimit(socket.id, 5, 3000)) {
           socket.emit(SOCKET_EVENTS.CHAT_ERROR, {
@@ -531,21 +549,14 @@ export function registerSocketHandlers(io: Server): void {
     // ── furniture:place (Part 5B) ─────────────────────────────────────────────
     socket.on(
       SOCKET_EVENTS.FURNITURE_PLACE,
-      async (data: {
-        roomId: string;
-        placement: {
-          itemId: string;
-          x: number;
-          y: number;
-          z: number;
-          rotY?: number;
-          scaleX?: number;
-          scaleY?: number;
-          scaleZ?: number;
-        };
-      }) => {
+      async (rawData: unknown) => {
+        const parsed = FurniturePlaceSchema.safeParse(rawData);
+        if (!parsed.success) {
+          socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+          return;
+        }
+        const { roomId, placement } = parsed.data;
         try {
-          const { roomId, placement } = data;
           const room = await prisma.room.findUnique({ where: { id: roomId } });
           if (!room || room.ownerId !== userId) {
             socket.emit('error', { message: 'Not authorized to place furniture in this room' });
@@ -582,9 +593,14 @@ export function registerSocketHandlers(io: Server): void {
     // ── furniture:remove (Part 5B) ────────────────────────────────────────────
     socket.on(
       SOCKET_EVENTS.FURNITURE_REMOVE,
-      async (data: { roomId: string; furnitureId: string }) => {
+      async (rawData: unknown) => {
+        const parsed = FurnitureRemoveSchema.safeParse(rawData);
+        if (!parsed.success) {
+          socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+          return;
+        }
+        const { roomId, furnitureId } = parsed.data;
         try {
-          const { roomId, furnitureId } = data;
           const item = await prisma.roomFurniture.findUnique({
             where: { id: furnitureId },
           });
@@ -606,12 +622,16 @@ export function registerSocketHandlers(io: Server): void {
     );
 
     // ── Phase 3: Fishing Mini-Game (§1) ──────────────────────────────────────
-    socket.on(SOCKET_EVENTS.CAST_LINE, ({ roomId }: { roomId: string }) => {
-      FishingService.startSession(userId, roomId);
+    socket.on(SOCKET_EVENTS.CAST_LINE, (rawData: unknown) => {
+      const parsed = CastLineSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      FishingService.startSession(userId, parsed.data.roomId);
     });
 
-    socket.on(SOCKET_EVENTS.REEL_POSITION, ({ value }: { value: number }) => {
-      FishingService.updateReelPosition(userId, value);
+    socket.on(SOCKET_EVENTS.REEL_POSITION, (rawData: unknown) => {
+      const parsed = ReelPositionSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      FishingService.updateReelPosition(userId, parsed.data.value);
     });
 
     socket.on(SOCKET_EVENTS.CANCEL_FISHING, () => {
@@ -619,84 +639,104 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── Phase 3: Loft Privacy & Doorbell (§2) ────────────────────────────────
-    socket.on(SOCKET_EVENTS.RING_DOORBELL, async ({ roomId }: { roomId: string }) => {
+    socket.on(SOCKET_EVENTS.RING_DOORBELL, async (rawData: unknown) => {
+      const parsed = DoorbellSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PrivacyManager.ringDoorbell(userId, roomId);
+        await PrivacyManager.ringDoorbell(userId, parsed.data.roomId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Doorbell error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.DOORBELL_DECISION, async (data: { roomId: string; visitorId: string; admit: boolean }) => {
+    socket.on(SOCKET_EVENTS.DOORBELL_DECISION, async (rawData: unknown) => {
+      const parsed = DoorbellDecisionSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PrivacyManager.decideDoorbell(userId, data.visitorId, data.roomId, data.admit);
+        await PrivacyManager.decideDoorbell(userId, parsed.data.visitorId, parsed.data.roomId, parsed.data.admit);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Doorbell decision error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.SET_ROOM_PRIVACY, async (data: { roomId: string; mode: any; password?: string; awayMessage?: string }) => {
+    socket.on(SOCKET_EVENTS.SET_ROOM_PRIVACY, async (rawData: unknown) => {
+      const parsed = SetPrivacySchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PrivacyManager.setRoomPrivacy(userId, data.roomId, data.mode, data.password, data.awayMessage);
+        await PrivacyManager.setRoomPrivacy(userId, parsed.data.roomId, parsed.data.mode, parsed.data.password, parsed.data.awayMessage);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Privacy error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.GRANT_DECORATOR, async (data: { roomId: string; targetUserId: string }) => {
+    socket.on(SOCKET_EVENTS.GRANT_DECORATOR, async (rawData: unknown) => {
+      const parsed = GrantDecoratorSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PrivacyManager.grantDecorator(userId, data.roomId, data.targetUserId);
+        await PrivacyManager.grantDecorator(userId, parsed.data.roomId, parsed.data.targetUserId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Decorator grant error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.REVOKE_DECORATOR, async (data: { roomId: string; targetUserId: string }) => {
+    socket.on(SOCKET_EVENTS.REVOKE_DECORATOR, async (rawData: unknown) => {
+      const parsed = GrantDecoratorSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PrivacyManager.revokeDecorator(userId, data.roomId, data.targetUserId);
+        await PrivacyManager.revokeDecorator(userId, parsed.data.roomId, parsed.data.targetUserId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Decorator revoke error' });
       }
     });
 
     // ── Phase 3: Guestbook & Tip Jar (§3) ────────────────────────────────────
-    socket.on(SOCKET_EVENTS.SIGN_GUESTBOOK, async (data: { roomId: string; message: string }) => {
+    socket.on(SOCKET_EVENTS.SIGN_GUESTBOOK, async (rawData: unknown) => {
+      const parsed = GuestbookSignSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await GuestbookService.signBook(data.roomId, userId, data.message);
+        await GuestbookService.signBook(parsed.data.roomId, userId, parsed.data.message);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Guestbook error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.TIP_OWNER, async (data: { roomId: string; amount: number }) => {
+    socket.on(SOCKET_EVENTS.TIP_OWNER, async (rawData: unknown) => {
+      const parsed = TipSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit(SOCKET_EVENTS.TIP_ERROR, { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await GuestbookService.tipOwner(userId, data.roomId, data.amount);
+        await GuestbookService.tipOwner(userId, parsed.data.roomId, parsed.data.amount);
       } catch (err: any) {
         socket.emit(SOCKET_EVENTS.TIP_ERROR, { message: err?.message || 'Tip error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.GET_GUESTBOOK, async (data: { roomId: string; page?: number }) => {
+    socket.on(SOCKET_EVENTS.GET_GUESTBOOK, async (rawData: unknown) => {
+      const parsed = GetGuestbookSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        const pageData = await GuestbookService.getPage(data.roomId, data.page || 1);
+        const pageData = await GuestbookService.getPage(parsed.data.roomId, parsed.data.page);
         socket.emit(SOCKET_EVENTS.GUESTBOOK_PAGE, pageData);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Failed to load guestbook' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.DELETE_GUESTBOOK_ENTRY, async (data: { entryId: string }) => {
+    socket.on(SOCKET_EVENTS.DELETE_GUESTBOOK_ENTRY, async (rawData: unknown) => {
+      const parsed = DeleteGuestbookEntrySchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await GuestbookService.deleteEntry(data.entryId, userId);
+        await GuestbookService.deleteEntry(parsed.data.entryId, userId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Delete error' });
       }
     });
 
     // ── Phase 3: Anti-Scam P2P Trading (§5) ──────────────────────────────────
-    socket.on(SOCKET_EVENTS.TRADE_REQUEST, (data: { targetUserId: string }) => {
+    socket.on(SOCKET_EVENTS.TRADE_REQUEST, (rawData: unknown) => {
+      const parsed = TradeRequestSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        TradeManager.requestTrade(userId, data.targetUserId);
+        TradeManager.requestTrade(userId, parsed.data.targetUserId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Trade request error' });
       }
@@ -710,12 +750,16 @@ export function registerSocketHandlers(io: Server): void {
       TradeManager.cancelTrade(userId, 'Trade declined');
     });
 
-    socket.on(SOCKET_EVENTS.OFFER_ITEM, (data: { slotIndex: number; inventoryItemId: string; name: string; assetUrl?: string }) => {
-      TradeManager.offerItem(userId, data.slotIndex, data.inventoryItemId, data.name, data.assetUrl);
+    socket.on(SOCKET_EVENTS.OFFER_ITEM, (rawData: unknown) => {
+      const parsed = OfferItemSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
+      TradeManager.offerItem(userId, parsed.data.slotIndex, parsed.data.inventoryItemId, parsed.data.name, parsed.data.assetUrl);
     });
 
-    socket.on(SOCKET_EVENTS.OFFER_COINS, (data: { amount: number }) => {
-      TradeManager.offerCoins(userId, data.amount);
+    socket.on(SOCKET_EVENTS.OFFER_COINS, (rawData: unknown) => {
+      const parsed = OfferCoinsSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
+      TradeManager.offerCoins(userId, parsed.data.amount);
     });
 
     socket.on(SOCKET_EVENTS.TRADE_READY, () => {
@@ -731,34 +775,42 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── Phase 3: Pet Companions (§7) ─────────────────────────────────────────
-    socket.on(SOCKET_EVENTS.ADOPT_PET, async (data: { petType: any; name: string }) => {
+    socket.on(SOCKET_EVENTS.ADOPT_PET, async (rawData: unknown) => {
+      const parsed = AdoptPetSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PetManager.adoptPet(userId, data.petType, data.name);
+        await PetManager.adoptPet(userId, parsed.data.petType, parsed.data.name);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Pet adoption error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.NAME_PET, async (data: { petId: string; name: string }) => {
+    socket.on(SOCKET_EVENTS.NAME_PET, async (rawData: unknown) => {
+      const parsed = NamePetSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PetManager.namePet(userId, data.petId, data.name);
+        await PetManager.namePet(userId, parsed.data.petId, parsed.data.name);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Pet rename error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.FEED_PET, async (data: { petId: string }) => {
+    socket.on(SOCKET_EVENTS.FEED_PET, async (rawData: unknown) => {
+      const parsed = FeedPetSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await PetManager.feedPet(userId, data.petId);
+        await PetManager.feedPet(userId, parsed.data.petId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Pet feeding error' });
       }
     });
 
     // ── Phase 3: Pizza Chef Mini-Game (§8) ───────────────────────────────────
-    socket.on(SOCKET_EVENTS.PIZZA_ORDER_SUBMIT, async (data: any) => {
+    socket.on(SOCKET_EVENTS.PIZZA_ORDER_SUBMIT, async (rawData: unknown) => {
+      const parsed = PizzaOrderSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        const result = await MinigameService.submitPizzaOrder(userId, data);
+        const result = await MinigameService.submitPizzaOrder(userId, parsed.data);
         socket.emit(SOCKET_EVENTS.PIZZA_ORDER_RESULT, result);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Pizza submission error' });
@@ -766,44 +818,52 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── Phase 3: Workshop Crafting & Recycling (§9) ──────────────────────────
-    socket.on(SOCKET_EVENTS.RECYCLE_ITEM, async (data: { inventoryItemId: string }) => {
+    socket.on(SOCKET_EVENTS.RECYCLE_ITEM, async (rawData: unknown) => {
+      const parsed = RecycleItemSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await WorkshopService.recycleItem(userId, data.inventoryItemId);
+        await WorkshopService.recycleItem(userId, parsed.data.inventoryItemId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Recycling error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.START_CRAFT, async (data: { recipeId: string }) => {
+    socket.on(SOCKET_EVENTS.START_CRAFT, async (rawData: unknown) => {
+      const parsed = StartCraftSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await WorkshopService.startCraft(userId, data.recipeId);
+        await WorkshopService.startCraft(userId, parsed.data.recipeId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Crafting start error' });
       }
     });
 
-    socket.on(SOCKET_EVENTS.CLAIM_CRAFT, async (data: { craftingQueueId: string }) => {
+    socket.on(SOCKET_EVENTS.CLAIM_CRAFT, async (rawData: unknown) => {
+      const parsed = ClaimCraftSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await WorkshopService.claimCraft(userId, data.craftingQueueId);
+        await WorkshopService.claimCraft(userId, parsed.data.craftingQueueId);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Claim craft error' });
       }
     });
 
     // ── Phase 3: Loft Ambient Moods (§11) ────────────────────────────────────
-    socket.on(SOCKET_EVENTS.SET_ROOM_MOOD, async (data: { roomId: string; mood: string }) => {
+    socket.on(SOCKET_EVENTS.SET_ROOM_MOOD, async (rawData: unknown) => {
+      const parsed = SetMoodSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        const room = await prisma.room.findUnique({ where: { id: data.roomId } });
+        const room = await prisma.room.findUnique({ where: { id: parsed.data.roomId } });
         if (!room || room.ownerId !== userId) return;
 
         await prisma.room.update({
-          where: { id: data.roomId },
-          data: { moodPreset: data.mood },
+          where: { id: parsed.data.roomId },
+          data: { moodPreset: parsed.data.mood },
         });
 
-        io.to(`room:${data.roomId}`).emit(SOCKET_EVENTS.ROOM_MOOD_CHANGED, {
-          roomId: data.roomId,
-          mood: data.mood,
+        io.to(`room:${parsed.data.roomId}`).emit(SOCKET_EVENTS.ROOM_MOOD_CHANGED, {
+          roomId: parsed.data.roomId,
+          mood: parsed.data.mood,
         });
 
         await QuestService.incrementProgress(userId, 'CHANGE_MOOD', 1);
@@ -813,20 +873,24 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── Phase 3: Emote Wheel (§14) ───────────────────────────────────────────
-    socket.on(SOCKET_EVENTS.EMOTE_TRIGGERED, (data: { emoteId: string }) => {
+    socket.on(SOCKET_EVENTS.EMOTE_TRIGGERED, (rawData: unknown) => {
+      const parsed = EmoteSchema.safeParse(rawData);
+      if (!parsed.success) return;
       const p = roomManager.getPlayer(userId);
       if (p?.roomId) {
         io.to(`room:${p.roomId}`).emit(SOCKET_EVENTS.AVATAR_EMOTE, {
           userId,
-          emoteId: data.emoteId,
+          emoteId: parsed.data.emoteId,
         });
       }
     });
 
     // ── Phase 3: Club Chat (§13) ─────────────────────────────────────────────
-    socket.on(SOCKET_EVENTS.CLUB_CHAT_SEND, async (data: { clubId: string; content: string }) => {
+    socket.on(SOCKET_EVENTS.CLUB_CHAT_SEND, async (rawData: unknown) => {
+      const parsed = ClubChatSchema.safeParse(rawData);
+      if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
-        await ClubService.sendClubMessage(userId, data.clubId, data.content);
+        await ClubService.sendClubMessage(userId, parsed.data.clubId, parsed.data.content);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Club message error' });
       }

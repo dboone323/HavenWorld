@@ -68,7 +68,7 @@ export class RoomLoader {
       '',
       url,
       this._scene,
-      onProgress
+      onProgress as any
     );
 
     return this.processMeshes(result.meshes as AbstractMesh[]);

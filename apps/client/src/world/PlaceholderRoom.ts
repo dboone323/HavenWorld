@@ -47,7 +47,6 @@ export function createPlaceholderRoom(scene: Scene): AbstractMesh[] {
     wall.rotation.y = def.rot;
     wall.material = wallMat;
     wall.isPickable = false;
-    wall.backFaceCulling = false;
     meshes.push(wall);
   }
 
