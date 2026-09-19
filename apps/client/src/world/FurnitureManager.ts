@@ -1,6 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import '@babylonjs/loaders';
 import type { FurniturePlacementData } from '@havenworld/shared';
+import { SERVER_URL } from '../config';
 
 export interface PlacedFurniture {
   id: string;
@@ -30,10 +31,7 @@ export class FurnitureManager {
   // ─── Load Room Furniture ──────────────────────────────────────────────────
   async loadRoomFurniture(roomId: string): Promise<void> {
     try {
-      const SERVER =
-        import.meta.env.VITE_SERVER_URL ||
-        (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
-      const res = await fetch(`${SERVER}/api/rooms/${roomId}/furniture`, {
+      const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/furniture`, {
         credentials: 'include',
       });
       if (!res.ok) {

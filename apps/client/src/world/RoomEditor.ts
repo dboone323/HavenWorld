@@ -1,6 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import { GridMaterial } from '@babylonjs/materials';
 import type { FurnitureManager, PlacedFurniture } from './FurnitureManager';
+import { SERVER_URL } from '../config';
 
 export interface FurniturePlacement {
   id: string; // UUID (temp for new items, DB id for existing)
@@ -405,11 +406,7 @@ export class RoomEditor {
       <div id="editor-inventory-list">Loading inventory…</div>
     `;
 
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
-
-    fetch(`${SERVER}/api/users/me/inventory?type=furniture`, { credentials: 'include' })
+    fetch(`${SERVER_URL}/api/users/me/inventory?type=furniture`, { credentials: 'include' })
       .then((r) => r.json())
       .then((items: Array<{ itemId: string; name: string; assetUrl: string; quantity: number }>) => {
         const list = panel.querySelector('#editor-inventory-list');
@@ -496,12 +493,9 @@ export class RoomEditor {
   // ─── Save / Cancel ────────────────────────────────────────────────────────
   async saveLayout(): Promise<void> {
     const layout = Array.from(this.pendingChanges.values()).filter((p) => !p.isRemoved);
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
 
     try {
-      const res = await fetch(`${SERVER}/api/rooms/${this.roomId}/furniture/layout`, {
+      const res = await fetch(`${SERVER_URL}/api/rooms/${this.roomId}/furniture/layout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

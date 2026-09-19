@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { SOCKET_EVENTS } from '@shared/events';
 import type { SocketEventType } from '@shared/events';
 import { authService } from './auth';
+import { SERVER_URL } from '../config';
 
 // ─── Singleton guard ─────────────────────────────────────────────────────────
 
@@ -26,8 +27,7 @@ export const socketService = {
       _socket.disconnect();
     }
 
-    const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
-    _socket = io(SERVER || window.location.origin, {
+    _socket = io(SERVER_URL || window.location.origin, {
       path:          '/socket.io',
       transports:    ['websocket', 'polling'],
       reconnection:  true,

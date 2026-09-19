@@ -3,6 +3,7 @@ import '@babylonjs/loaders';
 import type { AvatarData } from '@havenworld/shared';
 import { AvatarController } from '../world/AvatarController';
 import { authService } from '../services/auth';
+import { SERVER_URL } from '../config';
 
 // Skin tone presets (12 swatches)
 const SKIN_TONES = [
@@ -416,12 +417,9 @@ export class AvatarCustomizer {
 
   // ─── Server Persistence ───────────────────────────────────────────────────
   private async persistToServer(): Promise<void> {
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
     const token = authService.token || authService.getToken() || '';
 
-    const res = await fetch(`${SERVER}/api/users/me/avatar`, {
+    const res = await fetch(`${SERVER_URL}/api/users/me/avatar`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

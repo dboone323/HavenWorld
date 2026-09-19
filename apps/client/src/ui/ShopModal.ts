@@ -1,6 +1,7 @@
 import { authService } from '../services/auth';
 import { audioEngine } from '../audio/AudioEngine';
 import type { CatalogItem } from '@havenworld/shared';
+import { SERVER_URL } from '../config';
 
 export class ShopModal {
   private overlay: HTMLElement | null = null;
@@ -19,13 +20,10 @@ export class ShopModal {
   }
 
   private async fetchShopData(): Promise<void> {
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
     const token = authService.token || authService.getToken() || '';
 
     try {
-      const res = await fetch(`${SERVER}/api/shop`, {
+      const res = await fetch(`${SERVER_URL}/api/shop`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });
@@ -38,13 +36,10 @@ export class ShopModal {
   }
 
   private async buyItem(itemId: string, currency: 'COIN' | 'GEM'): Promise<void> {
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
     const token = authService.token || authService.getToken() || '';
 
     try {
-      const res = await fetch(`${SERVER}/api/shop/buy`, {
+      const res = await fetch(`${SERVER_URL}/api/shop/buy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

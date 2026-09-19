@@ -1,5 +1,6 @@
 import { authService } from '../services/auth';
 import type { PassportData } from '@havenworld/shared';
+import { SERVER_URL } from '../config';
 
 export const STAMP_NAMES = [
   'First Step',
@@ -13,15 +14,10 @@ export const STAMP_NAMES = [
   'Pizza Pro',
   'Fish and Chips',
   'Streaker',
-  'Gem Hunter',
-  'Pet Parent',
-  'Dragon Tamer',
-  'Top Chef',
-  'Generous Soul',
-  'Good Neighbor',
-  'Loyal Haven',
-  'Trading Post',
-  'Legend of Haven',
+  'Legendary Catch',
+  'Club Founder',
+  'Haven VIP',
+  'Home Sweet Home',
 ];
 
 export class PassportModal {
@@ -31,13 +27,10 @@ export class PassportModal {
     const userId = targetUserId || authService.user?.id;
     if (!userId || this.overlay) return;
 
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
     const token = authService.token || authService.getToken() || '';
 
     try {
-      const res = await fetch(`${SERVER}/api/passport/${userId}`, {
+      const res = await fetch(`${SERVER_URL}/api/passport/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });

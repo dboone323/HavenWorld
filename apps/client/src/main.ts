@@ -12,16 +12,14 @@ import { PassportModal } from './passport/PassportModal';
 import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
 import { socketService } from './services/socket';
+import { SERVER_URL } from './config';
 import './style.css';
 
 // ── Handle Email Verification Token redirect ──────────────────────────────
 const urlParams = new URLSearchParams(window.location.search);
 const verifyToken = urlParams.get('token');
 if (verifyToken) {
-  const SERVER =
-    import.meta.env.VITE_SERVER_URL ||
-    (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
-  window.location.href = `${SERVER}/api/auth/verify?token=${verifyToken}`;
+  window.location.href = `${SERVER_URL}/api/auth/verify?token=${verifyToken}`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────

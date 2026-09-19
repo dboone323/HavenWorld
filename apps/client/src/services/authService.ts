@@ -1,4 +1,5 @@
 import type { AvatarData } from '@havenworld/shared';
+import { API_URL } from '../config';
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -33,13 +34,7 @@ export class AuthService {
   private _apiUrl: string;
 
   constructor(apiUrl?: string) {
-    const defaultServer =
-      typeof import.meta !== 'undefined' && import.meta.env?.VITE_SERVER_URL
-        ? import.meta.env.VITE_SERVER_URL
-        : typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL
-        ? import.meta.env.VITE_API_URL
-        : '';
-    this._apiUrl = apiUrl || `${defaultServer}/api`;
+    this._apiUrl = apiUrl || API_URL;
   }
 
   get token(): string | null {
@@ -56,6 +51,30 @@ export class AuthService {
 
   getUser(): AuthUser | null {
     return this._user;
+  }
+
+  async me(): Promise<AuthUser | null> {
+    // If not authenticated, try silent refresh once
+    if (!this._accessToken) {
+      const refreshed = await this.refresh();
+      if (!refreshed) return null;
+    }
+
+    const token = await this.getToken();
+    if (!token) return null;
+
+    try {
+      const res = await fetch(`${this._apiUrl}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      this._user = data;
+      return this._user;
+    } catch {
+      return null;
+    }
   }
 
   isAuthenticated(): boolean {

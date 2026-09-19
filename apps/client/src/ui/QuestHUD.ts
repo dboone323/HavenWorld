@@ -3,6 +3,7 @@ import { authService } from '../services/auth';
 import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { audioEngine } from '../audio/AudioEngine';
+import { SERVER_URL } from '../config';
 
 export class QuestHUD {
   private container: HTMLElement | null = null;
@@ -39,13 +40,11 @@ export class QuestHUD {
   }
 
   private async loadQuests(): Promise<void> {
-    const SERVER =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
-    const token = authService.token || authService.getToken() || '';
+    const token = await authService.getToken();
+    if (!token) return;
 
     try {
-      const res = await fetch(`${SERVER}/api/quests`, {
+      const res = await fetch(`${SERVER_URL}/api/quests`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });

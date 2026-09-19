@@ -3,6 +3,7 @@ import type { RoomData } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
 import { SceneManager } from '../engine/SceneManager';
 import { authService } from '../services/auth';
+import { SERVER_URL } from '../config';
 
 export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   const scene = new Scene(haven.engine);
@@ -80,11 +81,10 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     grid.innerHTML = '<p class="loading-text">Loading directory…</p>';
 
     try {
-      const SERVER = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? 'https://147-224-164-228.nip.io' : '');
       const token = authService.token || authService.getToken() || '';
 
       const [publicRes, loftsRes] = await Promise.all([
-        fetch(`${SERVER}/api/rooms`, {
+        fetch(`${SERVER_URL}/api/rooms`, {
           headers: { Authorization: `Bearer ${token}` },
           credentials: 'include',
         }),
