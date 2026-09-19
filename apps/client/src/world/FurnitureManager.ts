@@ -2,6 +2,7 @@ import * as BABYLON from '@babylonjs/core';
 import '@babylonjs/loaders';
 import type { FurniturePlacementData } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
+import { authService } from '../services/auth';
 
 export interface PlacedFurniture {
   id: string;

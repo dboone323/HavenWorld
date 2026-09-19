@@ -46,7 +46,7 @@ export const apiRateLimiter = rateLimit({
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'test' ? 500 : 10,
+  max: process.env.NODE_ENV === 'test' ? 500 : 60,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'AUTH_RATE_LIMIT_EXCEEDED', retryAfter: 900 },
