@@ -153,6 +153,12 @@ export class FishingService {
         },
       });
 
+      // Award coins to player
+      await prisma.user.update({
+        where: { id: session.userId },
+        data: { havenCoins: { increment: coins } },
+      });
+
       // Update weekly leaderboard
       const startOfWeek = new Date();
       startOfWeek.setUTCHours(0, 0, 0, 0);
@@ -184,6 +190,7 @@ export class FishingService {
           species: session.fish.name,
           weight: session.weightLbs,
           coins,
+          coinsEarned: coins,
           isRare,
         });
       }
@@ -204,7 +211,10 @@ export class FishingService {
 
     const io = getIO();
     if (io) {
-      io.to(`user:${session.userId}`).emit(SOCKET_EVENTS.FISH_ESCAPED);
+      io.to(`user:${session.userId}`).emit(SOCKET_EVENTS.FISH_ESCAPED, {
+        escaped: true,
+        reason: 'LOST_TENSION',
+      });
     }
   }
 

@@ -52,3 +52,60 @@ export function checkRateLimit(
 export function clearRateLimitEntry(socketId: string): void {
   rateLimitStore.delete(socketId);
 }
+
+export interface CheckMessageOptions {
+  userId: string;
+  message: string;
+  isMuted?: boolean;
+  isAdmin?: boolean;
+  socketId?: string;
+}
+
+export interface CheckMessageResult {
+  allowed: boolean;
+  sanitized: string;
+  reason?: 'USER_MUTED' | 'MESSAGE_TOO_LONG' | 'EMPTY_MESSAGE' | 'RATE_LIMITED' | 'PROFANITY';
+}
+
+export class ModerationService {
+  async checkMessage(opts: CheckMessageOptions): Promise<CheckMessageResult> {
+    if (opts.isMuted) {
+      return { allowed: false, sanitized: '', reason: 'USER_MUTED' };
+    }
+
+    if (!opts.message || opts.message.trim().length === 0) {
+      return { allowed: false, sanitized: '', reason: 'EMPTY_MESSAGE' };
+    }
+
+    if (opts.message.length > 200) {
+      return { allowed: false, sanitized: '', reason: 'MESSAGE_TOO_LONG' };
+    }
+
+    // Rate limiter check
+    const rateLimitKey = opts.socketId || opts.userId;
+    const isRateAllowed = checkRateLimit(rateLimitKey, 5, 3000);
+    if (!isRateAllowed) {
+      return { allowed: false, sanitized: '', reason: 'RATE_LIMITED' };
+    }
+
+    // Admins bypass profanity filtering
+    if (opts.isAdmin) {
+      return { allowed: true, sanitized: opts.message };
+    }
+
+    const modResult = moderateMessage(opts.message);
+    if (modResult.wasFiltered) {
+      return {
+        allowed: false,
+        sanitized: modResult.filtered,
+        reason: 'PROFANITY',
+      };
+    }
+
+    return {
+      allowed: true,
+      sanitized: opts.message,
+    };
+  }
+}
+

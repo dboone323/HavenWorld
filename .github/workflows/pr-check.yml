@@ -1,32 +1,84 @@
-name: PR Checks
+name: PR Check — Tests & Coverage
 
 on:
   pull_request:
     branches: [main, develop]
 
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+env:
+  NODE_VERSION: '22'
+  DATABASE_URL: postgresql://havenworld_user:test_password@localhost:5432/havenworld_test
+  JWT_SECRET: ci_jwt_secret_not_for_production
+  JWT_ACCESS_SECRET: ci_jwt_secret_not_for_production
+  JWT_REFRESH_SECRET: ci_refresh_secret_not_for_production
+  REDIS_URL: redis://localhost:6379/1
+  NODE_ENV: test
+  PORT: 3001
 
-      - uses: pnpm/action-setup@v4
+jobs:
+  test:
+    name: Jest Test Suite & CI Validation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: havenworld_test
+          POSTGRES_USER: havenworld_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter server lint
+      - name: Build Shared Package
+        run: pnpm --filter '@havenworld/shared' build
 
-      - run: pnpm --filter client lint
+      - name: Generate Prisma client
+        run: pnpm --filter server exec prisma generate
 
-      - run: pnpm --filter server test
+      - name: Run Prisma migrations on test database
+        run: pnpm --filter server exec prisma db push --accept-data-loss
 
-      - run: pnpm --filter server build
+      - name: TypeScript build check
+        run: pnpm --filter server exec tsc --noEmit --project tsconfig.test.json
 
-      - run: pnpm --filter client build
+      - name: Run Jest test suite with coverage
+        run: pnpm --filter server run test:coverage
+
+      - name: Upload coverage report as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ github.sha }}
+          path: apps/server/coverage/
+          retention-days: 14

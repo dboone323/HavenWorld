@@ -131,11 +131,16 @@ export class TradeManager {
   }
 
   /**
-   * Modifies an item slot in the offer (Anti-scam: resets ready states!)
+   * Modifies an item slot in the offer (Anti-scam: resets ready states and reverts lock!)
    */
   static offerItem(userId: string, slotIndex: number, inventoryItemId: string, itemName: string, assetUrl?: string) {
     const session = this.getSessionForUser(userId);
-    if (!session || session.state === 'LOCKED' || session.state === 'COMPLETED') return;
+    if (!session || session.state === 'COMPLETED') return;
+
+    if (session.state === 'LOCKED') {
+      session.state = 'OFFER_PHASE';
+      if (session.countdownTimer) clearTimeout(session.countdownTimer);
+    }
 
     // Reset both ready states upon offer alteration
     session.initiatorReady = false;
@@ -157,11 +162,16 @@ export class TradeManager {
   }
 
   /**
-   * Offers HavenCoins in the trade (Anti-scam: resets ready states!)
+   * Offers HavenCoins in the trade (Anti-scam: resets ready states and reverts lock!)
    */
   static offerCoins(userId: string, amount: number) {
     const session = this.getSessionForUser(userId);
-    if (!session || session.state === 'LOCKED' || session.state === 'COMPLETED') return;
+    if (!session || session.state === 'COMPLETED') return;
+
+    if (session.state === 'LOCKED') {
+      session.state = 'OFFER_PHASE';
+      if (session.countdownTimer) clearTimeout(session.countdownTimer);
+    }
 
     session.initiatorReady = false;
     session.receiverReady = false;
@@ -173,6 +183,20 @@ export class TradeManager {
       session.receiverCoins = clamped;
     }
 
+    this.broadcastState(session);
+  }
+
+  /**
+   * Explicitly unlocks an offer after locking
+   */
+  static unlockOffer(userId: string) {
+    const session = this.getSessionForUser(userId);
+    if (!session || session.state === 'COMPLETED') return;
+
+    session.state = 'OFFER_PHASE';
+    session.initiatorReady = false;
+    session.receiverReady = false;
+    if (session.countdownTimer) clearTimeout(session.countdownTimer);
     this.broadcastState(session);
   }
 
@@ -352,7 +376,7 @@ export class TradeManager {
     io.to(`user:${session.receiverId}`).emit(SOCKET_EVENTS.TRADE_STATE_UPDATE, payload);
   }
 
-  private static getSessionForUser(userId: string) {
+  static getSessionForUser(userId: string) {
     const tradeId = this.userActiveTrades.get(userId);
     return tradeId ? this.sessions.get(tradeId) : undefined;
   }

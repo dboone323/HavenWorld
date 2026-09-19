@@ -1,0 +1,70 @@
+name: Nightly Load Tests
+
+on:
+  schedule:
+    # Run every night at 02:00 UTC (21:00 CDT) — off-peak hours
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  load-test:
+    name: k6 Load Tests on Oracle VM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy load test scripts to Oracle VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ORACLE_VM_HOST }}
+          username: ${{ secrets.ORACLE_VM_USER }}
+          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          source: "load-tests/"
+          target: "/home/havenworld/load-tests/"
+
+      - name: Run k6 load tests on Oracle VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_VM_HOST }}
+          username: ${{ secrets.ORACLE_VM_USER }}
+          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          script: |
+            cd /home/havenworld
+            mkdir -p load-test-results
+            echo "Running WebSocket concurrent test..."
+            k6 run --out json=load-test-results/ws-$(date +%Y%m%d).json load-tests/load-tests/ws-concurrent.js
+            echo "Running Auth API load test..."
+            k6 run -e BASE_URL="http://localhost:3000" --out json=load-test-results/auth-$(date +%Y%m%d).json load-tests/load-tests/api-auth.js
+            echo "Running Fishing economy test..."
+            k6 run --out json=load-test-results/fishing-$(date +%Y%m%d).json load-tests/load-tests/fishing-concurrent.js
+            echo "All load tests complete."
+
+      - name: Download load test results
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ORACLE_VM_HOST }}
+          username: ${{ secrets.ORACLE_VM_USER }}
+          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          source: "/home/havenworld/load-test-results/*.json"
+          target: "load-test-results/"
+
+      - name: Upload results as GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.run_id }}
+          path: load-test-results/
+          retention-days: 30
+
+      - name: Send load test summary email if failed
+        if: failure()
+        run: |
+          curl -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "from": "noreply@havenworld.gg",
+              "to": ["daniel@havenworld.gg"],
+              "subject": "⚠️ HavenWorld Nightly Load Test FAILED — ${{ github.run_id }}",
+              "text": "One or more k6 threshold checks failed. Review artifacts at ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }'
