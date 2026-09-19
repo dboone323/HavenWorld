@@ -122,12 +122,17 @@ export class AuthService {
     return res.json();
   }
 
-  async login(email: string, password: string): Promise<AuthUser> {
+  async login(identifier: string, password: string): Promise<AuthUser> {
+    const isEmail = identifier.includes('@');
+    const payload = isEmail
+      ? { email: identifier.trim().toLowerCase(), password }
+      : { username: identifier.trim(), password };
+
     const res = await fetch(`${this._apiUrl}/auth/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
