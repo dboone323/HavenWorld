@@ -136,7 +136,7 @@ export class LoftSettingsPanel {
 
     // Decorator grant/revoke — resolved via user lookup
     const resolveTargetUserId = async (username: string): Promise<string | null> => {
-      const token = authService.getToken();
+      const token = authService.token || (await authService.getToken());
       if (!token || !username.trim()) return null;
       const res = await fetch(`${API_URL}/users/by-username/${encodeURIComponent(username.trim())}`, {
         headers: { Authorization: `Bearer ${token}` },

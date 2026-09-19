@@ -27,7 +27,7 @@ export class PassportModal {
     const userId = targetUserId || authService.user?.id;
     if (!userId || this.overlay) return;
 
-    const token = authService.token || authService.getToken() || '';
+    const token = authService.token || (await authService.getToken()) || '';
 
     try {
       const res = await fetch(`${SERVER_URL}/api/passport/${userId}`, {

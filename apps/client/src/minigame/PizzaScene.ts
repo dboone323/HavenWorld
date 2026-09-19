@@ -155,6 +155,12 @@ export class PizzaScene {
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
 
+    this.overlay.addEventListener('click', (e) => {
+      if (e.target === this.overlay) {
+        this.close();
+      }
+    });
+
     panel.querySelector('#btn-close-pizza')?.addEventListener('click', () => this.close());
     panel.querySelector('#btn-clear-pizza')?.addEventListener('click', () => {
       this.selectedIngredients = [];

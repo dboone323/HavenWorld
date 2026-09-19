@@ -30,13 +30,22 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return next();
   }
 
-  // Allow registration and login to bypass CSRF (they issue the initial CSRF token)
+  // Allow auth flow routes to bypass CSRF (login/register issue CSRF tokens, refresh/logout manage refresh cookies)
   if (
     req.path === '/api/auth/login' ||
     req.path === '/api/auth/register' ||
+    req.path === '/api/auth/refresh' ||
+    req.path === '/api/auth/logout' ||
     req.path === '/login' ||
-    req.path === '/register'
+    req.path === '/register' ||
+    req.path === '/refresh' ||
+    req.path === '/logout'
   ) {
+    return next();
+  }
+
+  // Requests with Bearer token authentication are immune to CSRF because browsers never attach Authorization headers cross-origin
+  if (req.headers.authorization?.startsWith('Bearer ')) {
     return next();
   }
 

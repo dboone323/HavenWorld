@@ -125,6 +125,12 @@ export class AvatarCustomizer {
       font-family: Calibri, sans-serif;
     `;
 
+    el.addEventListener('click', (e) => {
+      if (e.target === el) {
+        this.close();
+      }
+    });
+
     const panel = document.createElement('div');
     panel.style.cssText = `
       background: #1a1a2e;
@@ -417,7 +423,7 @@ export class AvatarCustomizer {
 
   // ─── Server Persistence ───────────────────────────────────────────────────
   private async persistToServer(): Promise<void> {
-    const token = authService.token || authService.getToken() || '';
+    const token = authService.token || (await authService.getToken()) || '';
 
     const res = await fetch(`${SERVER_URL}/api/users/me/avatar`, {
       method: 'PUT',

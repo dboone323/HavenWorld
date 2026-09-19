@@ -73,7 +73,7 @@ export class GalleryPanel {
     const grid = panel.querySelector('#gallery-photo-grid');
     if (!grid) return;
 
-    const token = authService.getToken();
+    const token = authService.token || (await authService.getToken());
     try {
       const res = await fetch(`${API_URL}/gallery`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -146,7 +146,7 @@ export class GalleryPanel {
 
     try {
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      const token = authService.getToken();
+      const token = authService.token || (await authService.getToken());
 
       const res = await fetch(`${API_URL}/gallery`, {
         method: 'POST',

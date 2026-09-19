@@ -17,7 +17,7 @@ export class DailyLoginModal {
   private static panel: HTMLElement | null = null;
 
   static async tryShow(): Promise<void> {
-    const token = authService.getToken();
+    const token = authService.token || (await authService.getToken());
     if (!token) return;
 
     let data: DailyClaimResponse;

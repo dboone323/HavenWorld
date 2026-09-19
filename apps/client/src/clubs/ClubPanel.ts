@@ -89,7 +89,7 @@ export class ClubPanel {
     if (!contentArea) return;
     contentArea.innerHTML = '<div id="club-list-container" style="display:flex; flex-direction:column; gap:10px;"><p style="color:rgba(255,255,255,0.6); font-size:0.85rem;">Loading clubs...</p></div>';
 
-    const token = authService.getToken();
+    const token = authService.token || (await authService.getToken());
     try {
       const res = await fetch(`${API_URL}/clubs`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -188,7 +188,7 @@ export class ClubPanel {
         return;
       }
 
-      const token = authService.getToken();
+      const token = authService.token || (await authService.getToken());
       const res = await fetch(`${API_URL}/clubs`, {
         method: 'POST',
         headers: {

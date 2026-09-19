@@ -81,7 +81,7 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     grid.innerHTML = '<p class="loading-text">Loading directory…</p>';
 
     try {
-      const token = authService.token || authService.getToken() || '';
+      const token = authService.token || (await authService.getToken()) || '';
 
       const [publicRes, loftsRes] = await Promise.all([
         fetch(`${SERVER_URL}/api/rooms`, {

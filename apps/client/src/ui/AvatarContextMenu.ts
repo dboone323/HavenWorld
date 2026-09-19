@@ -124,7 +124,7 @@ export class AvatarContextMenu {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${authService.getToken()}`,
+            Authorization: `Bearer ${authService.token || ''}`,
           },
           body: JSON.stringify({
             reportedUserId: options.targetUserId,

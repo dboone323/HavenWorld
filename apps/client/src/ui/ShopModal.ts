@@ -20,7 +20,7 @@ export class ShopModal {
   }
 
   private async fetchShopData(): Promise<void> {
-    const token = authService.token || authService.getToken() || '';
+    const token = authService.token || (await authService.getToken()) || '';
 
     try {
       const res = await fetch(`${SERVER_URL}/api/shop`, {
@@ -36,7 +36,7 @@ export class ShopModal {
   }
 
   private async buyItem(itemId: string, currency: 'COIN' | 'GEM'): Promise<void> {
-    const token = authService.token || authService.getToken() || '';
+    const token = authService.token || (await authService.getToken()) || '';
 
     try {
       const res = await fetch(`${SERVER_URL}/api/shop/buy`, {
@@ -147,6 +147,12 @@ export class ShopModal {
 
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
+
+    this.overlay.addEventListener('click', (e) => {
+      if (e.target === this.overlay) {
+        this.close();
+      }
+    });
 
     panel.querySelector('#btn-close-shop')?.addEventListener('click', () => this.close());
     panel.querySelector('#tab-shop-featured')?.addEventListener('click', () => {

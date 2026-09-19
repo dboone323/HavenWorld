@@ -58,7 +58,7 @@ export class WorkshopPanel {
   }
 
   private static async loadData(panel: HTMLElement): Promise<void> {
-    const token = authService.getToken();
+    const token = authService.token || (await authService.getToken());
     if (!token) return;
 
     try {
