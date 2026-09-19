@@ -10,8 +10,14 @@ test.describe('Deep Real E2E Workflow Tests - Resolution, Click-to-Move, Decorat
   test.beforeEach(async ({ page }) => {
     page.on('console', (msg) => {
       const txt = msg.text();
-      if (txt.includes('[RoomEditor]') || txt.includes('[HavenEngine]') || txt.includes('[FurnitureManager]') || txt.includes('error')) {
-        console.log(`[BROWSER] ${msg.type().toUpperCase()}: ${txt}`);
+      console.log(`[BROWSER ${msg.type()}]: ${txt}`);
+    });
+    page.on('requestfailed', (req) => {
+      console.log(`[REQ FAILED]: ${req.url()} - ${req.failure()?.errorText}`);
+    });
+    page.on('response', (res) => {
+      if (res.status() >= 400 || res.url().includes('/api/')) {
+        console.log(`[RESP ${res.status()}]: ${res.url()}`);
       }
     });
   });

@@ -18,8 +18,8 @@ export default defineConfig({
     ['list'],
     ['html', { open: 'never', outputFolder: 'playwright-report' }],
   ],
-  globalSetup: './e2e/globalSetup.ts',
-  globalTeardown: './e2e/globalTeardown.ts',
+  globalSetup: (process.env.NO_SERVER || process.env.BASE_URL?.includes('pages.dev')) ? undefined : './e2e/globalSetup.ts',
+  globalTeardown: (process.env.NO_SERVER || process.env.BASE_URL?.includes('pages.dev')) ? undefined : './e2e/globalTeardown.ts',
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:5173',
     trace: 'retain-on-failure',
@@ -48,7 +48,7 @@ export default defineConfig({
       use: { ...devices['iPhone 12'] },
     },
   ],
-  webServer: [
+  webServer: (process.env.NO_SERVER || process.env.BASE_URL?.includes('pages.dev')) ? undefined : [
     {
       command: 'NODE_ENV=test PORT=3000 pnpm --filter server dev',
       url: 'http://localhost:3000/health',

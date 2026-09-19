@@ -14,8 +14,8 @@ module.exports = {
        * upstream) on a VM with spare vCPUs — `pm2 reload` then rolls workers one
        * at a time and no connection is dropped.
        */
-      instances: process.env.PM2_INSTANCES || 1,
-      exec_mode: 'cluster',
+      instances: 1,
+      exec_mode: 'fork',
       instance_var: 'INSTANCE_ID',
       autorestart: true,
       watch: false,
