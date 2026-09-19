@@ -6,6 +6,7 @@ import {
   Vector3,
   Tags,
   PointLight,
+  AbstractMesh,
 } from '@babylonjs/core';
 
 /**
@@ -13,7 +14,9 @@ import {
  * Used when no GLB room file is available. Replace with a real GLB in Part 5B.
  * Room dimensions: 30m × 30m floor, 4m walls.
  */
-export function createPlaceholderRoom(scene: Scene): void {
+export function createPlaceholderRoom(scene: Scene): AbstractMesh[] {
+  const meshes: AbstractMesh[] = [];
+
   // ─── FLOOR ───────────────────────────────────────────────────────────────
   const floor = MeshBuilder.CreateGround(
     'Floor',
@@ -25,6 +28,7 @@ export function createPlaceholderRoom(scene: Scene): void {
   floor.material = floorMat;
   floor.isPickable = true;
   Tags.AddTagsTo(floor, 'walkable');
+  meshes.push(floor);
 
   // ─── WALLS ───────────────────────────────────────────────────────────────
   const wallMat = new StandardMaterial('wall_mat', scene);
@@ -44,6 +48,7 @@ export function createPlaceholderRoom(scene: Scene): void {
     wall.material = wallMat;
     wall.isPickable = false;
     wall.backFaceCulling = false;
+    meshes.push(wall);
   }
 
   // ─── AMBIENT POINT LIGHT ─────────────────────────────────────────────────
@@ -51,4 +56,5 @@ export function createPlaceholderRoom(scene: Scene): void {
   roomLight.intensity = 0.5;
 
   console.log('[PlaceholderRoom] Created 30×30m placeholder room.');
+  return meshes;
 }

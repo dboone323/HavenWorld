@@ -31,16 +31,24 @@ export class FurnitureManager {
   // ─── Load Room Furniture ──────────────────────────────────────────────────
   async loadRoomFurniture(roomId: string): Promise<void> {
     try {
+      const token = authService.token || (await authService.getToken()) || '';
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/furniture`, {
+        headers,
         credentials: 'include',
       });
       if (!res.ok) {
-        console.error(`[FurnitureManager] Failed to fetch furniture for room ${roomId}`);
+        console.warn(`[FurnitureManager] Furniture for room ${roomId} returned ${res.status}`);
         return;
       }
-      const items: FurniturePlacementData[] = await res.json();
-      await Promise.all(items.map((item) => this.placeItem(item)));
-      console.log(`[FurnitureManager] Loaded ${items.length} furniture items.`);
+      const items = await res.json();
+      if (Array.isArray(items)) {
+        await Promise.all(items.map((item: FurniturePlacementData) => this.placeItem(item)));
+        console.log(`[FurnitureManager] Loaded ${items.length} furniture items.`);
+      }
     } catch (err) {
       console.error('[FurnitureManager] Error loading furniture:', err);
     }
