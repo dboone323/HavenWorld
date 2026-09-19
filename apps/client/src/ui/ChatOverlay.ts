@@ -7,27 +7,47 @@ const MAX_LOG_ENTRIES = 50;
 const RATE_ERR_DURATION = 4000;
 
 export class ChatOverlay {
+  private _container: HTMLElement;
   private _unsubs: Array<() => void> = [];
   private _errTimer: ReturnType<typeof setTimeout> | null = null;
+  private _cooldownUntil = 0;
   private _onMessageCb?: (msg: ChatMessage) => void;
   private _handleSendBound: () => void;
   private _handleKeyDownBound: (e: KeyboardEvent) => void;
 
-  constructor(onMessage?: (msg: ChatMessage) => void) {
+  constructor(container?: HTMLElement | null, onMessage?: (msg: ChatMessage) => void) {
+    this._container = container || (typeof document !== 'undefined' ? document.body : (null as any));
     this._onMessageCb = onMessage;
     this._handleSendBound = this._handleSend.bind(this);
     this._handleKeyDownBound = this._handleKeyDown.bind(this);
-    this._mount();
+    if (typeof document !== 'undefined') {
+      this._mount();
+    }
   }
 
   private _mount(): void {
-    const input = document.getElementById('chat-input') as HTMLInputElement | null;
-    const sendBtn = document.getElementById('chat-send') as HTMLButtonElement | null;
-    const panel = document.getElementById('chat-panel');
+    let panel = document.getElementById('chat-panel');
+    if (!panel && this._container) {
+      panel = document.createElement('div');
+      panel.id = 'chat-panel';
+      panel.className = 'chat-panel';
+      panel.innerHTML = `
+        <div id="chat-log" class="chat-log"></div>
+        <div id="chat-error" class="chat-error hidden"></div>
+        <div class="chat-controls">
+          <input id="chat-input" type="text" placeholder="Type a message..." />
+          <button id="chat-send">Send</button>
+        </div>
+      `;
+      this._container.appendChild(panel);
+    }
 
     if (panel) {
       panel.classList.remove('hidden');
     }
+
+    const sendBtn = document.getElementById('chat-send') as HTMLButtonElement | null;
+    const input = document.getElementById('chat-input') as HTMLInputElement | null;
 
     if (sendBtn) {
       sendBtn.addEventListener('click', this._handleSendBound);
@@ -44,19 +64,29 @@ export class ChatOverlay {
           this._onMessageCb(msg);
         }
       }),
-      socketService.on<{ message: string }>(SOCKET_EVENTS.CHAT_ERROR, ({ message }) => {
-        this.showError(message);
-      })
+      socketService.on<{ message?: string; code?: string }>(
+        SOCKET_EVENTS.CHAT_ERROR,
+        (err) => {
+          this._cooldownUntil = Date.now() + RATE_ERR_DURATION;
+          this.showError(err?.message || 'Chat cooldown active. Please wait...');
+        }
+      )
     );
   }
 
   private _handleSend(): void {
+    if (Date.now() < this._cooldownUntil) {
+      this.showError('Chat cooldown active. Please wait...');
+      return;
+    }
+
     const input = document.getElementById('chat-input') as HTMLInputElement | null;
     if (!input) return;
     const text = input.value.trim();
     if (!text) return;
 
-    socketService.emit(SOCKET_EVENTS.CHAT_SEND, { text });
+    socketService.emit(SOCKET_EVENTS.CHAT_SEND, { content: text, text });
+    socketService.emit('CHAT_MESSAGE' as any, { content: text, text });
     input.value = '';
   }
 
@@ -73,9 +103,15 @@ export class ChatOverlay {
 
     const entry = document.createElement('div');
     entry.className = 'chat-log__entry';
-    const isOwn = msg.playerId === authService.user?.id;
-    entry.classList.toggle('chat-log__entry--own', isOwn);
-    entry.innerHTML = `<span class="chat-log__username">${this._escapeHtml(msg.username)}</span>: ${this._escapeHtml(msg.text)}`;
+    const isOwn =
+      (msg.playerId && msg.playerId === authService.user?.id) ||
+      (msg.senderId && msg.senderId === authService.user?.id);
+    entry.classList.toggle('chat-log__entry--own', !!isOwn);
+
+    const username = this._escapeHtml(msg.username || msg.senderName || 'Player');
+    const text = this._escapeHtml(msg.text || msg.content || '');
+
+    entry.innerHTML = `<span class="chat-log__username">${username}</span>: <span class="chat-log__text">${text}</span>`;
     log.appendChild(entry);
 
     log.scrollTop = log.scrollHeight;
@@ -101,7 +137,8 @@ export class ChatOverlay {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   public dispose(): void {

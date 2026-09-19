@@ -13,6 +13,17 @@
     "dev": "pnpm --parallel --filter './apps/*' dev",
     "build": "pnpm --filter '@havenworld/shared' build && pnpm --filter './apps/*' build",
     "test": "pnpm --filter './apps/*' test",
+    "test:client": "pnpm --filter client test",
+    "test:client:coverage": "pnpm --filter client test:coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:perf": "playwright test e2e/performance/ --project=chromium",
+    "test:mobile": "playwright test e2e/mobile/ --project=mobile-chrome --project=mobile-safari",
+    "test:e2e:report": "playwright show-report playwright-report",
     "lint": "pnpm --filter './apps/*' lint"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.50.0"
   }
 }

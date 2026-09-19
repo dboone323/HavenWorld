@@ -435,8 +435,9 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       remote.dispose();
     }
     remoteAvatars.clear();
-    roomLoader.unload();
+    (window as any).__havenRoomReady = false;
   });
 
+  (window as any).__havenRoomReady = true;
   return scene;
 }

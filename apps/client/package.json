@@ -7,6 +7,11 @@
     "dev": "vite",
     "prebuild": "node scripts/generate_assets.mjs && node -e \"const fs=require('fs'); const p=require.resolve('@babylonjs/havok'); const dir=require('path').dirname(p); const files=['HavokPhysics.wasm','HavokPhysics.js.wasm']; files.forEach(f=>{ const src=require('path').join(dir,'lib/esm/HavokPhysics.wasm'); if(fs.existsSync(src)) fs.copyFileSync(src, 'public/'+f); });\"",
     "build": "vite build",
+    "test": "vitest run --config vitest.config.ts",
+    "test:client": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
+    "test:scene": "vitest run --config vitest.config.ts --reporter=verbose __tests__/scene",
     "lint": "echo 'Client lint passed'",
     "preview": "vite preview"
   },
@@ -23,9 +28,14 @@
   "devDependencies": {
     "@babylonjs/inspector": "^9.27.1",
     "@babylonjs/serializers": "^9.27.1",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "jsdom": "^25.0.1",
     "typescript": "^5.6.3",
     "vite": "^6.0.0",
-    "vite-plugin-static-copy": "^4.1.1"
+    "vite-plugin-static-copy": "^4.1.1",
+    "vitest": "^2.1.8"
   }
 }

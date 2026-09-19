@@ -11,6 +11,7 @@ import { ShopModal } from './ui/ShopModal';
 import { PassportModal } from './passport/PassportModal';
 import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
+import { socketService } from './services/socket';
 import './style.css';
 
 // ── Handle Email Verification Token redirect ──────────────────────────────
@@ -35,8 +36,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  await HavenEngine.getInstance(canvas);
+  const haven = await HavenEngine.getInstance(canvas);
   const sm = SceneManager.getInstance();
+
+  (window as any).__havenEngine = haven;
+  (window as any).__havenSceneManager = sm;
+  (window as any).__havenAuthService = authService;
+  (window as any).__havenSocket = socketService;
 
   sm.register('login', createLoginScene);
   sm.register('lobby', createLobbyScene);

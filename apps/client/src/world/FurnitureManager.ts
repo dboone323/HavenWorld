@@ -21,6 +21,12 @@ export class FurnitureManager {
     this.currentUserId = currentUserId;
   }
 
+  public registerTemplate(itemId: string, mesh: BABYLON.AbstractMesh): void {
+    mesh.setEnabled(false);
+    mesh.name = `template_${itemId}`;
+    this.templateCache.set(itemId, mesh);
+  }
+
   // ─── Load Room Furniture ──────────────────────────────────────────────────
   async loadRoomFurniture(roomId: string): Promise<void> {
     try {

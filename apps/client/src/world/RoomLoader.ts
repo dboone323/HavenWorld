@@ -17,29 +17,13 @@ export class RoomLoader {
   }
 
   /**
-   * Load a room GLB by ID from /assets/rooms/{roomId}.glb.
-   * Meshes are categorized by name prefix convention:
-   * - "NavMesh_*"   → navigation surface (invisible)
-   * - "Walkable_*"  → floor / walkable area (visible, tagged "walkable")
-   * - "Collision_*" → invisible collision geometry
-   * - All others    → visible room geometry
+   * Categorize an array of room meshes according to name prefixes:
+   * - "NavMesh_*"   → navigation surface (invisible, not pickable, tagged 'navmesh')
+   * - "Walkable_*" or "Floor" → walkable area (pickable, tagged 'walkable')
+   * - "Collision_*" → invisible collision geometry (not pickable, tagged 'collision')
+   * - All others    → visible geometry (not pickable)
    */
-  public async load(
-    roomId: string,
-    onProgress?: (event: ProgressEvent) => void
-  ): Promise<RoomLoadResult> {
-    const url = `/assets/rooms/${roomId}.glb`;
-    console.log(`[RoomLoader] Loading room: ${url}`);
-
-    const result = await SceneLoader.ImportMeshAsync(
-      '', // mesh names — empty string loads all
-      '', // root URL — empty because we use full path url
-      url,
-      this._scene,
-      onProgress
-    );
-
-    const allMeshes = result.meshes as AbstractMesh[];
+  public processMeshes(allMeshes: AbstractMesh[]): RoomLoadResult {
     const rootMesh = allMeshes[0];
     const walkableMeshes: AbstractMesh[] = [];
     const navMeshes: AbstractMesh[] = [];
@@ -62,18 +46,32 @@ export class RoomLoader {
         Tags.AddTagsTo(mesh, 'collision');
         collisionMeshes.push(mesh);
       } else {
-        // Standard room geometry — visible but not directly pickable for movement
         mesh.isPickable = false;
       }
     }
 
-    console.log(
-      `[RoomLoader] Room "${roomId}" loaded. ` +
-        `Meshes: ${allMeshes.length}, Walkable: ${walkableMeshes.length}, ` +
-        `NavMesh: ${navMeshes.length}, Collision: ${collisionMeshes.length}`
+    return { rootMesh, walkableMeshes, navMeshes, collisionMeshes, allMeshes };
+  }
+
+  /**
+   * Load a room GLB by ID from /assets/rooms/{roomId}.glb.
+   */
+  public async load(
+    roomId: string,
+    onProgress?: (event: ProgressEvent) => void
+  ): Promise<RoomLoadResult> {
+    const url = `/assets/rooms/${roomId}.glb`;
+    console.log(`[RoomLoader] Loading room: ${url}`);
+
+    const result = await SceneLoader.ImportMeshAsync(
+      '',
+      '',
+      url,
+      this._scene,
+      onProgress
     );
 
-    return { rootMesh, walkableMeshes, navMeshes, collisionMeshes, allMeshes };
+    return this.processMeshes(result.meshes as AbstractMesh[]);
   }
 
   /**
@@ -81,7 +79,10 @@ export class RoomLoader {
    * Called by SceneManager before loading a new room.
    */
   public unload(): void {
-    const tagged = this._scene.getMeshesByTags('walkable navmesh collision');
-    tagged.forEach((m) => m.dispose());
+    const tags = ['walkable', 'navmesh', 'collision'];
+    for (const tag of tags) {
+      const meshes = this._scene.getMeshesByTags(tag);
+      meshes.forEach((m) => m.dispose());
+    }
   }
 }

@@ -10,58 +10,58 @@
 <body>
 
   <!-- ══ Game Canvas ══════════════════════════════════════════════════════ -->
-  <div id="game-container" class="hidden">
-    <canvas id="haven-canvas"></canvas>
+  <div id="game-container" class="hidden" data-testid="game-container">
+    <canvas id="haven-canvas" data-testid="haven-canvas"></canvas>
   </div>
 
   <!-- ══ Login Panel ══════════════════════════════════════════════════════ -->
-  <div id="login-panel" class="panel hidden">
+  <div id="login-panel" class="panel hidden" data-testid="login-panel">
     <h1 style="text-align:center; margin-bottom:1.5rem; color:#4ecdc4; font-size:1.75rem;">🌿 HavenWorld</h1>
 
     <div class="login-tabs">
-      <button id="tab-login"    class="tab tab--active">Sign In</button>
-      <button id="tab-register" class="tab">Register</button>
+      <button id="tab-login" class="tab tab--active" data-testid="tab-login">Sign In</button>
+      <button id="tab-register" class="tab" data-testid="tab-register">Register</button>
     </div>
 
     <!-- Login form -->
-    <form id="form-login">
+    <form id="form-login" data-testid="form-login">
       <div class="form-group">
         <label for="login-email">Email</label>
-        <input id="login-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        <input id="login-email" type="email" autocomplete="email" placeholder="you@example.com" data-testid="login-email" required />
       </div>
       <div class="form-group">
         <label for="login-password">Password</label>
-        <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" data-testid="login-password" required />
       </div>
-      <button type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Sign In">Sign In</button>
+      <button id="login-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Sign In" data-testid="login-submit">Sign In</button>
     </form>
 
     <!-- Register form -->
-    <form id="form-register" class="hidden">
+    <form id="form-register" class="hidden" data-testid="form-register">
       <div class="form-group">
         <label for="reg-username">Username</label>
-        <input id="reg-username" type="text" autocomplete="username" placeholder="CoolHaven42" required />
+        <input id="reg-username" type="text" autocomplete="username" placeholder="CoolHaven42" data-testid="reg-username" required />
       </div>
       <div class="form-group">
         <label for="reg-email">Email</label>
-        <input id="reg-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        <input id="reg-email" type="email" autocomplete="email" placeholder="you@example.com" data-testid="reg-email" required />
       </div>
       <div class="form-group">
         <label for="reg-password">Password</label>
-        <input id="reg-password" type="password" autocomplete="new-password" placeholder="Min 8 characters" required />
+        <input id="reg-password" type="password" autocomplete="new-password" placeholder="Min 8 characters" data-testid="reg-password" required />
       </div>
       <div class="form-group">
         <label for="reg-confirm">Confirm Password</label>
-        <input id="reg-confirm" type="password" autocomplete="new-password" placeholder="Repeat password" required />
+        <input id="reg-confirm" type="password" autocomplete="new-password" placeholder="Repeat password" data-testid="reg-confirm" required />
       </div>
       <div class="form-group">
         <label for="reg-invite">Invite Code</label>
-        <input id="reg-invite" type="text" autocomplete="off" placeholder="ALPHA-CODE (optional if open)" />
+        <input id="reg-invite" type="text" autocomplete="off" placeholder="ALPHA-CODE (optional if open)" data-testid="reg-invite" />
       </div>
-      <button type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Create Account">Create Account</button>
+      <button id="reg-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Create Account" data-testid="reg-submit">Create Account</button>
     </form>
 
-    <p id="login-error" class="error-text" style="min-height:1.2em;"></p>
+    <p id="login-error" class="error-text" style="min-height:1.2em;" data-testid="login-error"></p>
 
     <p style="text-align:center; margin-top:1rem; font-size:0.75rem; color:#7070a0;">
       By continuing you agree to our
@@ -71,53 +71,53 @@
   </div>
 
   <!-- ══ Lobby Panel ═══════════════════════════════════════════════════════ -->
-  <div id="lobby-panel" class="hidden">
+  <div id="lobby-panel" class="hidden" data-testid="lobby-panel">
     <div class="lobby-header">
       <span class="lobby-title">🌐 Travel &amp; Directory</span>
       <div style="display:flex; gap:0.5rem; align-items:center;">
-        <button id="btn-close-lobby" class="btn btn--ghost" style="font-size:0.8rem;">✕ Close</button>
-        <button id="btn-lobby-logout" class="btn btn--ghost" style="font-size:0.8rem;">Sign Out</button>
+        <button id="btn-close-lobby" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-close-lobby">✕ Close</button>
+        <button id="btn-lobby-logout" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-lobby-logout">Sign Out</button>
       </div>
     </div>
     <div class="login-tabs" style="margin-bottom: 1rem;">
-      <button id="tab-rooms-public" class="tab tab--active">Public Space</button>
-      <button id="tab-rooms-lofts" class="tab">Community Lofts</button>
+      <button id="tab-rooms-public" class="tab tab--active" data-testid="tab-rooms-public">Public Space</button>
+      <button id="tab-rooms-lofts" class="tab" data-testid="tab-rooms-lofts">Community Lofts</button>
     </div>
-    <div id="room-grid"></div>
+    <div id="room-grid" data-testid="room-grid"></div>
   </div>
 
   <!-- ══ Room Nav (in-game top bar) ════════════════════════════════════════ -->
-  <div id="room-nav" class="hidden">
-    <button id="btn-park" class="btn btn--ghost" style="font-size:0.8rem;">🌳 Haven Park</button>
-    <button id="btn-my-loft" class="btn btn--ghost" style="font-size:0.8rem;">🏠 My Loft</button>
-    <button id="btn-browse-lofts" class="btn btn--ghost" style="font-size:0.8rem;">🌐 Visit Lofts</button>
-    <button id="btn-decorate" class="btn btn--ghost hidden" style="font-size:0.8rem;">🛋️ Decorate</button>
-    <button id="btn-fishing" class="btn btn--ghost hidden" style="font-size:0.8rem;">🎣 Go Fishing</button>
-    <button id="btn-pizza" class="btn btn--ghost" style="font-size:0.8rem;">🍕 Pizza Chef</button>
-    <button id="btn-shop" class="btn btn--ghost" style="font-size:0.8rem;">🛍️ Emporium</button>
-    <button id="btn-passport" class="btn btn--ghost" style="font-size:0.8rem;">🛂 Passport</button>
-    <button id="btn-avatar" class="btn btn--ghost" style="font-size:0.8rem;">👗 Wardrobe</button>
-    <button id="btn-nav-logout" class="btn btn--ghost" style="font-size:0.8rem;">✕ Sign Out</button>
+  <div id="room-nav" class="hidden" data-testid="room-nav">
+    <button id="btn-park" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-park">🌳 Haven Park</button>
+    <button id="btn-my-loft" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-my-loft">🏠 My Loft</button>
+    <button id="btn-browse-lofts" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-browse-lofts">🌐 Visit Lofts</button>
+    <button id="btn-decorate" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-decorate">🛋️ Decorate</button>
+    <button id="btn-fishing" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-fishing">🎣 Go Fishing</button>
+    <button id="btn-pizza" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-pizza">🍕 Pizza Chef</button>
+    <button id="btn-shop" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-shop">🛍️ Emporium</button>
+    <button id="btn-passport" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-passport">🛂 Passport</button>
+    <button id="btn-avatar" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-avatar">👗 Wardrobe</button>
+    <button id="btn-nav-logout" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-nav-logout">✕ Sign Out</button>
   </div>
 
   <!-- ══ Player Card (in-game top right) ═══════════════════════════════════ -->
-  <div id="player-card" class="hidden">
+  <div id="player-card" class="hidden" data-testid="player-card">
     <span>🌿</span>
-    <span class="player-card__username"></span>
+    <span class="player-card__username" data-testid="player-card-username"></span>
   </div>
 
   <!-- ══ Chat Panel ════════════════════════════════════════════════════════ -->
-  <div id="chat-panel" class="hidden">
-    <div id="chat-log" aria-live="polite" aria-label="Chat messages"></div>
-    <p id="chat-error" class="hidden"></p>
+  <div id="chat-panel" class="hidden" data-testid="chat-panel">
+    <div id="chat-log" aria-live="polite" aria-label="Chat messages" data-testid="chat-log"></div>
+    <p id="chat-error" class="hidden" data-testid="chat-error"></p>
     <div class="chat-input-row">
-      <input id="chat-input" type="text" maxlength="200" placeholder="Say something…" aria-label="Chat input" />
-      <button id="chat-send" class="btn btn--teal" style="padding:0.3rem 0.7rem; font-size:0.8rem;">Send</button>
+      <input id="chat-input" type="text" maxlength="200" placeholder="Say something…" aria-label="Chat input" data-testid="chat-input" />
+      <button id="chat-send" class="btn btn--teal" style="padding:0.3rem 0.7rem; font-size:0.8rem;" data-testid="chat-send">Send</button>
     </div>
   </div>
 
   <!-- ══ Avatar Customizer Panel ═══════════════════════════════════════════ -->
-  <div id="avatar-panel" class="hidden"></div>
+  <div id="avatar-panel" class="hidden" data-testid="avatar-panel"></div>
 
   <!-- ══ Entry Point ════════════════════════════════════════════════════════ -->
   <script type="module" src="/src/main.ts"></script>

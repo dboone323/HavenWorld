@@ -10,8 +10,8 @@ const STORAGE_KEY = 'havenworld_audio_settings';
 
 export class AudioEngine {
   private static instance: AudioEngine | null = null;
-  private ctx: AudioContext | null = null;
-  private masterGain: GainNode | null = null;
+  public ctx: AudioContext | null = null;
+  public masterGain: GainNode | null = null;
   private settings: AudioSettings = {
     masterVolume: 0.7,
     isMuted: false,
@@ -23,18 +23,20 @@ export class AudioEngine {
     },
   };
 
-  private constructor() {
+  constructor() {
     this.loadSettings();
-    // Unlock AudioContext on first user interaction
-    const unlock = () => {
-      this.initContext();
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('keydown', unlock);
-      window.removeEventListener('touchstart', unlock);
-    };
-    window.addEventListener('click', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
-    window.addEventListener('touchstart', unlock, { once: true });
+    if (typeof window !== 'undefined') {
+      // Unlock AudioContext on first user interaction
+      const unlock = () => {
+        this.initContext();
+        window.removeEventListener('click', unlock);
+        window.removeEventListener('keydown', unlock);
+        window.removeEventListener('touchstart', unlock);
+      };
+      window.addEventListener('click', unlock, { once: true });
+      window.addEventListener('keydown', unlock, { once: true });
+      window.addEventListener('touchstart', unlock, { once: true });
+    }
   }
 
   static getInstance(): AudioEngine {
@@ -44,17 +46,22 @@ export class AudioEngine {
     return this.instance;
   }
 
+  public init(): void {
+    this.initContext();
+  }
+
   private initContext(): void {
     if (this.ctx) return;
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx = (typeof window !== 'undefined' ? (window.AudioContext || (window as any).webkitAudioContext) : null);
     if (!AudioCtx) return;
 
     this.ctx = new AudioCtx();
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(
-      this.settings.isMuted ? 0 : this.settings.masterVolume,
-      this.ctx.currentTime
-    );
+    const targetVolume = this.settings.isMuted ? 0 : this.settings.masterVolume;
+    this.masterGain.gain.value = targetVolume;
+    if (this.masterGain.gain.setValueAtTime) {
+      this.masterGain.gain.setValueAtTime(targetVolume, this.ctx.currentTime);
+    }
     this.masterGain.connect(this.ctx.destination);
   }
 
@@ -73,10 +80,14 @@ export class AudioEngine {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
       if (this.masterGain && this.ctx) {
-        this.masterGain.gain.setValueAtTime(
-          this.settings.isMuted ? 0 : this.settings.masterVolume,
-          this.ctx.currentTime
-        );
+        const targetGain = this.settings.isMuted ? 0 : this.settings.masterVolume;
+        this.masterGain.gain.value = targetGain;
+        if (this.masterGain.gain.setValueAtTime) {
+          this.masterGain.gain.setValueAtTime(
+            targetGain,
+            this.ctx.currentTime
+          );
+        }
       }
     } catch {
       /* ignore */
@@ -126,28 +137,30 @@ export class AudioEngine {
     osc.stop(ctx.currentTime + 0.04);
   }
 
-  /** Coin Pickup: harmonic triangle chime (E5 -> B5, 80ms each) */
+  /** Coin Pickup: harmonic triangle chime (329.6 Hz -> 493.9 Hz, 2 notes) */
   playCoinPickup(): void {
     if (!this.canPlay('gameplay')) return;
     const ctx = this.ctx;
     if (!ctx || !this.masterGain) return;
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const notes = [329.63, 493.88];
+    notes.forEach((freq, idx) => {
+      const now = ctx.currentTime + idx * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(659.25, now); // E5
-    osc.frequency.setValueAtTime(987.77, now + 0.08); // B5
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
 
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
 
-    osc.connect(gain);
-    gain.connect(this.masterGain);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
 
-    osc.start(now);
-    osc.stop(now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    });
   }
 
   /** Furniture Place: sine decay pop (200 Hz -> 50 Hz over 80ms) */

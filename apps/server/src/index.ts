@@ -20,6 +20,7 @@ import passportRoutes from './routes/passport';
 import galleryRoutes from './routes/gallery';
 import questRoutes from './routes/quests';
 import clubRoutes from './routes/clubs';
+import testRoutes from './routes/testRoutes';
 import { PetManager } from './services/PetManager';
 import { registerSocketHandlers } from './sockets';
 
@@ -125,6 +126,10 @@ app.use('/api/passport', passportRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/quests', questRoutes);
 app.use('/api/clubs', clubRoutes);
+
+if (process.env.NODE_ENV === 'test') {
+  app.use('/api/test', testRoutes);
+}
 
 // ── 404 catch-all ────────────────────────────────────────────────────────────
 app.use((_req, res) => {
