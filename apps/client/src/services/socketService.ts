@@ -82,7 +82,8 @@ export class SocketService {
       throw new Error('Socket not initialized');
     }
 
-    (this.socket as any).auth = { token };
+    const socket: Socket = this.socket;
+    (socket as any).auth = { token };
 
     return new Promise<void>((resolve, reject) => {
       if (this.connectTimeoutTimer) {
@@ -99,18 +100,18 @@ export class SocketService {
           clearTimeout(this.connectTimeoutTimer);
           this.connectTimeoutTimer = null;
         }
-        this.socket?.off('WELCOME', onWelcome);
-        this.socket?.off('connect', onWelcome);
+        socket.off('WELCOME', onWelcome);
+        socket.off('connect', onWelcome);
         this.flushQueue();
         resolve();
       };
 
-      this.socket.on('WELCOME', onWelcome);
-      this.socket.on('connect', onWelcome);
+      socket.on('WELCOME', onWelcome);
+      socket.on('connect', onWelcome);
 
-      this.socket.connect();
+      socket.connect();
 
-      if (this.socket.connected) {
+      if (socket.connected) {
         onWelcome();
       }
     });

@@ -202,4 +202,39 @@ export class WorkshopService {
       return item;
     });
   }
+
+  /**
+   * Cron entry point (every 5 minutes): announces crafts that finished while the
+   * owner was offline. `notifiedAt` guarantees each queue row is announced once,
+   * so a player who is online at completion time gets exactly one notification
+   * whether it comes from here or from their own `claimCraft` call.
+   */
+  static async processCompletedCrafts(now: Date = new Date()): Promise<number> {
+    const due = await prisma.craftingQueue.findMany({
+      where: { claimed: false, notifiedAt: null, completesAt: { lte: now } },
+      take: 500,
+    });
+
+    if (due.length === 0) return 0;
+
+    const io = getIO();
+    if (io) {
+      for (const row of due) {
+        const recipe = CRAFTING_RECIPES.find((r) => r.id === row.recipeId);
+        io.to(`user:${row.userId}`).emit(SOCKET_EVENTS.CRAFT_COMPLETE, {
+          queueId: row.id,
+          recipeId: row.recipeId,
+          recipeName: recipe?.name ?? row.recipeId,
+        });
+      }
+    }
+
+    await prisma.craftingQueue.updateMany({
+      where: { id: { in: due.map((r) => r.id) } },
+      data: { notifiedAt: now },
+    });
+
+    console.log(`[Workshop] Announced ${due.length} completed craft(s)`);
+    return due.length;
+  }
 }

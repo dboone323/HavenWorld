@@ -8,6 +8,8 @@ export class HavenEngine {
   private _activeScene: Scene | null = null;
   private _inspectorLoaded = false;
 
+  private _resizeObserver: ResizeObserver | null = null;
+
   private constructor(canvas: HTMLCanvasElement) {
     this._canvas = canvas;
     this._engine = new Engine(canvas, true, {
@@ -16,12 +18,27 @@ export class HavenEngine {
       disableWebGL2Support: false,
     });
 
+    // Support HiDPI / Retina displays up to 2x for crisp 1080p+ rendering
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    this._engine.setHardwareScalingLevel(1 / dpr);
+
     // Start the render loop — renders whatever _activeScene is set to
     this._engine.runRenderLoop(() => {
       if (this._activeScene && this._activeScene.activeCamera) {
         this._activeScene.render();
       }
     });
+
+    // Automatically resize whenever the canvas dimensions or container visibility changes
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver = new ResizeObserver(() => {
+        this._engine.resize();
+      });
+      this._resizeObserver.observe(canvas);
+      if (canvas.parentElement) {
+        this._resizeObserver.observe(canvas.parentElement);
+      }
+    }
 
     // Resize handler
     window.addEventListener('resize', this._onResize);
@@ -107,6 +124,10 @@ export class HavenEngine {
   };
 
   public dispose(): void {
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
     window.removeEventListener('resize', this._onResize);
     window.removeEventListener('beforeunload', this._onUnload);
     this._activeScene?.dispose();

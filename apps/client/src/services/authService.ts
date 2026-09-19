@@ -35,9 +35,15 @@ export class AuthService {
 
   constructor(apiUrl?: string) {
     this._apiUrl = apiUrl || API_URL;
+    if (typeof localStorage !== 'undefined') {
+      this._accessToken = localStorage.getItem('haven_token');
+    }
   }
 
   get token(): string | null {
+    if (!this._accessToken && typeof localStorage !== 'undefined') {
+      this._accessToken = localStorage.getItem('haven_token');
+    }
     return this._accessToken;
   }
 
@@ -54,6 +60,10 @@ export class AuthService {
   }
 
   async me(): Promise<AuthUser | null> {
+    if (!this._accessToken && typeof localStorage !== 'undefined') {
+      this._accessToken = localStorage.getItem('haven_token');
+    }
+
     // If not authenticated, try silent refresh once
     if (!this._accessToken) {
       const refreshed = await this.refresh();
@@ -78,6 +88,9 @@ export class AuthService {
   }
 
   isAuthenticated(): boolean {
+    if (!this._accessToken && typeof localStorage !== 'undefined') {
+      this._accessToken = localStorage.getItem('haven_token');
+    }
     if (!this._accessToken) return false;
     const exp = parseJwtExp(this._accessToken);
     if (!exp) return false;
@@ -86,7 +99,16 @@ export class AuthService {
     return exp - nowSeconds > 60;
   }
 
+  getCsrfToken(): string | null {
+    if (typeof document === 'undefined') return null;
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
   async getToken(): Promise<string | null> {
+    if (!this._accessToken && typeof localStorage !== 'undefined') {
+      this._accessToken = localStorage.getItem('haven_token');
+    }
     if (!this._accessToken) return null;
 
     const exp = parseJwtExp(this._accessToken);
@@ -96,6 +118,10 @@ export class AuthService {
     if (!exp || exp - nowSeconds <= 60) {
       const refreshed = await this.refresh();
       if (!refreshed) {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('haven_token');
+        }
+        this._accessToken = null;
         return null;
       }
     }
@@ -119,7 +145,15 @@ export class AuthService {
       const err = await res.json().catch(() => ({ message: 'Registration failed' }));
       throw new AuthError(err.error || err.message || 'Registration failed');
     }
-    return res.json();
+    const data = await res.json();
+    if (data.accessToken) {
+      this._accessToken = data.accessToken;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('haven_token', data.accessToken);
+      }
+      this._user = data.user ?? null;
+    }
+    return data;
   }
 
   async login(identifier: string, password: string): Promise<AuthUser> {
@@ -136,6 +170,10 @@ export class AuthService {
     });
 
     if (!res.ok) {
+      this._accessToken = null;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('haven_token');
+      }
       const err = await res.json().catch(() => ({ message: 'Login failed' }));
       throw new AuthError(err.error || err.message || 'Login failed');
     }
@@ -143,6 +181,9 @@ export class AuthService {
     const data = await res.json();
     if (data.accessToken) {
       this._accessToken = data.accessToken;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('haven_token', data.accessToken);
+      }
       this._user = data.user ?? null;
     }
     return this._user!;
@@ -158,6 +199,9 @@ export class AuthService {
       const data = await res.json();
       if (data.accessToken) {
         this._accessToken = data.accessToken;
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('haven_token', data.accessToken);
+        }
         if (data.user) this._user = data.user;
         return true;
       }
@@ -178,6 +222,9 @@ export class AuthService {
     }
     this._accessToken = null;
     this._user = null;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('haven_token');
+    }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }

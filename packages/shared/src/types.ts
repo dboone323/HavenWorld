@@ -20,6 +20,9 @@ export interface AvatarData {
   outfitBack?: string | null;
   outfitHand?: string | null;
 
+  /** 'male' | 'female' | 'unspecified' — drives body proportions and default hair. */
+  gender?: string;
+
   // Compatibility fields for client wardrobe & customizer
   hair?: string;
   eyes?: string;
@@ -43,18 +46,24 @@ export interface Avatar3DData {
   bottomColor: string;// hex
 }
 
+/**
+ * Furniture placement payload.
+ * `assetUrl` and the scale factors are optional: the server omits them when an
+ * item has no uploaded GLB, and both client (`FurnitureManager`) and server
+ * (`routes/rooms.ts`) fall back to `/assets/furniture/{itemId}.glb` and 1.0.
+ */
 export interface FurniturePlacementData {
   id: string;
   itemId: string;
-  assetUrl: string;
+  assetUrl?: string;
   placedById: string;
   x: number;
   y: number;
   z: number;
   rotY: number;
-  scaleX: number;
-  scaleY: number;
-  scaleZ: number;
+  scaleX?: number;
+  scaleY?: number;
+  scaleZ?: number;
 }
 
 export interface FurniturePlacement {

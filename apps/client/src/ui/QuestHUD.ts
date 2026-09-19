@@ -24,6 +24,9 @@ export class QuestHUD {
       top: 66px;
       right: 80px;
       width: 220px;
+      /* The HUD must never swallow clicks meant for the dock buttons beneath it.
+         Interactive rows opt back in with pointer-events: auto. */
+      pointer-events: none;
       background: rgba(26, 26, 46, 0.9);
       border: 1px solid #4ecdc4;
       border-radius: 8px;
@@ -87,11 +90,11 @@ export class QuestHUD {
     if (!this.container) return;
 
     this.container.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="quest-hud-header">
+      <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; pointer-events: auto;" id="quest-hud-header">
         <span style="font-weight: 600; color: #4ecdc4; font-size: 0.95rem;">📜 Daily Quests</span>
         <span style="font-size: 0.8rem; color: #888;">${this.isCollapsed ? '▼' : '▲'}</span>
       </div>
-      <div id="quest-list" style="margin-top: 8px; display: ${this.isCollapsed ? 'none' : 'block'};">
+      <div id="quest-list" style="margin-top: 8px; display: ${this.isCollapsed ? 'none' : 'block'}; pointer-events: auto;">
         ${
           this.quests.length === 0
             ? '<p style="font-size: 0.8rem; color: #888;">Loading quests...</p>'

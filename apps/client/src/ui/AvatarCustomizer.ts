@@ -1,8 +1,19 @@
 import * as BABYLON from '@babylonjs/core';
 import '@babylonjs/loaders';
 import type { AvatarData } from '@havenworld/shared';
+import {
+  GENDER_PRESETS,
+  SOCKET_EVENTS,
+  WARDROBE_TABS,
+  applyGenderPreset,
+  getItemAccentColor,
+  groupWardrobeItems,
+  normalizeGender,
+  type WardrobeItem,
+} from '@havenworld/shared';
 import { AvatarController } from '../world/AvatarController';
 import { authService } from '../services/auth';
+import { socketService } from '../services/socket';
 import { SERVER_URL } from '../config';
 
 // Skin tone presets (12 swatches)
@@ -69,6 +80,12 @@ export class AvatarCustomizer {
   private currentData: AvatarData;
   private savedData: AvatarData;
   private onSaveCallback: (data: AvatarData) => void;
+  /** Owned clothing items, loaded from GET /api/users/me/inventory. */
+  private inventory: WardrobeItem[] = [];
+  private activeTabId: string = WARDROBE_TABS[0].id;
+  private wardrobeTabBar: HTMLElement | null = null;
+  private wardrobeBody: HTMLElement | null = null;
+  private genderButtons: HTMLButtonElement[] = [];
 
   constructor(savedData?: AvatarData, onSave?: (data: AvatarData) => void) {
     const userAvatar = authService.user?.avatar || {};
@@ -81,6 +98,7 @@ export class AvatarCustomizer {
       eyeColor: '#4A3728',
       topColor: '#4169E1',
       bottomColor: '#2E8B57',
+      gender: 'unspecified',
       ...userAvatar,
       ...savedData,
     };
@@ -97,6 +115,7 @@ export class AvatarCustomizer {
     this.savedData = { ...this.currentData };
     this.overlay = this.buildOverlay();
     document.body.appendChild(this.overlay);
+    void this.loadInventory();
   }
 
   close(): void {
@@ -226,6 +245,9 @@ export class AvatarCustomizer {
       ])
     );
 
+    // Gender
+    div.appendChild(this.buildSection('Gender', [this.buildGenderPicker()]));
+
     // Colors
     div.appendChild(
       this.buildSection('Colors', [
@@ -235,12 +257,17 @@ export class AvatarCustomizer {
       ])
     );
 
+    // Wardrobe (owned clothing items across the five slots)
+    div.appendChild(this.buildWardrobeSection());
+
     // Clothing Colors
     div.appendChild(
       this.buildSection('Clothing Colors', [
         this.buildColorInput('Top Color', 'topColor'),
         this.buildColorInput('Bottom Color', 'bottomColor'),
-        this.buildNote('Full clothing items and accessories arrive in Phase 3.'),
+        this.buildNote(
+          'Colours apply to the base outfit. Wear an owned top/pants/shoes to override them.'
+        ),
       ])
     );
 
@@ -421,6 +448,171 @@ export class AvatarCustomizer {
     return btn;
   }
 
+  // ─── Wardrobe & Gender ────────────────────────────────────────────────────
+  private buildGenderPicker(): HTMLElement {
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; gap: 8px;';
+    this.genderButtons = [];
+
+    for (const gender of ['male', 'female'] as const) {
+      const btn = document.createElement('button');
+      btn.textContent = GENDER_PRESETS[gender].label;
+      btn.dataset.testid = `gender-${gender}`;
+      btn.style.cssText =
+        'flex: 1; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: 600; background: transparent; color: #e0e0e0; border: 1px solid #444;';
+      btn.addEventListener('click', () => {
+        this.currentData = applyGenderPreset(this.currentData, gender);
+        this.applyGenderButtonStyles();
+        this.previewController?.applyCustomization(this.currentData);
+      });
+      this.genderButtons.push(btn);
+      row.appendChild(btn);
+    }
+
+    this.applyGenderButtonStyles();
+    return row;
+  }
+
+  private applyGenderButtonStyles(): void {
+    const active = normalizeGender(this.currentData.gender);
+    for (const btn of this.genderButtons) {
+      const isActive = btn.dataset.testid === `gender-${active}`;
+      btn.style.background = isActive ? '#4ecdc4' : 'transparent';
+      btn.style.color = isActive ? '#0d0d1a' : '#e0e0e0';
+      btn.style.border = `1px solid ${isActive ? '#4ecdc4' : '#444'}`;
+    }
+  }
+
+  private buildWardrobeSection(): HTMLElement {
+    const sec = document.createElement('div');
+    sec.style.cssText =
+      'margin-bottom: 20px; border-bottom: 1px solid #2a2a4a; padding-bottom: 16px;';
+
+    const h = document.createElement('h3');
+    h.textContent = 'Wardrobe';
+    h.style.cssText = 'color: #7eb8f7; font-size: 11pt; margin-bottom: 10px;';
+    sec.appendChild(h);
+
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;';
+
+    for (const tab of WARDROBE_TABS) {
+      const btn = document.createElement('button');
+      btn.dataset.tabId = tab.id;
+      btn.dataset.testid = `wardrobe-tab-${tab.id}`;
+      btn.textContent = `${tab.icon} ${tab.label}`.trim();
+      btn.style.cssText =
+        'padding: 5px 10px; border-radius: 999px; border: 1px solid #2a2a4a; background: transparent; color: #e0e0e0; font-size: 9pt; cursor: pointer;';
+      btn.addEventListener('click', () => {
+        this.activeTabId = tab.id;
+        this.renderWardrobeBody();
+      });
+      tabBar.appendChild(btn);
+    }
+
+    sec.appendChild(tabBar);
+
+    const body = document.createElement('div');
+    sec.appendChild(body);
+
+    this.wardrobeTabBar = tabBar;
+    this.wardrobeBody = body;
+
+    return sec;
+  }
+
+  private async loadInventory(): Promise<void> {
+    try {
+      const token = authService.token || (await authService.getToken()) || '';
+      const res = await fetch(`${SERVER_URL}/api/users/me/inventory`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      this.inventory = Array.isArray(data) ? (data as WardrobeItem[]) : [];
+      this.renderWardrobeBody();
+    } catch (err) {
+      console.warn('[AvatarCustomizer] Could not load inventory:', err);
+    }
+  }
+
+  private renderWardrobeBody(): void {
+    if (!this.wardrobeBody) return;
+
+    if (this.wardrobeTabBar) {
+      for (const btn of Array.from(this.wardrobeTabBar.children) as HTMLElement[]) {
+        const isActive = btn.dataset.tabId === this.activeTabId;
+        btn.style.background = isActive ? '#4ecdc4' : 'transparent';
+        btn.style.color = isActive ? '#0d0d1a' : '#e0e0e0';
+      }
+    }
+
+    const tab = WARDROBE_TABS.find((t) => t.id === this.activeTabId);
+    const items = groupWardrobeItems(this.inventory)[this.activeTabId] ?? [];
+
+    this.wardrobeBody.innerHTML = '';
+
+    if (items.length === 0) {
+      this.wardrobeBody.appendChild(
+        this.buildNote('Nothing owned in this slot yet — visit the Emporium to expand your wardrobe.')
+      );
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;';
+
+    for (const item of items) {
+      const equipped = tab?.slot
+        ? (this.currentData[tab.slot] as string | null | undefined) === item.itemId
+        : this.currentData.hairStyle === item.itemId;
+
+      const chip = document.createElement('button');
+      chip.dataset.testid = `wardrobe-item-${item.itemId}`;
+      chip.style.cssText = `display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; cursor: pointer; text-align: left; font-size: 9.5pt; color: #e0e0e0; background: ${
+        equipped ? 'rgba(78, 205, 196, 0.18)' : 'rgba(255, 255, 255, 0.04)'
+      }; border: 1px solid ${equipped ? '#4ecdc4' : '#2a2a4a'};`;
+
+      const swatch = document.createElement('span');
+      swatch.style.cssText = `width: 14px; height: 14px; flex: 0 0 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.25); background: ${getItemAccentColor(
+        item.itemId
+      )};`;
+
+      const label = document.createElement('span');
+      label.textContent = item.name;
+
+      chip.appendChild(swatch);
+      chip.appendChild(label);
+      chip.addEventListener('click', () => this.equipItem(this.activeTabId, item.itemId));
+      grid.appendChild(chip);
+    }
+
+    this.wardrobeBody.appendChild(grid);
+  }
+
+  /** Equips an owned item, or removes it when the same item is clicked twice. */
+  private equipItem(tabId: string, itemId: string): void {
+    const tab = WARDROBE_TABS.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    if (!tab.slot) {
+      // Hair tab: the item id is the hair style key and its swatch drives the colour.
+      this.currentData.hairStyle = itemId;
+      this.currentData.hairColor = getItemAccentColor(
+        itemId,
+        (this.currentData.hairColor as string) || '#3B2314'
+      );
+    } else {
+      const current = this.currentData[tab.slot] as string | null | undefined;
+      this.currentData[tab.slot] = current === itemId ? null : itemId;
+    }
+
+    this.previewController?.applyCustomization(this.currentData);
+    this.renderWardrobeBody();
+  }
+
   // ─── Server Persistence ───────────────────────────────────────────────────
   private async persistToServer(): Promise<void> {
     const token = authService.token || (await authService.getToken()) || '';
@@ -440,5 +632,13 @@ export class AvatarCustomizer {
     }
 
     authService.updateAvatar({ ...this.currentData });
+
+    // Outfit + gender are authoritative server-side: the socket handler re-checks
+    // that every equipped item is in the player's inventory, persists it, and
+    // broadcasts `avatar:changed` to everyone in the room.
+    socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
+      ...this.currentData,
+      gender: normalizeGender(this.currentData.gender),
+    });
   }
 }

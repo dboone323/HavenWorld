@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { redis } from '../redis';
 import { inventoryService } from '../services/InventoryService';
+import { AnalyticsService } from '../services/AnalyticsService';
 import { Resend } from 'resend';
 import { setCsrfCookie, generateCsrfToken } from '../middleware/csrf';
 import { generateAccessToken, generateRefreshToken } from '../auth/tokens';
@@ -323,10 +324,17 @@ router.post('/login', async (req: Request, res: Response) => {
   // Store in Redis (optional fast lookup)
   await redis.setEx(`refresh:${user.id}`, 7 * 24 * 3600, refreshToken);
 
-  // Update last login timestamp
+  // Update last login timestamp and open a new analytics session
+  const sessionId = crypto.randomUUID();
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLoginAt: new Date() },
+    data: { lastLoginAt: new Date(), sessionId },
+  });
+
+  void AnalyticsService.trackEvent('LOGIN', {
+    userId: user.id,
+    sessionId,
+    payload: { role: user.role },
   });
 
   // Set httpOnly SameSite=Strict cookies

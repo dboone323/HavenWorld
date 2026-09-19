@@ -1,23 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SocketService, NotAuthenticatedError } from '../socketService';
 
-// Mock the entire socket.io-client module
-vi.mock('socket.io-client', () => {
-  const mockSocket = {
+// Mock the entire socket.io-client module. The mock socket is created with
+// vi.hoisted so the module factory and these tests share one typed instance.
+const { mockSocket } = vi.hoisted(() => ({
+  mockSocket: {
     connect: vi.fn(),
     disconnect: vi.fn(),
     emit: vi.fn(),
     on: vi.fn(),
     off: vi.fn(),
-    connected: false,
-    auth: {},
-  };
-  return {
-    io: vi.fn(() => mockSocket),
-    mockSocket,
-  };
-});
-import { io as mockIo, mockSocket } from 'socket.io-client';
+    connected: false as boolean,
+    auth: {} as Record<string, unknown>,
+  },
+}));
+
+vi.mock('socket.io-client', () => ({
+  io: vi.fn(() => mockSocket),
+}));
+
+import { io as mockIo } from 'socket.io-client';
 
 describe('SocketService', () => {
   let service: SocketService;

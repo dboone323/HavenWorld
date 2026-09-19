@@ -1,0 +1,11 @@
+/**
+ * HavenWorld brand mark — referenced by manifest.webmanifest as the vector icon.
+ * Mirrors the leaf drawn by scripts/generate_icons.mjs.
+ */
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HavenWorld">
+  <rect width="512" height="512" rx="112" fill="#0d1b2a" />
+  <g transform="translate(256 256) rotate(-45)">
+    <path d="M0 150 C 24 90, 34 30, 0 -140 C -34 30, -24 90, 0 150 Z" fill="#1f9e96" />
+    <path d="M0 -140 C -60 -72, -76 6, -4 118 C -46 40, -34 -60, 0 -140 Z" fill="#4ecdc4" />
+  </g>
+</svg>

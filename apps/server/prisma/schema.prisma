@@ -165,6 +165,15 @@ model User {
   transactionsReceived TransactionLog[]   @relation("TransactionReceiver")
   loftAccesses       LoftAccess[]
 
+  // Part 9B Onboarding (tutorial + welcome badge)
+  tutorialCompleted  Boolean              @default(false)
+  tutorialStep       Int                  @default(0)
+  welcomeBadgeAt     DateTime?
+  sessionId          String?
+
+  // Part 9B Analytics
+  gameEvents         GameEvent[]
+
   @@map("users")
 }
 
@@ -188,6 +197,8 @@ model Avatar {
   bodyTypeVal Float    @default(0.5)
   heightVal   Float    @default(0.5)
   buildVal    Float    @default(0.5)
+  /** 'male' | 'female' | 'unspecified' — set in the wardrobe customizer. */
+  gender      String   @default("unspecified")
   topColor    String   @default("#4169E1")
   bottomColor String   @default("#2E8B57")
   updatedAt   DateTime @updatedAt
@@ -262,6 +273,10 @@ model Room {
   accessMode       String          @default("PUBLIC")
   isActive         Boolean         @default(true)
   loftAccesses     LoftAccess[]
+
+  // Part 9B Onboarding — Welcome Island solo tutorial room
+  isTutorial       Boolean         @default(false)
+  isSolo           Boolean         @default(false)
 
   @@map("rooms")
 }
@@ -542,6 +557,8 @@ model CraftingQueue {
   startedAt   DateTime @default(now())
   completesAt DateTime
   claimed     Boolean  @default(false)
+  // Set by the every-5-minutes completion cron so a craft is announced exactly once.
+  notifiedAt  DateTime?
 
   @@index([userId, claimed])
   @@map("crafting_queues")
@@ -715,6 +732,27 @@ model TransactionLog {
   @@index([receiverId])
   @@index([senderId])
   @@map("transaction_logs")
+}
+
+// ── Part 9B: Product Analytics ────────────────────────────────────────────────
+/// Append-only gameplay telemetry written by AnalyticsService.trackEvent().
+/// Fire-and-forget: a failed insert must never break a player-facing request.
+model GameEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Logical event name, e.g. PLAYER_JOIN_WORLD, FISH_CAUGHT, CHAT_MESSAGE.
+  event     String
+  /// Session identifier shared with the JWT so session length is derivable.
+  sessionId String?
+  roomId    String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([userId, createdAt])
+  @@index([sessionId])
+  @@map("game_events")
 }
 
 model LoftAccess {

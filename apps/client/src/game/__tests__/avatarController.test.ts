@@ -7,6 +7,7 @@ import { MorphTargetManager } from '@babylonjs/core/Morph/morphTargetManager';
 import { MorphTarget } from '@babylonjs/core/Morph/morphTarget';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { AvatarController } from '../avatarController';
 
 describe('AvatarController (Babylon.js NullEngine)', () => {
@@ -145,5 +146,58 @@ describe('AvatarController (Babylon.js NullEngine)', () => {
     controller.dispose();
 
     expect(controller.rootMesh).toBeNull();
+  });
+
+  it('(i) applyOutfit builds enabled wardrobe layers tinted with the equipped item colours', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+
+    controller.applyOutfit({
+      gender: 'female',
+      hairStyle: 'hair-long-01',
+      hairColor: '#5C3317',
+      outfitBody: 'shirt-blue',
+      outfitLegs: 'pants-black',
+      outfitFeet: 'shoes-white',
+    });
+
+    const meshColor = (name: string): string => {
+      const mesh = scene.getMeshByName(name) as Mesh;
+      expect(mesh, `${name} should exist`).not.toBeNull();
+      expect(mesh.isEnabled()).toBe(true);
+      return (mesh.material as StandardMaterial).diffuseColor.toHexString().toLowerCase();
+    };
+
+    expect(meshColor('avatar_test-user-1_hair')).toBe('#5c3317');
+    expect(meshColor('avatar_test-user-1_top')).toBe('#4169e1');
+    expect(meshColor('avatar_test-user-1_pants')).toBe('#1c1c1c');
+    expect(meshColor('avatar_test-user-1_shoe_l')).toBe('#f5f5f5');
+    expect(meshColor('avatar_test-user-1_shoe_r')).toBe('#f5f5f5');
+  });
+
+  it('(j) applyOutfit hides unequipped layers and shapes male/female proportions differently', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+
+    controller.applyOutfit({ gender: 'unspecified' });
+    const unequippedTop = scene.getMeshByName('avatar_test-user-1_top') as Mesh;
+    expect(unequippedTop.isEnabled()).toBe(false);
+
+    controller.applyOutfit({
+      gender: 'male',
+      outfitBody: 'shirt-black',
+      outfitLegs: 'pants-blue',
+    });
+    const maleTop = scene.getMeshByName('avatar_test-user-1_top') as Mesh;
+    const malePants = scene.getMeshByName('avatar_test-user-1_pants') as Mesh;
+    expect(maleTop.isEnabled()).toBe(true);
+    expect(maleTop.scaling.x).toBeGreaterThan(malePants.scaling.x);
+
+    controller.applyOutfit({
+      gender: 'female',
+      outfitBody: 'shirt-black',
+      outfitLegs: 'pants-blue',
+    });
+    const femaleTop = scene.getMeshByName('avatar_test-user-1_top') as Mesh;
+    const femalePants = scene.getMeshByName('avatar_test-user-1_pants') as Mesh;
+    expect(femalePants.scaling.x).toBeGreaterThan(femaleTop.scaling.x);
   });
 });

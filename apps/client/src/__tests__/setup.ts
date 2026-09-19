@@ -1,4 +1,6 @@
 // Clean up any DOM nodes rendered during the previous test
+import { afterEach, vi } from 'vitest';
+
 afterEach(() => {
   if (typeof document !== 'undefined') {
     document.body.innerHTML = '';

@@ -4,7 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
-import { connectRedis } from './redis';
+import { connectRedis, redis } from './redis';
 import { prisma } from './prisma';
 import { initSentry } from './monitoring/sentry';
 import {
@@ -30,6 +30,8 @@ import testRoutes from './routes/testRoutes';
 import { PetManager } from './services/PetManager';
 import { FishingService } from './services/FishingService';
 import { ShopService } from './services/ShopService';
+import { WorkshopService } from './services/WorkshopService';
+import { SeasonalEventService } from './services/SeasonalEventService';
 import { registerSocketHandlers } from './sockets';
 import cron from 'node-cron';
 
@@ -84,11 +86,18 @@ const io = new Server(httpServer, {
 app.get('/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`; // verify DB is reachable
+    const memory = process.memoryUsage();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '0.1.0',
       uptime: Math.floor(process.uptime()),
+      // Part 9B §3 live monitoring: surfaced to the beta gate and the status page.
+      socketCount: io.engine.clientsCount,
+      heapUsed: memory.heapUsed,
+      heapTotal: memory.heapTotal,
+      rss: memory.rss,
+      redis: redis.isReady ? 'connected' : 'disconnected',
     });
   } catch {
     res.status(503).json({ status: 'error', message: 'Database unreachable' });
@@ -135,8 +144,8 @@ async function start() {
     PetManager.init();
 
     // ── Scheduled Cron Jobs ───────────────────────────────────────────────────
-    // Weekly fishing leaderboard reset: Sunday midnight
-    cron.schedule('0 0 * * 0', () => {
+    // Weekly fishing leaderboard reset: Monday 00:00 UTC (Part 6 §1)
+    cron.schedule('0 0 * * 1', () => {
       FishingService.resetWeeklyLeaderboard();
     });
 
@@ -148,6 +157,21 @@ async function start() {
     // Flash sale check: every 30 minutes
     cron.schedule('*/30 * * * *', () => {
       ShopService.processFlashSales();
+    });
+
+    // Workshop crafting queue completion announcements: every 5 minutes
+    cron.schedule('*/5 * * * *', () => {
+      WorkshopService.processCompletedCrafts().catch((err) =>
+        console.error('[Cron] Crafting completion sweep failed:', err)
+      );
+    });
+
+    // Seasonal event finalization + 1:1 currency conversion: daily at 00:05 UTC,
+    // which closes events the moment their end date has passed (Part 6 §12).
+    cron.schedule('5 0 * * *', () => {
+      SeasonalEventService.convertExpiredEvents().catch((err) =>
+        console.error('[Cron] Seasonal finalization failed:', err)
+      );
     });
 
     httpServer.listen(PORT, '0.0.0.0', () => {

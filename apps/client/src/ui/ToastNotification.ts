@@ -31,9 +31,19 @@ function getContainer(): HTMLElement {
   return container;
 }
 
-export function showToast({ icon = '✨', title, subtitle, durationMs = 4000 }: ToastOptions): void {
+export function showToast(
+  optionsOrTitle: ToastOptions | string,
+  iconArg?: string
+): void {
+  const options: ToastOptions =
+    typeof optionsOrTitle === 'string'
+      ? { title: optionsOrTitle, icon: iconArg || '✨' }
+      : optionsOrTitle;
+
+  const { icon = '✨', title, subtitle, durationMs = 4000 } = options;
   const c = getContainer();
   const toast = document.createElement('div');
+  toast.className = 'haven-toast toast';
   toast.style.cssText = `
     background: rgba(20, 20, 35, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.12);

@@ -5,7 +5,7 @@ import { prisma } from '../prisma';
 import { inventoryService } from '../services/InventoryService';
 import { getIO } from '../sockets';
 import { roomManager } from '../services/RoomManager';
-import { SOCKET_EVENTS } from '@havenworld/shared';
+import { SOCKET_EVENTS, OUTFIT_SLOTS, normalizeGender } from '@havenworld/shared';
 
 const router = Router();
 
@@ -13,23 +13,36 @@ const router = Router();
 router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.userId },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-      lastLoginAt: true,
-      havenCoins: true,
-      havenGems: true,
-      isVIP: true,
+    include: {
+      avatar: true,
+      ownedRooms: {
+        where: { backgroundKey: 'map-personal-room' },
+        take: 1,
+      },
     },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
+
+  const personalRoom =
+    user.ownedRooms?.[0] ??
+    (await prisma.room.findFirst({
+      where: { ownerId: user.id },
+    }));
+
   return res.json({
-    ...user,
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    createdAt: user.createdAt,
+    lastLoginAt: user.lastLoginAt,
+    havenCoins: user.havenCoins,
+    havenGems: user.havenGems,
+    isVIP: user.isVIP,
+    avatar: user.avatar,
     coinBalance: user.havenCoins,
+    personalRoom: personalRoom ? { id: personalRoom.id, name: personalRoom.name } : null,
   });
 });
 
@@ -133,6 +146,16 @@ const avatarDataSchema = z.object({
   bottomColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   hairStyle: z.string().optional(),
   eyeStyle: z.string().optional(),
+  gender: z.string().optional(),
+  // Equipped wardrobe item ids (validated against inventory by the socket handler
+  // and by the explicit inventory check below before they are persisted).
+  outfitHead: z.string().nullable().optional(),
+  outfitFace: z.string().nullable().optional(),
+  outfitBody: z.string().nullable().optional(),
+  outfitLegs: z.string().nullable().optional(),
+  outfitFeet: z.string().nullable().optional(),
+  outfitBack: z.string().nullable().optional(),
+  outfitHand: z.string().nullable().optional(),
 });
 
 // PUT /api/users/me/avatar — save 3D avatar customization
@@ -144,6 +167,21 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
 
   const userId = req.user!.userId;
   const d = parsed.data;
+
+  // Wardrobe slots may only reference items the player actually owns.
+  const requestedOutfitIds = OUTFIT_SLOTS.map((slot) => d[slot]).filter(
+    (value): value is string => typeof value === 'string' && value.length > 0
+  );
+  if (new Set(requestedOutfitIds).size > 0) {
+    const ownedCount = await prisma.inventory.count({
+      where: { userId, itemId: { in: [...new Set(requestedOutfitIds)] } },
+    });
+    if (ownedCount !== new Set(requestedOutfitIds).size) {
+      return res
+        .status(403)
+        .json({ error: 'One or more wardrobe items are not in your inventory.' });
+    }
+  }
 
   const updated = await prisma.avatar.upsert({
     where: { userId },
@@ -159,6 +197,14 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
       buildVal: d.build ?? 0.5,
       hairStyle: d.hairStyle ?? 'hair-short-01',
       eyeStyle: d.eyeStyle ?? 'eyes-default',
+      gender: normalizeGender(d.gender),
+      outfitHead: d.outfitHead ?? null,
+      outfitFace: d.outfitFace ?? null,
+      outfitBody: d.outfitBody ?? null,
+      outfitLegs: d.outfitLegs ?? null,
+      outfitFeet: d.outfitFeet ?? null,
+      outfitBack: d.outfitBack ?? null,
+      outfitHand: d.outfitHand ?? null,
     },
     update: {
       skinTone: d.skinTone,
@@ -171,6 +217,14 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
       buildVal: d.build,
       hairStyle: d.hairStyle,
       eyeStyle: d.eyeStyle,
+      gender: d.gender ? normalizeGender(d.gender) : undefined,
+      outfitHead: d.outfitHead,
+      outfitFace: d.outfitFace,
+      outfitBody: d.outfitBody,
+      outfitLegs: d.outfitLegs,
+      outfitFeet: d.outfitFeet,
+      outfitBack: d.outfitBack,
+      outfitHand: d.outfitHand,
     },
   });
 
@@ -210,7 +264,18 @@ router.get('/me/inventory', requireAuth, async (req: AuthRequest, res) => {
   }
 
   const inventory = await inventoryService.getUserInventory(req.user!.userId);
-  return res.json(inventory);
+  return res.json(
+    inventory.map((entry) => ({
+      itemId: entry.itemId,
+      name: entry.item.name,
+      category: entry.item.category,
+      rarity: entry.item.rarity,
+      spriteKey: entry.item.spriteKey,
+      assetUrl: entry.item.assetUrl,
+      quantity: entry.quantity,
+      isEquipped: entry.isEquipped,
+    }))
+  );
 });
 
 // GET /api/users/me/room — user's personal room ID

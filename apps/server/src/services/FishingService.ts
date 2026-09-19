@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { AnalyticsService } from './AnalyticsService';
 import { FISH_CATALOG, FISHING_CONSTANTS, FishSpecies } from '@havenworld/shared';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
@@ -196,6 +197,12 @@ export class FishingService {
       }
 
       // Track daily quest & achievements
+      void AnalyticsService.trackEvent('FISH_CAUGHT', {
+        userId: session.userId,
+        roomId: session.roomId,
+        payload: { species: session.fish.name, weight: session.weightLbs, coins },
+      });
+
       await QuestService.incrementProgress(session.userId, 'CATCH_FISH', 1);
       await AchievementService.checkAndAward(session.userId, 'CATCH_FISH', {
         species: session.fish.id,

@@ -12,6 +12,7 @@ import {
 } from '@babylonjs/core';
 import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
+import { SceneManager } from '../engine/SceneManager';
 import { RoomLoader } from '../world/RoomLoader';
 import { createPlaceholderRoom } from '../world/PlaceholderRoom';
 import { AvatarController } from '../world/AvatarController';
@@ -43,9 +44,12 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   const roomId = data?.roomId || authService.user?.personalRoom?.id || 'room-park';
   (window as unknown as Record<string, string>).__havenRoomId = roomId;
+  (window as unknown as Record<string, unknown>).__havenActiveScene = scene;
 
   // ── Show HUD & Game Container ─────────────────────────────────────────────
   document.getElementById('game-container')?.classList.remove('hidden');
+  haven.engine.resize();
+
   document.getElementById('room-nav')?.classList.remove('hidden');
   document.getElementById('room-info-pill')?.classList.remove('hidden');
   document.getElementById('player-card')?.classList.remove('hidden');
@@ -167,6 +171,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   });
   avatarController.roomId = roomId;
   await avatarController.init();
+  (window as unknown as Record<string, unknown>).__havenAvatarController = avatarController;
 
   // Camera smooth follow
   const cameraFollowCallback = () => {
@@ -206,6 +211,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   // ── Furniture & Room Decorator ───────────────────────────────────────────
   const furnitureManager = new FurnitureManager(scene, user.id);
+  (window as unknown as Record<string, unknown>).__havenFurnitureManager = furnitureManager;
   await furnitureManager.loadRoomFurniture(roomId);
 
   const btnDecorate = document.getElementById('btn-decorate');
@@ -236,6 +242,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     btnDecorate.setAttribute('data-tooltip', 'Decorate Loft');
     btnDecorate.classList.remove('btn--teal');
     roomEditor = new RoomEditor(scene, furnitureManager, roomId, 0);
+    (window as unknown as Record<string, unknown>).__havenRoomEditor = roomEditor;
     btnDecorate.addEventListener('click', toggleDecorate);
   } else if (btnDecorate) {
     btnDecorate.classList.add('hidden');
@@ -391,7 +398,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       if (meshName.includes('fishing_dock') || meshName === 'fishing-dock') {
         fishingController.startFishing(roomId);
       } else if (meshName === 'door_portal' || meshName.includes('door_exit') || meshName.includes('loft_door') || meshName === 'loft-door') {
-        haven.sceneManager?.switchTo('lobby').catch(console.error);
+        SceneManager.getInstance().switchTo('lobby').catch(console.error);
         audioEngine.playDoorbell();
       } else if (meshName.includes('guestbook') || meshName === 'guestbook-mesh') {
         socketService.emit(SOCKET_EVENTS.GET_GUESTBOOK, { roomId, page: 1 });

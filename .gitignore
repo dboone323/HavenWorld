@@ -59,6 +59,13 @@ supabase/.temp/
 
 # Test snapshots / artifacts (regenerated on demand)
 tests/visual-check.png
+screenshots/
+
+# Playwright artifacts (regenerated on every run — never commit traces/videos/HTML)
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
 
 # Allow Havok Physics WASM in public/
 !apps/client/public/HavokPhysics.wasm

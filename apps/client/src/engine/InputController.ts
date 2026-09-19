@@ -28,13 +28,16 @@ export class InputController {
     this._pointerObserver = this._scene.onPointerObservable.add((pointerInfo) => {
       if (!this._enabled) return;
 
-      // React only to pointer up (click / tap release)
-      if (pointerInfo.type === PointerEventTypes.POINTERUP) {
+      // React to pointer up or tap release
+      if (pointerInfo.type === PointerEventTypes.POINTERUP || pointerInfo.type === PointerEventTypes.POINTERTAP) {
         const evt = pointerInfo.event as PointerEvent;
         // Only trigger on primary button (left click) or touch
         if (evt.button !== undefined && evt.button !== 0) return;
 
-        const pick = pointerInfo.pickInfo;
+        let pick = pointerInfo.pickInfo;
+        if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) {
+          pick = this._scene.pick(this._scene.pointerX, this._scene.pointerY);
+        }
         if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) return;
 
         const mesh = pick.pickedMesh;

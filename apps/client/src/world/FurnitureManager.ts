@@ -1,7 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import '@babylonjs/loaders';
 import type { FurniturePlacementData } from '@havenworld/shared';
-import { SERVER_URL } from '../config';
+import { SERVER_URL, assetUrl } from '../config';
 import { authService } from '../services/auth';
 
 export interface PlacedFurniture {
@@ -71,8 +71,8 @@ export class FurnitureManager {
       } else {
         // First load: import GLB and cache root/child mesh as template
         const assetPath = data.assetUrl?.startsWith('/')
-          ? data.assetUrl
-          : `/assets/furniture/${data.itemId}.glb`;
+          ? assetUrl(data.assetUrl)
+          : assetUrl(`/assets/furniture/${data.itemId}.glb`);
         const pathParts = assetPath.split('/');
         const fileName = pathParts.pop()!;
         const folder = pathParts.join('/') + '/';
@@ -98,6 +98,10 @@ export class FurnitureManager {
       instance.rotation = new BABYLON.Vector3(0, data.rotY, 0);
       instance.scaling = new BABYLON.Vector3(data.scaleX ?? 1, data.scaleY ?? 1, data.scaleZ ?? 1);
       instance.isPickable = true;
+      instance.getChildMeshes().forEach((child) => {
+        child.setEnabled(true);
+        child.isPickable = true;
+      });
 
       const placedItem: PlacedFurniture = {
         id: data.id,
@@ -118,7 +122,12 @@ export class FurnitureManager {
   pickFurniture(pickInfo: BABYLON.PickingInfo): PlacedFurniture | null {
     if (!pickInfo.hit || !pickInfo.pickedMesh) return null;
     for (const [, pf] of this.placed) {
-      if (pf.mesh === pickInfo.pickedMesh || pickInfo.pickedMesh.isDescendantOf(pf.mesh)) {
+      if (
+        pf.mesh === pickInfo.pickedMesh ||
+        pickInfo.pickedMesh.isDescendantOf(pf.mesh) ||
+        pickInfo.pickedMesh.name.includes(pf.id) ||
+        pickInfo.pickedMesh.name.includes(pf.itemId)
+      ) {
         return pf;
       }
     }

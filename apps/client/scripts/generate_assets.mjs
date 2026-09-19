@@ -93,6 +93,14 @@ async function generateFurniture() {
         { name: 'shelf3', size: { width: 0.88, height: 0.04, depth: 0.28 }, pos: new Vector3(0, 1.35, 0) },
       ],
     },
+    plant: {
+      color: new Color3(0.2, 0.65, 0.25),
+      parts: [
+        { name: 'pot', size: { width: 0.35, height: 0.35, depth: 0.35 }, pos: new Vector3(0, 0.175, 0) },
+        { name: 'stem', size: { width: 0.08, height: 0.4, depth: 0.08 }, pos: new Vector3(0, 0.45, 0) },
+        { name: 'leaves', size: { width: 0.5, height: 0.4, depth: 0.5 }, pos: new Vector3(0, 0.75, 0) },
+      ],
+    },
   };
 
   for (const [name, config] of Object.entries(furnitureConfigs)) {
@@ -114,6 +122,7 @@ async function generateFurniture() {
     meshes.forEach((m) => (m.parent = merged));
 
     await saveGLB(scene, path.join(FURNITURE_DIR, `${name}.glb`));
+    await saveGLB(scene, path.join(FURNITURE_DIR, `furniture-${name}.glb`));
     engine.dispose();
   }
 
@@ -143,6 +152,7 @@ async function generateFurniture() {
     shade.parent = root;
 
     await saveGLB(scene, path.join(FURNITURE_DIR, 'lamp.glb'));
+    await saveGLB(scene, path.join(FURNITURE_DIR, 'furniture-lamp.glb'));
     engine.dispose();
   }
 }

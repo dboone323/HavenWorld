@@ -140,6 +140,19 @@ export const SOCKET_EVENTS = {
 
   // ── Phase 3: Photo Gallery (§16) ─────────────────────────────────────────
   PHOTO_LIKED: 'gallery:photo_liked',
+
+  // ── Part 9B: Onboarding Tutorial (§2) ────────────────────────────────────
+  ROUTE_TO_TUTORIAL:       'tutorial:route',
+  TUTORIAL_STEP_COMPLETED: 'tutorial:step_completed',
+  TUTORIAL_PROGRESS:       'tutorial:progress',
+  TUTORIAL_FINISHED:       'tutorial:finished',
+
+  // ── Part 9B: Seasonal Events (§4) ────────────────────────────────────────
+  SEASON_CHANGED:   'seasonal:changed',
+  SEASON_FINALIZED: 'seasonal:finalized',
+
+  // ── Part 9B: Live Monitoring (§3) ────────────────────────────────────────
+  SERVER_ALERT: 'system:alert',
 } as const;
 
 export type SocketEventType = typeof SOCKET_EVENTS[keyof typeof SOCKET_EVENTS];

@@ -4,7 +4,8 @@ import { prisma } from '../prisma';
 import { redis } from '../redis';
 import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
-import { SOCKET_EVENTS } from '@havenworld/shared';
+import { SOCKET_EVENTS, normalizeGender } from '@havenworld/shared';
+import { AnalyticsService } from '../services/AnalyticsService';
 import type { PlayerState, FurnitureState, AvatarData, ChatMessage } from '@havenworld/shared';
 import {
   JoinRoomSchema, MoveSchema, ChatSchema,
@@ -136,7 +137,7 @@ export function registerSocketHandlers(io: Server): void {
         // Check ban status
         const dbUser = await prisma.user.findUnique({
           where: { id: userId },
-          select: { status: true, mutedUntil: true },
+          select: { status: true, mutedUntil: true, sessionId: true },
         });
 
         if (dbUser?.status === 'BANNED') {
@@ -165,6 +166,7 @@ export function registerSocketHandlers(io: Server): void {
           hairColor: avatar.hairColor,
           eyeStyle: avatar.eyeStyle,
           eyeColor: avatar.eyeColor,
+          gender: avatar.gender,
           outfitHead: avatar.outfitHead,
           outfitFace: avatar.outfitFace,
           outfitBody: avatar.outfitBody,
@@ -260,6 +262,13 @@ export function registerSocketHandlers(io: Server): void {
 
         // Track online status in Redis
         await redis.sAdd('online_users', userId);
+
+        // Part 9B analytics: session id ties this visit together for session-length stats
+        void AnalyticsService.trackEvent('PLAYER_JOIN_WORLD', {
+          userId,
+          sessionId: dbUser?.sessionId ?? null,
+          roomId,
+        });
 
         // Send full room state to the joining player only
         const roomState = roomManager.getRoomState(roomId)!;
@@ -515,6 +524,9 @@ export function registerSocketHandlers(io: Server): void {
               hairStyle: avatarData.hairStyle ?? undefined,
               hairColor: avatarData.hairColor ?? undefined,
               eyeStyle: avatarData.eyeStyle ?? undefined,
+              gender: normalizeGender(avatarData.gender),
+              topColor: avatarData.topColor ?? undefined,
+              bottomColor: avatarData.bottomColor ?? undefined,
               outfitHead: avatarData.outfitHead,
               outfitFace: avatarData.outfitFace,
               outfitBody: avatarData.outfitBody,

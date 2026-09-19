@@ -16,6 +16,8 @@ describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
     service = new AuthService();
     vi.resetAllMocks();
   });

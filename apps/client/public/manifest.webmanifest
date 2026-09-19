@@ -1,0 +1,58 @@
+{
+  "name": "HavenWorld — Cozy Social World",
+  "short_name": "HavenWorld",
+  "description": "A cozy browser social world: decorate your loft, fish at Haven Park, meet friends in the café.",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#0d1b2a",
+  "theme_color": "#4ecdc4",
+  "categories": ["games", "social", "entertainment"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Loft",
+      "short_name": "Loft",
+      "description": "Jump straight into your personal loft",
+      "url": "/?destination=loft",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Haven Park",
+      "short_name": "Park",
+      "description": "Head to Haven Park to go fishing",
+      "url": "/?destination=park",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

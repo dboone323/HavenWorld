@@ -13,6 +13,7 @@ import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
 import { socketService } from './services/socket';
 import { DailyLoginModal } from './ui/DailyLoginModal';
+import { initPwa } from './ui/InstallPrompt';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { SERVER_URL } from './config';
 import './style.css';
@@ -28,6 +29,9 @@ if (verifyToken) {
 window.addEventListener('DOMContentLoaded', async () => {
   // Login UI HTML form setup
   mountLoginUI();
+
+  // PWA: register the service worker and offer the install prompt (Part 9A §2)
+  initPwa();
 
   // Get Canvas and initialize Babylon Engine
   const canvas = document.getElementById('haven-canvas') as HTMLCanvasElement | null;

@@ -1,7 +1,9 @@
 import * as BABYLON from '@babylonjs/core';
 import { AdvancedDynamicTexture, Rectangle, TextBlock } from '@babylonjs/gui';
 import type { AvatarData } from '@havenworld/shared';
+import { getItemAccentColor, normalizeGender } from '@havenworld/shared';
 import { socketService } from '../services/socket';
+import { assetUrl } from '../config';
 
 const AVATAR_GLB_PATH = '/assets/avatars/';
 const AVATAR_GLB_FILE = 'base_avatar.glb';
@@ -56,7 +58,7 @@ export class AvatarController {
     try {
       const result = await BABYLON.SceneLoader.ImportMeshAsync(
         '',
-        AVATAR_GLB_PATH,
+        assetUrl(AVATAR_GLB_PATH),
         AVATAR_GLB_FILE,
         this.scene
       );
@@ -147,6 +149,130 @@ export class AvatarController {
   applyCustomization(data: AvatarData): void {
     this.applyMorphTargets(data);
     this.applyMaterialColors(data);
+    this.applyOutfit(data);
+  }
+
+  // ─── Wardrobe Layers ─────────────────────────────────────────────────────
+  /**
+   * Renders the equipped wardrobe as tinted 3D layers parented to the avatar root:
+   * hair (driven by `hairStyle`), top (`outfitBody`), pants (`outfitLegs`) and
+   * shoes (`outfitFeet`). Until per-item GLBs ship, each layer is a procedural
+   * primitive tinted with the item's accent colour, so equipped items are visually
+   * distinct and stay in sync through the existing `avatar:changed` broadcast.
+   * Gender proportions shape shoulders (male) vs. hips (female).
+   */
+  public applyOutfit(data: AvatarData): void {
+    if (!this.rootMesh) return;
+
+    const gender = normalizeGender(data.gender);
+    const shoulderScale = gender === 'male' ? 1.12 : gender === 'female' ? 0.96 : 1;
+    const hipScale = gender === 'male' ? 0.94 : gender === 'female' ? 1.1 : 1;
+
+    const hairStyle = typeof data.hairStyle === 'string' ? data.hairStyle : null;
+    const hairColor = (data.hairColor as string) || getItemAccentColor(hairStyle, '#3B2314');
+    const isLongHair = Boolean(hairStyle && hairStyle.includes('long'));
+
+    this.upsertLayer(
+      this.layerName('hair'),
+      () => BABYLON.MeshBuilder.CreateSphere(this.layerName('hair'), { diameter: 0.46, segments: 8 }, this.scene),
+      {
+        position: new BABYLON.Vector3(0, 1.12, 0),
+        scaling: new BABYLON.Vector3(1.05, isLongHair ? 1.35 : 0.72, 1.05),
+        color: hairColor,
+        enabled: Boolean(hairStyle),
+      }
+    );
+
+    this.upsertLayer(
+      this.layerName('top'),
+      () =>
+        BABYLON.MeshBuilder.CreateBox(
+          this.layerName('top'),
+          { width: 0.5, height: 0.55, depth: 0.3 },
+          this.scene
+        ),
+      {
+        position: new BABYLON.Vector3(0, 0.62, 0),
+        scaling: new BABYLON.Vector3(shoulderScale, 1, 1),
+        color: getItemAccentColor(data.outfitBody, (data.topColor as string) || '#4169E1'),
+        enabled: Boolean(data.outfitBody),
+      }
+    );
+
+    this.upsertLayer(
+      this.layerName('pants'),
+      () =>
+        BABYLON.MeshBuilder.CreateBox(
+          this.layerName('pants'),
+          { width: 0.44, height: 0.5, depth: 0.28 },
+          this.scene
+        ),
+      {
+        position: new BABYLON.Vector3(0, 0.16, 0),
+        scaling: new BABYLON.Vector3(hipScale, 1, 1),
+        color: getItemAccentColor(data.outfitLegs, (data.bottomColor as string) || '#2E8B57'),
+        enabled: Boolean(data.outfitLegs),
+      }
+    );
+
+    for (const side of ['l', 'r'] as const) {
+      const offset = side === 'l' ? 0.12 : -0.12;
+      this.upsertLayer(
+        this.layerName(`shoe_${side}`),
+        () =>
+          BABYLON.MeshBuilder.CreateBox(
+            this.layerName(`shoe_${side}`),
+            { width: 0.16, height: 0.1, depth: 0.28 },
+            this.scene
+          ),
+        {
+          position: new BABYLON.Vector3(offset, -0.02, 0.04),
+          scaling: new BABYLON.Vector3(1, 1, 1),
+          color: getItemAccentColor(data.outfitFeet, '#1C1C1C'),
+          enabled: Boolean(data.outfitFeet),
+        }
+      );
+    }
+  }
+
+  /** Layer meshes are namespaced per avatar so multiple avatars coexist in a scene. */
+  private layerName(part: string): string {
+    return `avatar_${this.user.id}_${part}`;
+  }
+
+  private upsertLayer(
+    meshName: string,
+    create: () => BABYLON.Mesh,
+    opts: {
+      position: BABYLON.Vector3;
+      scaling: BABYLON.Vector3;
+      color: string;
+      enabled: boolean;
+    }
+  ): void {
+    if (!this.rootMesh) return;
+
+    let mesh = this.scene.getMeshByName(meshName) as BABYLON.Mesh | null;
+    if (!mesh) {
+      mesh = create();
+      mesh.parent = this.rootMesh;
+      mesh.isPickable = false;
+      const material = new BABYLON.StandardMaterial(`${meshName}_mat`, this.scene);
+      mesh.material = material;
+    }
+
+    const material = mesh.material as BABYLON.StandardMaterial | null;
+    if (material) {
+      try {
+        material.diffuseColor = BABYLON.Color3.FromHexString(opts.color);
+      } catch {
+        // Malformed hex from an old save — keep the previous colour.
+      }
+    }
+
+    mesh.position = opts.position;
+    mesh.scaling = opts.scaling;
+    mesh.setEnabled(opts.enabled);
   }
 
   // ─── Morph Targets ────────────────────────────────────────────────────────

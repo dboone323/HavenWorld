@@ -2,6 +2,8 @@ import * as BABYLON from '@babylonjs/core';
 import { GridMaterial } from '@babylonjs/materials';
 import type { FurnitureManager, PlacedFurniture } from './FurnitureManager';
 import { SERVER_URL } from '../config';
+import { authService } from '../services/auth';
+import { showToast } from '../ui/ToastNotification';
 
 export interface FurniturePlacement {
   id: string; // UUID (temp for new items, DB id for existing)
@@ -32,6 +34,7 @@ export class RoomEditor {
   private selectedFurniture: PlacedFurniture | null = null;
   private pointerObserver: BABYLON.Observer<BABYLON.PointerInfo> | null = null;
   private contextMenu: HTMLElement | null = null;
+  private selectedToolbar: HTMLElement | null = null;
 
   private currentRotation = 0; // 0, 90, 180, 270 degrees
   private keydownListener: ((e: KeyboardEvent) => void) | null = null;
@@ -74,6 +77,7 @@ export class RoomEditor {
     this.detachPointerObserver();
     this.removeInventoryPanel();
     this.removeContextMenu();
+    this.removeSelectedToolbar();
     this.selectedFurniture = null;
 
     if (this.keydownListener) {
@@ -249,10 +253,45 @@ export class RoomEditor {
       this.placeFurnitureFromGhost();
       return;
     }
+
+    // Check if clicking existing furniture mesh
+    const furniturePick = this.scene.pick(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      (mesh) => {
+        for (const [, pf] of this.furnitureManager.allPlaced) {
+          if (
+            pf.mesh === mesh ||
+            mesh.isDescendantOf(pf.mesh) ||
+            mesh.name.includes(pf.id) ||
+            mesh.name.includes(pf.itemId)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      }
+    );
+
+    if (furniturePick?.hit && furniturePick.pickedMesh) {
+      const hit = this.furnitureManager.pickFurniture(furniturePick);
+      if (hit) {
+        this.showSelectedToolbar(hit);
+        return;
+      }
+    }
+
     const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY);
-    if (pick) {
+    if (pick?.hit) {
       const hit = this.furnitureManager.pickFurniture(pick);
       this.selectedFurniture = hit ?? null;
+      if (hit) {
+        this.showSelectedToolbar(hit);
+      } else {
+        this.removeSelectedToolbar();
+      }
+    } else {
+      this.removeSelectedToolbar();
     }
   }
 
@@ -292,7 +331,7 @@ export class RoomEditor {
 
     this.pendingChanges.set(tempId, placement);
 
-    await this.furnitureManager.placeItem({
+    const placedItem = await this.furnitureManager.placeItem({
       id: tempId,
       itemId: placement.itemId,
       assetUrl: placement.assetUrl!,
@@ -307,6 +346,9 @@ export class RoomEditor {
     });
 
     this.clearGhostMesh();
+    if (placedItem) {
+      this.showSelectedToolbar(placedItem);
+    }
   }
 
   rotateFurniture(id: string, deltaRotY: number): void {
@@ -390,21 +432,22 @@ export class RoomEditor {
       min-width: 140px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     `;
+    menu.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     const options = [
       {
-        label: 'Move',
+        label: '✋ Move',
         action: () => {
           this.removeFurniture(item.id);
           this.startPlacement(item.itemId, `/assets/furniture/${item.itemId}.glb`);
         },
       },
       {
-        label: 'Rotate 90°',
+        label: '🔄 Rotate 90°',
         action: () => this.rotateFurniture(item.id, Math.PI / 2),
       },
       {
-        label: 'Remove',
+        label: '🗑️ Put Away',
         action: () => this.removeFurniture(item.id),
       },
     ];
@@ -446,6 +489,130 @@ export class RoomEditor {
     this.contextMenu = null;
   }
 
+  // ─── Selected Item Floating Toolbar ───────────────────────────────────────
+  private showSelectedToolbar(item: PlacedFurniture): void {
+    this.removeSelectedToolbar();
+    this.selectedFurniture = item;
+    try {
+      item.mesh.showBoundingBox = true;
+      item.mesh.getChildMeshes().forEach((m) => (m.showBoundingBox = true));
+    } catch {}
+
+    const toolbar = document.createElement('div');
+    toolbar.id = 'furniture-selected-toolbar';
+    toolbar.style.cssText = `
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 15, 35, 0.95);
+      border: 1px solid #4ecdc4;
+      border-radius: 8px;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 9100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      font-family: Calibri, sans-serif;
+    `;
+    toolbar.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    const title = document.createElement('span');
+    title.textContent = `Selected: ${item.itemId.replace('furniture-', '')}`;
+    title.style.cssText = 'color: #4ecdc4; font-size: 10.5pt; font-weight: 600; margin-right: 6px; text-transform: capitalize;';
+
+    const btnMove = document.createElement('button');
+    btnMove.id = 'btn-furniture-move';
+    btnMove.innerHTML = '✋ Move';
+    btnMove.style.cssText = `
+      background: #4ecdc4;
+      color: #0d0d1a;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 9.5pt;
+      font-weight: 600;
+      cursor: pointer;
+    `;
+    btnMove.onclick = () => {
+      const itemId = item.itemId;
+      this.removeFurniture(item.id);
+      this.removeSelectedToolbar();
+      this.startPlacement(itemId, `/assets/furniture/${itemId}.glb`);
+    };
+
+    const btnRotate = document.createElement('button');
+    btnRotate.id = 'btn-furniture-rotate';
+    btnRotate.innerHTML = '🔄 Rotate 90° (R)';
+    btnRotate.style.cssText = `
+      background: rgba(139, 92, 246, 0.3);
+      border: 1px solid #8b5cf6;
+      color: #c084fc;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 9.5pt;
+      font-weight: 600;
+      cursor: pointer;
+    `;
+    btnRotate.onclick = () => {
+      this.rotateFurniture(item.id, Math.PI / 2);
+    };
+
+    const btnRemove = document.createElement('button');
+    btnRemove.id = 'btn-furniture-remove';
+    btnRemove.innerHTML = '🗑️ Put Away';
+    btnRemove.style.cssText = `
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+      color: #f87171;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 9.5pt;
+      font-weight: 600;
+      cursor: pointer;
+    `;
+    btnRemove.onclick = () => {
+      this.removeFurniture(item.id);
+      this.removeSelectedToolbar();
+    };
+
+    const btnClose = document.createElement('button');
+    btnClose.id = 'btn-furniture-deselect';
+    btnClose.innerHTML = '✕';
+    btnClose.style.cssText = `
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 13pt;
+      cursor: pointer;
+      padding: 0 4px;
+    `;
+    btnClose.onclick = () => {
+      this.removeSelectedToolbar();
+    };
+
+    toolbar.appendChild(title);
+    toolbar.appendChild(btnMove);
+    toolbar.appendChild(btnRotate);
+    toolbar.appendChild(btnRemove);
+    toolbar.appendChild(btnClose);
+
+    document.body.appendChild(toolbar);
+    this.selectedToolbar = toolbar;
+  }
+
+  private removeSelectedToolbar(): void {
+    if (this.selectedFurniture?.mesh) {
+      try {
+        this.selectedFurniture.mesh.showBoundingBox = false;
+        this.selectedFurniture.mesh.getChildMeshes().forEach((m) => (m.showBoundingBox = false));
+      } catch {}
+    }
+    this.selectedToolbar?.remove();
+    this.selectedToolbar = null;
+  }
+
   // ─── Inventory Panel ──────────────────────────────────────────────────────
   private buildInventoryPanel(): void {
     const panel = document.createElement('div');
@@ -467,6 +634,7 @@ export class RoomEditor {
       padding: 14px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.6);
     `;
+    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     panel.innerHTML = `
       <h4 style="margin: 0 0 8px; color: #4ecdc4; font-size: 12pt; display: flex; justify-content: space-between; align-items: center;">
@@ -485,20 +653,38 @@ export class RoomEditor {
 
     panel.querySelector('#btn-editor-rotate')?.addEventListener('click', () => this.cycleRotation());
 
-    fetch(`${SERVER_URL}/api/users/me/inventory?type=furniture`, { credentials: 'include' })
-      .then((r) => r.json())
-      .then((items: Array<{ itemId: string; name: string; assetUrl: string; quantity: number }>) => {
-        const list = panel.querySelector('#editor-inventory-list');
-        if (!list) return;
+    const loadInventory = async () => {
+      const list = panel.querySelector('#editor-inventory-list');
+      if (!list) return;
+
+      try {
+        const token = authService.token || (await authService.getToken()) || '';
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${SERVER_URL}/api/users/me/inventory?type=furniture`, {
+          headers,
+          credentials: 'include',
+        });
+
+        if (!res.ok) {
+          list.innerHTML = `<p style="color:#ef4444; font-size:9pt;">Failed to load inventory (${res.status})</p>`;
+          return;
+        }
+
+        const items: Array<{ itemId: string; name: string; assetUrl: string; quantity: number }> = await res.json();
         if (!items.length) {
           list.innerHTML = '<p style="color:#888; font-size:9.5pt;">No furniture owned.</p>';
           return;
         }
+
         list.innerHTML = '';
         items.forEach((item) => {
           const btn = document.createElement('button');
           btn.textContent = `${item.name} (x${item.quantity})`;
           btn.title = `Place ${item.name}`;
+          btn.className = 'editor-inventory-item-btn';
+          btn.setAttribute('data-item-id', item.itemId);
           btn.style.cssText = `
             display: block;
             width: 100%;
@@ -518,16 +704,20 @@ export class RoomEditor {
           btn.addEventListener('click', () => this.startPlacement(item.itemId, item.assetUrl));
           list.appendChild(btn);
         });
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('[RoomEditor] Error loading inventory:', err);
-      });
+        list.innerHTML = '<p style="color:#ef4444; font-size:9pt;">Error loading inventory</p>';
+      }
+    };
+
+    loadInventory();
 
     // Save & Cancel Action Buttons
     const footer = document.createElement('div');
     footer.style.cssText = 'margin-top: 16px; border-top: 1px solid #333; padding-top: 10px; display: flex; flex-direction: column; gap: 6px;';
 
     const saveBtn = document.createElement('button');
+    saveBtn.id = 'btn-save-layout';
     saveBtn.textContent = '💾 Save Layout';
     saveBtn.style.cssText = `
       width: 100%;
@@ -543,6 +733,7 @@ export class RoomEditor {
     saveBtn.addEventListener('click', () => this.saveLayout());
 
     const cancelBtn = document.createElement('button');
+    cancelBtn.id = 'btn-cancel-layout';
     cancelBtn.textContent = 'Cancel';
     cancelBtn.style.cssText = `
       width: 100%;
@@ -571,27 +762,60 @@ export class RoomEditor {
 
   // ─── Save / Cancel ────────────────────────────────────────────────────────
   async saveLayout(): Promise<void> {
-    const layout = Array.from(this.pendingChanges.values()).filter((p) => !p.isRemoved);
+    const layout = Array.from(this.furnitureManager.allPlaced.values()).map((item) => ({
+      id: item.id,
+      itemId: item.itemId,
+      assetUrl: `/assets/furniture/${item.itemId}.glb`,
+      x: item.mesh.position.x,
+      y: item.mesh.position.y,
+      z: item.mesh.position.z,
+      rotY: item.mesh.rotation.y,
+      scaleX: item.mesh.scaling.x,
+      scaleY: item.mesh.scaling.y,
+      scaleZ: item.mesh.scaling.z,
+    }));
 
     try {
+      const token = authService.token || (await authService.getToken()) || '';
+      const csrfToken = authService.getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
       const res = await fetch(`${SERVER_URL}/api/rooms/${this.roomId}/furniture/layout`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({ layout }),
       });
 
       if (!res.ok) {
-        alert(`Failed to save layout: HTTP ${res.status}. Please try again.`);
+        showToast({
+          icon: '❌',
+          title: 'Save failed',
+          subtitle: `Server returned HTTP ${res.status} — your layout was not saved.`,
+        });
         return;
       }
 
       this.pendingChanges.clear();
+      this.removeSelectedToolbar();
       this.exitEditMode();
+      showToast({
+        icon: '💾',
+        title: 'Room layout saved!',
+        subtitle: 'Your furniture changes are live.',
+      });
       console.log('[RoomEditor] Layout saved successfully.');
     } catch (err) {
       console.error('[RoomEditor] Save error:', err);
-      alert('Error connecting to server to save layout.');
+      showToast({
+        icon: '❌',
+        title: 'Save failed',
+        subtitle: 'Could not reach the server. Please try again.',
+      });
     }
   }
 
@@ -600,7 +824,9 @@ export class RoomEditor {
     this.furnitureManager.clear();
     this.furnitureManager.loadRoomFurniture(this.roomId);
     this.pendingChanges.clear();
+    this.removeSelectedToolbar();
     this.exitEditMode();
+    showToast({ icon: '↩️', title: 'Changes discarded' });
   }
 
   dispose(): void {

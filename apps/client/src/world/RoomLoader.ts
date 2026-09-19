@@ -1,5 +1,6 @@
 import { Scene, AbstractMesh, SceneLoader, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders/glTF';
+import { assetUrl } from '../config';
 
 export interface RoomLoadResult {
   rootMesh: AbstractMesh;
@@ -60,7 +61,7 @@ export class RoomLoader {
     roomId: string,
     onProgress?: (event: ProgressEvent) => void
   ): Promise<RoomLoadResult> {
-    const url = `/assets/rooms/${roomId}.glb`;
+    const url = assetUrl(`/assets/rooms/${roomId}.glb`);
     console.log(`[RoomLoader] Loading room: ${url}`);
 
     const result = await SceneLoader.ImportMeshAsync(
