@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../prisma';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -20,10 +21,16 @@ export const requireAuth = (
     return;
   }
   const token = authHeader.slice(7);
+  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: 'Server auth configuration missing' });
+    return;
+  }
   try {
     const payload = jwt.verify(
       token,
-      process.env.JWT_ACCESS_SECRET!
+      secret,
+      { algorithms: ['HS256'] }
     ) as { userId: string; username: string; role: string };
     req.user = payload;
     next();
@@ -38,7 +45,8 @@ export const requireAuth = (
 
 export const requireRole = (roles: string[]) =>
   (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const upperRoles = roles.map((r) => r.toUpperCase());
+    if (!req.user || !upperRoles.includes((req.user.role || '').toUpperCase())) {
       res.status(403).json({ error: 'Forbidden', code: 'INSUFFICIENT_ROLE' });
       return;
     }

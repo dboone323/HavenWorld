@@ -16,20 +16,53 @@ import { WorkshopService } from '../services/WorkshopService';
 import { ClubService } from '../services/ClubService';
 import { QuestService } from '../services/QuestService';
 import { AchievementService } from '../services/AchievementService';
+import { ALLOWED_ORIGINS } from '../middleware/security';
+import { attachIdleTimeout } from './idleTimeout';
+import { SocketRateLimiter } from './rateLimiter';
+import { MovementValidator } from '../game/movement';
+import { captureSecurityEvent } from '../monitoring/sentry';
+
+// ── CSWSH Origin Check Middleware ───────────────────────────────────────────
+function socketOriginMiddleware(socket: Socket, next: (err?: Error) => void): void {
+  const origin = socket.handshake.headers.origin;
+  if (!origin && process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    return next();
+  }
+  next(new Error('ORIGIN_FORBIDDEN'));
+}
 
 // ── Socket authentication middleware ──────────────────────────────────────────
-// Every socket connection must provide a valid JWT access token.
-function socketAuthMiddleware(socket: Socket, next: (err?: Error) => void): void {
+// Every socket connection must provide a valid JWT access token with HS256 pinning.
+async function socketAuthMiddleware(socket: Socket, next: (err?: Error) => void): Promise<void> {
   const token = socket.handshake.auth?.token;
   if (!token || typeof token !== 'string') {
     return next(new Error('AUTH_REQUIRED'));
   }
+  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    return next(new Error('AUTH_CONFIG_ERROR'));
+  }
   try {
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as {
+    const payload = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+    }) as {
       userId: string;
       username: string;
       role: string;
     };
+
+    // Check if user is banned
+    const dbUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { isBanned: true, status: true },
+    });
+    if (dbUser?.isBanned || dbUser?.status === 'BANNED') {
+      return next(new Error('USER_BANNED'));
+    }
+
     socket.data.user = payload;
     next();
   } catch {
@@ -59,6 +92,7 @@ export function getIO(): Server | null {
 
 export function registerSocketHandlers(io: Server): void {
   ioInstance = io;
+  io.use(socketOriginMiddleware);
   io.use(socketAuthMiddleware);
 
   io.on('connection', (socket: Socket) => {
@@ -69,6 +103,15 @@ export function registerSocketHandlers(io: Server): void {
     };
     console.log(`[Socket] Connected: ${username} (${socket.id})`);
     socket.join(`user:${userId}`);
+
+    // Attach 10-minute idle timeout
+    attachIdleTimeout(socket);
+
+    // Global rate limiting tracker
+    socket.onAny((eventName) => {
+      if (eventName === 'disconnect') return;
+      SocketRateLimiter.checkLimit(socket, eventName);
+    });
 
     // ── auth:join ─────────────────────────────────────────────────────────────
     socket.on(SOCKET_EVENTS.AUTH_JOIN, async ({ roomId }: { roomId: string }) => {
@@ -138,20 +181,46 @@ export function registerSocketHandlers(io: Server): void {
           roomManager.setFurniture(roomId, furniture);
         }
 
-        // Build spawn position — center of the room
+        // Build spawn position and verify room access
         const dbRoom = await prisma.room.findUnique({
           where: { id: roomId },
-          select: { width: true, height: true, name: true },
+          select: { width: true, height: true, name: true, accessMode: true, ownerId: true },
         });
+
+        if (!dbRoom) {
+          socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
+            code: 'ROOM_NOT_FOUND',
+            message: 'Room does not exist.',
+          });
+          return;
+        }
+
+        if (dbRoom.accessMode === 'PRIVATE' && dbRoom.ownerId !== userId) {
+          const access = await prisma.loftAccess.findUnique({
+            where: {
+              roomId_userId: { roomId, userId },
+            },
+          });
+          if (!access) {
+            socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
+              code: 'FORBIDDEN_PRIVATE_LOFT',
+              message: 'This personal loft is private.',
+            });
+            return;
+          }
+        }
+
         const spawnX = Math.floor((dbRoom?.width ?? 20) / 2) * 32;
         const spawnY = Math.floor((dbRoom?.height ?? 15) / 2) * 32;
+
+        MovementValidator.initializePlayer(userId, { x: spawnX, y: spawnY, z: 0 });
 
         const player: PlayerState = {
           id: userId,
           username,
           avatar: avatarData,
-          x: 0,
-          y: 0,
+          x: spawnX,
+          y: spawnY,
           z: 0,
           rotY: 0,
           direction: 'down',
@@ -245,11 +314,41 @@ export function registerSocketHandlers(io: Server): void {
         const currentRoom = roomManager.getPlayerRoom(socket.id);
         if (currentRoom !== data.roomId) return;
 
-        // Basic server-side sanity clamp (prevent teleport exploits)
-        const MAX_COORD = 200;
-        const cx = Math.max(-MAX_COORD, Math.min(MAX_COORD, data.x));
-        const cy = Math.max(0, Math.min(10, data.y ?? 0));
-        const cz = Math.max(-MAX_COORD, Math.min(MAX_COORD, data.z ?? 0));
+        // Server-authoritative movement validation & speed-hack detection
+        const moveCheck = MovementValidator.validateMovement(userId, {
+          x: data.x,
+          y: data.y,
+          z: data.z,
+        });
+
+        if (!moveCheck.valid) {
+          captureSecurityEvent('SPEED_HACK_DETECTED', {
+            userId,
+            socketId: socket.id,
+            violations: moveCheck.violations,
+            details: moveCheck.reason,
+          });
+
+          // Send snapback correction to client
+          socket.emit(SOCKET_EVENTS.POSITION_CORRECTION, {
+            x: moveCheck.correctedPosition.x,
+            y: moveCheck.correctedPosition.y,
+            z: moveCheck.correctedPosition.z,
+          });
+
+          if (moveCheck.violations >= 3) {
+            socket.emit(SOCKET_EVENTS.ERROR, {
+              code: 'SPEED_HACK_DISCONNECT',
+              message: 'Disconnected due to repeated suspicious movement speed.',
+            });
+            socket.disconnect(true);
+          }
+          return;
+        }
+
+        const cx = moveCheck.correctedPosition.x;
+        const cy = moveCheck.correctedPosition.y;
+        const cz = moveCheck.correctedPosition.z ?? 0;
         const cRotY = (data.rotY ?? 0) % (Math.PI * 2);
 
         // Update in-memory state
@@ -785,6 +884,8 @@ export function registerSocketHandlers(io: Server): void {
 
       clearRateLimitEntry(socket.id);
       moveRateLimiter.delete(socket.id);
+      MovementValidator.removePlayer(userId);
+      SocketRateLimiter.cleanup(socket.id);
     });
   });
 }

@@ -7,9 +7,15 @@ import { prisma } from '../prisma';
 import { redis } from '../redis';
 import { inventoryService } from '../services/InventoryService';
 import { Resend } from 'resend';
+import { setCsrfCookie, generateCsrfToken } from '../middleware/csrf';
+import { generateAccessToken, generateRefreshToken } from '../auth/tokens';
+import { requireAuth, type AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const resend = new Resend(process.env.RESEND_API_KEY || 're_placeholder');
+
+// Constant-time hash for invalid usernames to prevent timing attacks / user enumeration
+const DUMMY_HASH = '$2b$12$dummyhashfortimingnormalizationXXXXXXXXXXXXXXXXXXXXXX';
 
 // ── Zod validation schemas ───────────────────────────────────────────────────
 const registerSchema = z.object({
@@ -28,8 +34,11 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional(),
+  username: z.string().optional(),
   password: z.string().min(1),
+}).refine((data) => data.email || data.username, {
+  message: 'Either email or username must be provided.',
 });
 
 export function generateTokens(userId: string, username: string, role: string) {
@@ -248,11 +257,13 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   }
 
-  const { email, password } = parsed.data;
+  const { email, username, password } = parsed.data;
 
-  // Find by email — never reveal which field was wrong
-  const user = await prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
+  // Find by email or username
+  const user = await prisma.user.findFirst({
+    where: email
+      ? { email: email.toLowerCase() }
+      : { username: { equals: username, mode: 'insensitive' } },
     include: {
       avatar: true,
       ownedRooms: {
@@ -262,9 +273,14 @@ router.post('/login', async (req: Request, res: Response) => {
     },
   });
 
-  if (!user) {
+  // Always perform bcrypt compare to ensure constant-time response (prevents user enumeration)
+  const hashToCompare = user?.passwordHash ?? DUMMY_HASH;
+  const passwordValid = await bcrypt.compare(password, hashToCompare);
+
+  if (!user || !passwordValid) {
     return res.status(401).json({
-      error: 'Invalid email or password.',
+      error: 'AUTHENTICATION_FAILED',
+      message: 'Invalid email or password.',
       code: 'INVALID_CREDENTIALS',
     });
   }
@@ -276,18 +292,10 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   }
 
-  if (user.status === 'BANNED') {
+  if (user.status === 'BANNED' || user.isBanned) {
     return res.status(403).json({
       error: 'This account has been suspended.',
       code: 'ACCOUNT_BANNED',
-    });
-  }
-
-  const passwordValid = await bcrypt.compare(password, user.passwordHash);
-  if (!passwordValid) {
-    return res.status(401).json({
-      error: 'Invalid email or password.',
-      code: 'INVALID_CREDENTIALS',
     });
   }
 
@@ -308,9 +316,11 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   }
 
-  const { accessToken, refreshToken } = generateTokens(user.id, user.username, user.role);
+  // Issue Access Token & DB-backed Refresh Token with rotation family
+  const accessToken = generateAccessToken(user.id, user.username, user.role);
+  const refreshToken = await generateRefreshToken(user.id);
 
-  // Store refresh token in Redis (7-day TTL)
+  // Store in Redis (optional fast lookup)
   await redis.setEx(`refresh:${user.id}`, 7 * 24 * 3600, refreshToken);
 
   // Update last login timestamp
@@ -319,8 +329,12 @@ router.post('/login', async (req: Request, res: Response) => {
     data: { lastLoginAt: new Date() },
   });
 
-  // Set httpOnly refresh token cookie
+  // Set httpOnly SameSite=Strict cookies
+  res.cookie('refresh_token', refreshToken, REFRESH_COOKIE_OPTIONS);
   res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+
+  // Set CSRF cookie (non-httpOnly for JavaScript client header usage)
+  setCsrfCookie(res, generateCsrfToken());
 
   return res.json({
     accessToken,
@@ -339,75 +353,95 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // ── POST /api/auth/refresh ────────────────────────────────────────────────────
 router.post('/refresh', async (req: Request, res: Response) => {
-  const { refreshToken } = req.cookies;
-  if (!refreshToken) {
+  const incomingToken = req.cookies?.refresh_token || req.cookies?.refreshToken;
+  if (!incomingToken) {
     return res.status(401).json({
-      error: 'No refresh token.',
-      code: 'NO_REFRESH_TOKEN',
+      error: 'REFRESH_TOKEN_MISSING',
+      message: 'No refresh token provided.',
     });
   }
 
-  let payload: any;
-  try {
-    payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!);
-  } catch {
-    return res.status(401).json({
-      error: 'Refresh token invalid or expired.',
-      code: 'REFRESH_INVALID',
-    });
-  }
-
-  // Check Redis allowlist — prevents reuse after logout
-  const stored = await redis.get(`refresh:${payload.userId}`);
-  if (stored !== refreshToken) {
-    return res.status(401).json({
-      error: 'Refresh token has been revoked.',
-      code: 'REFRESH_REVOKED',
-    });
-  }
-
-  // Load current user
-  const user = await prisma.user.findUnique({
-    where: { id: payload.userId },
-    select: { id: true, username: true, role: true, status: true },
+  // Find token in PostgreSQL
+  const storedToken = await prisma.refreshToken.findUnique({
+    where: { token: incomingToken },
+    include: {
+      user: {
+        select: { id: true, username: true, role: true, status: true, isBanned: true },
+      },
+    },
   });
 
-  if (!user || user.status === 'BANNED') {
-    return res.status(403).json({
-      error: 'Account not found or suspended.',
-      code: 'ACCOUNT_INVALID',
+  // Token not found (already rotated or invalid) -> Flag reuse attack
+  if (!storedToken) {
+    console.warn({
+      event: 'REFRESH_TOKEN_REUSE_SUSPECTED',
+      token: incomingToken.substring(0, 8) + '...',
+      timestamp: new Date().toISOString(),
     });
+    return res.status(401).json({ error: 'TOKEN_REUSE_DETECTED' });
   }
 
-  // Issue new access token + rotate refresh token
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens(
-    user.id,
-    user.username,
-    user.role
+  // Token expired check
+  if (storedToken.expiresAt < new Date()) {
+    await prisma.refreshToken.delete({ where: { id: storedToken.id } });
+    return res.status(401).json({ error: 'REFRESH_TOKEN_EXPIRED' });
+  }
+
+  // Banned user check
+  if (storedToken.user.status === 'BANNED' || storedToken.user.isBanned) {
+    await prisma.refreshToken.deleteMany({ where: { userId: storedToken.userId } });
+    return res.status(403).json({ error: 'ACCOUNT_BANNED' });
+  }
+
+  // Atomic rotation inside transaction
+  const [newRefreshToken] = await prisma.$transaction(async (tx) => {
+    await tx.refreshToken.delete({ where: { id: storedToken.id } });
+    const newToken = await generateRefreshToken(storedToken.userId);
+    return [newToken];
+  });
+
+  const newAccessToken = generateAccessToken(
+    storedToken.user.id,
+    storedToken.user.username,
+    storedToken.user.role
   );
 
-  await redis.setEx(`refresh:${user.id}`, 7 * 24 * 3600, newRefreshToken);
+  await redis.setEx(`refresh:${storedToken.user.id}`, 7 * 24 * 3600, newRefreshToken);
+  res.cookie('refresh_token', newRefreshToken, REFRESH_COOKIE_OPTIONS);
   res.cookie('refreshToken', newRefreshToken, REFRESH_COOKIE_OPTIONS);
 
-  return res.json({ accessToken });
+  return res.json({ accessToken: newAccessToken });
 });
 
 // ── POST /api/auth/logout ─────────────────────────────────────────────────────
 router.post('/logout', async (req: Request, res: Response) => {
-  const { refreshToken } = req.cookies;
-  if (refreshToken) {
-    try {
-      const payload = jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET!
-      ) as any;
-      await redis.del(`refresh:${payload.userId}`);
-    } catch {
-      // Token already expired — no action needed
-    }
+  const token = req.cookies?.refresh_token || req.cookies?.refreshToken;
+  if (token) {
+    await prisma.refreshToken.deleteMany({ where: { token } });
   }
+  res.clearCookie('refresh_token', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
   res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
-  return res.json({ message: 'Logged out successfully.' });
+  res.clearCookie('csrf_token');
+  return res.json({ success: true, message: 'Logged out successfully.' });
+});
+
+// ── POST /api/auth/logout-all ─────────────────────────────────────────────────
+router.post('/logout-all', requireAuth, async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  }
+
+  const { count } = await prisma.refreshToken.deleteMany({
+    where: { userId },
+  });
+
+  await redis.del(`refresh:${userId}`);
+  res.clearCookie('refresh_token', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+  res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+  res.clearCookie('csrf_token');
+
+  return res.json({ success: true, devicesLoggedOut: count });
 });
 
 export default router;

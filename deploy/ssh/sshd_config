@@ -1,0 +1,32 @@
+# /etc/ssh/sshd_config — HavenWorld hardened SSH configuration
+Port 2222
+AddressFamily inet
+
+# Authentication
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PermitRootLogin no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+
+# Session limits
+MaxAuthTries 3
+MaxSessions 5
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# Restrict to authorized users
+AllowUsers ubuntu
+
+# Disable unused features
+X11Forwarding no
+AllowTcpForwarding no
+GatewayPorts no
+PermitUserEnvironment no
+
+# Logging
+SyslogFacility AUTH
+LogLevel VERBOSE

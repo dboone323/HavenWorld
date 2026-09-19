@@ -36,6 +36,7 @@
     "redis": "^6.2.1",
     "resend": "^6.28.1",
     "socket.io": "^4.8.3",
+    "xss": "^1.0.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {

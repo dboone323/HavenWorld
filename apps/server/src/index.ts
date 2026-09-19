@@ -2,13 +2,18 @@ import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
-import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
-import * as Sentry from '@sentry/node';
 import { connectRedis } from './redis';
 import { prisma } from './prisma';
+import { initSentry } from './monitoring/sentry';
+import {
+  applySecurityMiddleware,
+  verifyStartupSecurityAssertions,
+  ALLOWED_ORIGINS,
+} from './middleware/security';
+import { csrfProtection } from './middleware/csrf';
+import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import roomRoutes from './routes/rooms';
@@ -30,73 +35,45 @@ export const SERVER_CONFIG = {
   version: '0.1.0',
 };
 
-// ── Sentry (error monitoring) ────────────────────────────────────────────────
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV ?? 'development',
-    tracesSampleRate: 0.1,
-  });
-}
+// ── Verify critical security assertions at startup ───────────────────────────
+verifyStartupSecurityAssertions();
 
-// ── Express app ──────────────────────────────────────────────────────────────
+// ── Express app & HTTP server ────────────────────────────────────────────────
 const app = express();
 const httpServer = createServer(app);
 
-// ── Socket.io ────────────────────────────────────────────────────────────────
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  'https://havenworld-game.pages.dev',
-  'https://havenworld.pages.dev',
-  'http://localhost:5173',
-].filter((url): url is string => Boolean(url));
+// ── Sentry (error monitoring) ────────────────────────────────────────────────
+initSentry();
 
+// ── Security & Core Middleware ───────────────────────────────────────────────
+applySecurityMiddleware(app);
+app.use(cookieParser());
+app.use(csrfProtection);
+
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('combined'));
+}
+
+// ── Socket.io ────────────────────────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl) or matching origins
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else if (process.env.NODE_ENV !== 'production') {
         callback(null, true);
       } else {
-        callback(null, true); // Permissive in alpha for custom nip.io subdomains
+        callback(new Error('CORS_ORIGIN_BLOCKED'));
       }
     },
     credentials: true,
   },
   transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  maxHttpBufferSize: 64 * 1024,
+  perMessageDeflate: false,
+  pingTimeout: 20000,
+  pingInterval: 10000,
 });
-
-// ── Middleware ────────────────────────────────────────────────────────────────
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Phaser handles its own CSP needs
-    crossOriginEmbedderPolicy: false,
-  })
-);
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  })
-);
-
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: false, limit: '10kb' }));
-app.use(cookieParser());
-
-if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('combined'));
-}
 
 // ── Health check ──────────────────────────────────────────────────────────────
 // UptimeRobot and GitHub Actions health checks hit this endpoint
@@ -132,22 +109,10 @@ if (process.env.NODE_ENV === 'test') {
 }
 
 // ── 404 catch-all ────────────────────────────────────────────────────────────
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
+app.use(notFoundHandler);
 
 // ── Global error handler ─────────────────────────────────────────────────────
-app.use(
-  (
-    err: Error,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction
-  ) => {
-    console.error('[Error]', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-);
+app.use(globalErrorHandler);
 
 // ── Socket.io handlers ────────────────────────────────────────────────────────
 registerSocketHandlers(io);

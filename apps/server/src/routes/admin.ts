@@ -2,13 +2,14 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
+import { requireAdmin, logAdminAction } from '../middleware/adminAuth';
 import { prisma } from '../prisma';
 
 const router = Router();
 
-// All admin routes require authentication + ADMIN or MODERATOR role
+// All admin routes require authentication + fresh DB ADMIN role verification
 router.use(requireAuth);
-router.use(requireRole(['ADMIN', 'MODERATOR']));
+router.use(requireAdmin);
 
 // ── INVITE CODE MANAGEMENT (ADMIN only) ──────────────────────────────────────
 const generateInviteSchema = z.object({
@@ -165,27 +166,41 @@ router.post('/users/:id/mute', async (req: AuthRequest, res) => {
 });
 
 // POST /api/admin/users/:id/ban — permanently ban a player
-router.post('/users/:id/ban', async (req: AuthRequest, res) => {
+router.post('/users/:id/ban', requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   await prisma.user.update({
     where: { id },
-    data: { status: 'BANNED', mutedUntil: null },
+    data: { status: 'BANNED', isBanned: true, bannedAt: new Date(), mutedUntil: null },
   });
 
+  // Revoke all refresh tokens
+  await prisma.refreshToken.deleteMany({ where: { userId: id } });
+
+  await logAdminAction(req.user!.userId, 'BAN_USER', id, undefined, req.ip);
   console.log(`[Admin] ${req.user!.username} banned user ${id}`);
-  return res.json({ message: 'User has been banned.' });
+  return res.json({ message: 'User has been banned and sessions revoked.' });
 });
 
 // POST /api/admin/users/:id/unban — restore a muted or banned player
-router.post('/users/:id/unban', async (req: AuthRequest, res) => {
+router.post('/users/:id/unban', requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   await prisma.user.update({
     where: { id },
-    data: { status: 'ACTIVE', mutedUntil: null },
+    data: { status: 'ACTIVE', isBanned: false, bannedAt: null, mutedUntil: null },
   });
 
+  await logAdminAction(req.user!.userId, 'UNBAN_USER', id, undefined, req.ip);
   console.log(`[Admin] ${req.user!.username} restored user ${id}`);
   return res.json({ message: 'User account restored to active.' });
+});
+
+// POST /api/admin/force-logout/:id — revoke all active tokens for a user
+router.post('/force-logout/:id', requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+  const deleted = await prisma.refreshToken.deleteMany({ where: { userId: id } });
+
+  await logAdminAction(req.user!.userId, 'FORCE_LOGOUT', id, { tokensRevoked: deleted.count }, req.ip);
+  return res.json({ message: `Revoked ${deleted.count} active sessions for user ${id}.` });
 });
 
 // POST /api/admin/users/:id/promote — promote a player to MODERATOR (ADMIN only)
@@ -195,6 +210,7 @@ router.post('/users/:id/promote', requireRole(['ADMIN']), async (req: AuthReques
     where: { id },
     data: { role: 'MODERATOR' },
   });
+  await logAdminAction(req.user!.userId, 'PROMOTE_MODERATOR', id, undefined, req.ip);
   return res.json({ message: 'User promoted to Moderator.' });
 });
 

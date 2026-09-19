@@ -9,8 +9,10 @@ export const SOCKET_EVENTS = {
   ROOM_PLAYER_LEFT:   'room:player_left',
 
   // Player Movement
-  PLAYER_MOVE:     'player:move',
-  PLAYER_POSITION: 'player:position',
+  PLAYER_MOVE:         'player:move',
+  PLAYER_POSITION:     'player:position',
+  POSITION_CORRECTION: 'player:position_correction',
+  ERROR:               'error',
 
   // Chat
   CHAT_SEND:    'chat:send',

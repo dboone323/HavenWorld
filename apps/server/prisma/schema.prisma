@@ -155,6 +155,16 @@ model User {
   photos             GalleryPhoto[]
   photoLikes         PhotoLike[]
 
+  // Part 8 Security Hardening
+  isBanned           Boolean              @default(false)
+  bannedAt           DateTime?
+  weeklyEarnings     Int                  @default(0)
+  refreshTokens      RefreshToken[]
+  adminAuditLogs     AdminAuditLog[]      @relation("AdminAuditAdmin")
+  transactionsSent   TransactionLog[]     @relation("TransactionSender")
+  transactionsReceived TransactionLog[]   @relation("TransactionReceiver")
+  loftAccesses       LoftAccess[]
+
   @@map("users")
 }
 
@@ -247,6 +257,11 @@ model Room {
   accessLogs       RoomAccessLog[]
   guestbookEntries GuestbookEntry[]
   club             Club?
+
+  // Part 8 Security Hardening
+  accessMode       String          @default("PUBLIC")
+  isActive         Boolean         @default(true)
+  loftAccesses     LoftAccess[]
 
   @@map("rooms")
 }
@@ -653,3 +668,64 @@ model PhotoLike {
   @@unique([photoId, userId])
   @@map("photo_likes")
 }
+
+// ── Part 8 Security Hardening Models ──────────────────────────────────────────
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model AdminAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  admin     User     @relation("AdminAuditAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  action    String
+  targetId  String?
+  metadata  String?
+  ip        String   @default("unknown")
+  userAgent String   @default("unknown")
+  timestamp DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@map("admin_audit_logs")
+}
+
+model TransactionLog {
+  id         String   @id @default(uuid())
+  senderId   String?
+  sender     User?    @relation("TransactionSender", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User     @relation("TransactionReceiver", fields: [receiverId], references: [id])
+  amount     Int
+  type       String
+  source     String?
+  timestamp  DateTime @default(now())
+
+  @@index([receiverId])
+  @@index([senderId])
+  @@map("transaction_logs")
+}
+
+model LoftAccess {
+  id        String   @id @default(uuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@map("loft_access")
+}
+
