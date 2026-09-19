@@ -1,6 +1,7 @@
 import {
   Scene,
   ArcRotateCamera,
+  Camera,
   Vector3,
   Color3,
   Color4,
@@ -37,7 +38,8 @@ import { GalleryPanel } from '../gallery/GalleryPanel';
 
 export async function createRoomScene(haven: HavenEngine, data?: { roomId?: string }): Promise<Scene> {
   const scene = new Scene(haven.engine);
-  scene.clearColor = new Color4(0.08, 0.08, 0.15, 1.0);
+  scene.clearColor = new Color4(0.11, 0.13, 0.17, 1.0);
+  const unsubs: Array<() => void> = [];
 
   const roomId = data?.roomId || authService.user?.personalRoom?.id || 'room-park';
   (window as unknown as Record<string, string>).__havenRoomId = roomId;
@@ -45,6 +47,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   // ── Show HUD & Game Container ─────────────────────────────────────────────
   document.getElementById('game-container')?.classList.remove('hidden');
   document.getElementById('room-nav')?.classList.remove('hidden');
+  document.getElementById('room-info-pill')?.classList.remove('hidden');
   document.getElementById('player-card')?.classList.remove('hidden');
   document.getElementById('chat-panel')?.classList.remove('hidden');
   document.getElementById('lobby-panel')?.classList.add('hidden');
@@ -55,19 +58,58 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     usernameEl.textContent = authService.user.username;
   }
 
-  // ── Fixed-Angle Isometric Camera ──────────────────────────────────────────
+  // Populate Room Info Pill (MegaPlanet style)
+  const roomNameEl = document.getElementById('room-name-display');
+  const roomTypeBadge = document.getElementById('room-badge-type');
+  const isOwner = authService.user?.personalRoom?.id === roomId;
+  if (roomNameEl) {
+    if (roomId === 'room-park') {
+      roomNameEl.textContent = '🌳 Haven Park & Plaza';
+      if (roomTypeBadge) roomTypeBadge.textContent = 'Public Park';
+    } else {
+      const ownerName = authService.user?.username || 'Citizen';
+      roomNameEl.textContent = isOwner ? `${ownerName}'s Sanctuary Loft` : 'Community Loft';
+      if (roomTypeBadge) roomTypeBadge.textContent = isOwner ? 'Personal Pad' : 'Guest Pad';
+    }
+  }
+
+  // Room Controls Card (owner only)
+  const roomControlsCard = document.getElementById('room-controls-card');
+  if (roomControlsCard) {
+    if (isOwner) {
+      roomControlsCard.classList.remove('hidden');
+    } else {
+      roomControlsCard.classList.add('hidden');
+    }
+  }
+
+  // ── True Isometric Orthographic Camera ────────────────────────────────────
   const camera = new ArcRotateCamera(
     'isometricCam',
-    -Math.PI / 4, // 45 deg angle
-    Math.PI / 4,  // 45 deg pitch
-    18,           // initial distance
-    new Vector3(0, 0, 0),
+    -Math.PI / 4, // 45 deg angle looking at corner
+    Math.atan(Math.SQRT2), // 54.7356 deg true isometric pitch (35.26 deg elevation)
+    25,           // radius
+    new Vector3(0, 1.0, 0),
     scene
   );
-  camera.lowerRadiusLimit = 8;
-  camera.upperRadiusLimit = 28;
-  camera.lowerBetaLimit = Math.PI / 4;
-  camera.upperBetaLimit = Math.PI / 4;
+  camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+
+  const updateOrtho = () => {
+    const aspect = haven.canvas.width / haven.canvas.height;
+    const orthoSize = 10.5; // Perfectly frames the 14m cutaway room with margins
+    camera.orthoLeft = -orthoSize * aspect;
+    camera.orthoRight = orthoSize * aspect;
+    camera.orthoTop = orthoSize;
+    camera.orthoBottom = -orthoSize;
+  };
+  updateOrtho();
+  window.addEventListener('resize', updateOrtho);
+  unsubs.push(() => window.removeEventListener('resize', updateOrtho));
+
+  camera.lowerRadiusLimit = 15;
+  camera.upperRadiusLimit = 35;
+  camera.lowerBetaLimit = Math.atan(Math.SQRT2);
+  camera.upperBetaLimit = Math.atan(Math.SQRT2);
   camera.lowerAlphaLimit = -Math.PI / 4;
   camera.upperAlphaLimit = -Math.PI / 4;
   camera.attachControl(haven.canvas, true);
@@ -76,14 +118,15 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   camera.inputs.removeByType('ArcRotateCameraPointersInput');
   camera.inputs.removeByType('ArcRotateCameraKeyboardMoveInput');
 
-  // ── Lighting & Shadows ───────────────────────────────────────────────────
+  // ── Lighting & Shadows (MegaPlanet warm studio lighting) ──────────────────
   const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), scene);
-  ambientLight.intensity = 0.75;
-  ambientLight.groundColor = new Color3(0.2, 0.22, 0.35);
+  ambientLight.intensity = 0.85;
+  ambientLight.diffuse = new Color3(1.0, 0.98, 0.95);
+  ambientLight.groundColor = new Color3(0.55, 0.55, 0.60);
 
   const sunLight = new DirectionalLight('sunLight', new Vector3(-1, -2, -1), scene);
-  sunLight.position = new Vector3(15, 30, 15);
-  sunLight.intensity = 1.1;
+  sunLight.position = new Vector3(15, 25, 15);
+  sunLight.intensity = 0.65;
 
   const shadowGenerator = new ShadowGenerator(2048, sunLight);
   shadowGenerator.useBlurExponentialShadowMap = true;
@@ -165,7 +208,6 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   const furnitureManager = new FurnitureManager(scene, user.id);
   await furnitureManager.loadRoomFurniture(roomId);
 
-  const isOwner = authService.user?.personalRoom?.id === roomId;
   const btnDecorate = document.getElementById('btn-decorate');
   let roomEditor: RoomEditor | null = null;
 
@@ -174,13 +216,15 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     if (roomEditor.inEditMode) {
       roomEditor.exitEditMode();
       if (btnDecorate) {
-        btnDecorate.textContent = '🛋️ Decorate';
+        btnDecorate.innerHTML = '<span class="dock-icon">🛋️</span>';
+        btnDecorate.setAttribute('data-tooltip', 'Decorate Loft');
         btnDecorate.classList.remove('btn--teal');
       }
     } else {
       roomEditor.enterEditMode();
       if (btnDecorate) {
-        btnDecorate.textContent = '💾 Finish';
+        btnDecorate.innerHTML = '<span class="dock-icon">💾</span>';
+        btnDecorate.setAttribute('data-tooltip', 'Finish Decorating');
         btnDecorate.classList.add('btn--teal');
       }
     }
@@ -188,16 +232,14 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   if (isOwner && btnDecorate) {
     btnDecorate.classList.remove('hidden');
-    btnDecorate.textContent = '🛋️ Decorate';
+    btnDecorate.innerHTML = '<span class="dock-icon">🛋️</span>';
+    btnDecorate.setAttribute('data-tooltip', 'Decorate Loft');
     btnDecorate.classList.remove('btn--teal');
     roomEditor = new RoomEditor(scene, furnitureManager, roomId, 0);
     btnDecorate.addEventListener('click', toggleDecorate);
   } else if (btnDecorate) {
     btnDecorate.classList.add('hidden');
   }
-
-  // ── Subscriptions & Cleanup array ─────────────────────────────────────────
-  const unsubs: Array<() => void> = [];
 
   // ── Coin Balance HUD ─────────────────────────────────────────────────────
   const coinAmount = document.getElementById('coin-amount');
@@ -348,10 +390,9 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
       if (meshName.includes('fishing_dock') || meshName === 'fishing-dock') {
         fishingController.startFishing(roomId);
-      } else if (meshName.includes('loft_door') || meshName === 'loft-door') {
-        socketService.emit(SOCKET_EVENTS.RING_DOORBELL, { roomId });
+      } else if (meshName === 'door_portal' || meshName.includes('door_exit') || meshName.includes('loft_door') || meshName === 'loft-door') {
+        haven.sceneManager?.switchTo('lobby').catch(console.error);
         audioEngine.playDoorbell();
-        showToast({ icon: '🔔', title: 'Doorbell Rang', subtitle: 'Waiting for owner to answer...' });
       } else if (meshName.includes('guestbook') || meshName === 'guestbook-mesh') {
         socketService.emit(SOCKET_EVENTS.GET_GUESTBOOK, { roomId, page: 1 });
       } else if (meshName.includes('tip_jar') || meshName === 'tip-jar-mesh') {
@@ -610,6 +651,8 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       remote.dispose();
     }
     remoteAvatars.clear();
+    document.getElementById('room-info-pill')?.classList.add('hidden');
+    document.getElementById('room-controls-card')?.classList.add('hidden');
     (window as any).__havenRoomReady = false;
   });
 

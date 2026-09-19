@@ -6,6 +6,7 @@ import {
   PickingInfo,
   Matrix,
   Camera,
+  Tags,
 } from '@babylonjs/core';
 import { AvatarController } from '../world/AvatarController';
 
@@ -37,11 +38,31 @@ export class InputController {
         if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) return;
 
         const mesh = pick.pickedMesh;
+        const isSeat =
+          mesh.name.startsWith('sofa') ||
+          mesh.name.includes('chair') ||
+          mesh.name.includes('bench') ||
+          mesh.name.includes('stool') ||
+          mesh.name.includes('bed') ||
+          mesh.metadata?.interactable === 'sit';
+
+        if (isSeat) {
+          const seatPos = mesh.getAbsolutePosition();
+          this._avatar.moveTo(seatPos);
+          setTimeout(() => {
+            this._avatar.playSocialAnim('sit');
+          }, 350);
+          return;
+        }
+
         const isWalkable =
           mesh.metadata?.walkable === true ||
+          Tags.MatchesQuery(mesh, 'walkable') ||
           mesh.name.startsWith('Walkable_') ||
           mesh.name.startsWith('NavMesh_') ||
-          mesh.name === 'placeholder_ground';
+          mesh.name === 'Floor' ||
+          mesh.name === 'placeholder_ground' ||
+          mesh.name.includes('rug');
 
         if (isWalkable) {
           this._avatar.moveTo(pick.pickedPoint);

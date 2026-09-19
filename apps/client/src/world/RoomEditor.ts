@@ -33,6 +33,9 @@ export class RoomEditor {
   private pointerObserver: BABYLON.Observer<BABYLON.PointerInfo> | null = null;
   private contextMenu: HTMLElement | null = null;
 
+  private currentRotation = 0; // 0, 90, 180, 270 degrees
+  private keydownListener: ((e: KeyboardEvent) => void) | null = null;
+
   // Tracks changes in this edit session
   private pendingChanges: Map<string, FurniturePlacement> = new Map();
 
@@ -51,6 +54,15 @@ export class RoomEditor {
     this.showGrid();
     this.attachPointerObserver();
     this.buildInventoryPanel();
+
+    this.keydownListener = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'r' || e.key === 'R') {
+        this.cycleRotation();
+      }
+    };
+    window.addEventListener('keydown', this.keydownListener);
+
     console.log('[RoomEditor] Edit mode ON');
   }
 
@@ -63,6 +75,12 @@ export class RoomEditor {
     this.removeInventoryPanel();
     this.removeContextMenu();
     this.selectedFurniture = null;
+
+    if (this.keydownListener) {
+      window.removeEventListener('keydown', this.keydownListener);
+      this.keydownListener = null;
+    }
+
     console.log('[RoomEditor] Edit mode OFF');
   }
 
@@ -112,6 +130,7 @@ export class RoomEditor {
       this.ghostMesh = result.meshes[0];
       this.ghostMesh.name = 'ghost_placement';
       this.ghostMesh.isPickable = false;
+      this.ghostMesh.rotation.y = (this.currentRotation * Math.PI) / 180;
 
       // Apply translucent blue material to all sub-meshes
       result.meshes.forEach((mesh) => {
@@ -124,6 +143,31 @@ export class RoomEditor {
       });
     } catch (err) {
       console.error('[RoomEditor] Error creating ghost mesh:', err);
+    }
+  }
+
+  public cycleRotation(): void {
+    this.currentRotation = (this.currentRotation + 90) % 360;
+    const rad = (this.currentRotation * Math.PI) / 180;
+    if (this.ghostMesh) {
+      this.ghostMesh.rotation.y = rad;
+    }
+    if (this.selectedFurniture) {
+      this.rotateFurniture(this.selectedFurniture.id, Math.PI / 2);
+    }
+    this.updateRotationLabel();
+  }
+
+  private updateRotationLabel(): void {
+    const label = document.getElementById('editor-rot-label');
+    if (label) {
+      const dirNames: Record<number, string> = {
+        0: '0° (South)',
+        90: '90° (West)',
+        180: '180° (North)',
+        270: '270° (East)',
+      };
+      label.textContent = dirNames[this.currentRotation] || `${this.currentRotation}°`;
     }
   }
 
@@ -163,13 +207,38 @@ export class RoomEditor {
       this.scene.pointerX,
       this.scene.pointerY,
       (mesh) =>
-        mesh.metadata?.walkable ||
-        mesh.name.startsWith('walkable') ||
-        mesh.name === 'placeholder_ground' ||
-        mesh.name === 'editor_grid'
+        mesh !== this.ghostMesh &&
+        !mesh.name.startsWith('ghost_') &&
+        (mesh.metadata?.walkable ||
+          mesh.name.startsWith('walkable') ||
+          mesh.name === 'placeholder_ground' ||
+          mesh.name === 'editor_grid' ||
+          mesh.name === 'Floor' ||
+          mesh.name.includes('table') ||
+          mesh.name.includes('rug') ||
+          mesh.name.includes('console') ||
+          mesh.name.includes('shelf') ||
+          mesh.name.includes('stand') ||
+          this.furnitureManager.pickFurniture({ hit: true, pickedMesh: mesh } as unknown as BABYLON.PickingInfo) !== null)
     );
     if (pick?.hit && pick.pickedPoint) {
       const snapped = this.snapToGrid(pick.pickedPoint);
+      // Stacking elevation: calculate surface top if hovering over furniture/table/rug
+      if (
+        pick.pickedMesh &&
+        pick.pickedMesh.name !== 'Floor' &&
+        pick.pickedMesh.name !== 'editor_grid' &&
+        !pick.pickedMesh.name.includes('rug')
+      ) {
+        const bounds = pick.pickedMesh.getBoundingInfo().boundingBox;
+        const topY = bounds.maximumWorld.y;
+        if (this.ghostMesh) {
+          const ghostBb = this.ghostMesh.getBoundingInfo().boundingBox;
+          snapped.y = topY + ghostBb.extendSize.y;
+        } else {
+          snapped.y = topY;
+        }
+      }
       this.ghostMesh.position = snapped;
     }
   }
@@ -203,6 +272,7 @@ export class RoomEditor {
   private async placeFurnitureFromGhost(): Promise<void> {
     if (!this.ghostMesh || !this.ghostItemId || !this.ghostAssetUrl) return;
     const pos = this.ghostMesh.position.clone();
+    const rotRad = this.ghostMesh.rotation.y;
     const tempId = `new_${crypto.randomUUID()}`;
 
     const placement: FurniturePlacement = {
@@ -212,7 +282,7 @@ export class RoomEditor {
       x: pos.x,
       y: pos.y,
       z: pos.z,
-      rotY: 0,
+      rotY: rotRad,
       scaleX: 1,
       scaleY: 1,
       scaleZ: 1,
@@ -399,12 +469,21 @@ export class RoomEditor {
     `;
 
     panel.innerHTML = `
-      <h4 style="margin: 0 0 10px; color: #4ecdc4; font-size: 12pt; display: flex; justify-content: space-between; align-items: center;">
-        <span>🛋️ Furniture</span>
+      <h4 style="margin: 0 0 8px; color: #4ecdc4; font-size: 12pt; display: flex; justify-content: space-between; align-items: center;">
+        <span>🛋️ Decorator</span>
         <button id="btn-close-editor" style="background:none; border:none; color:#888; cursor:pointer; font-size:14pt;">✕</button>
       </h4>
+      <p style="font-size: 8pt; color: #94a3b8; margin: 0 0 8px;">
+        Click to place. Press <strong>[R]</strong> to rotate 4-ways (360°)!
+      </p>
+      <button id="btn-editor-rotate" style="width: 100%; background: rgba(139, 92, 246, 0.25); border: 1px solid #8b5cf6; border-radius: 6px; color: #c084fc; padding: 7px 10px; font-weight: 600; cursor: pointer; font-size: 9.5pt; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span>🔄 Orientation:</span>
+        <span id="editor-rot-label" style="color: #fff;">0° (South)</span>
+      </button>
       <div id="editor-inventory-list">Loading inventory…</div>
     `;
+
+    panel.querySelector('#btn-editor-rotate')?.addEventListener('click', () => this.cycleRotation());
 
     fetch(`${SERVER_URL}/api/users/me/inventory?type=furniture`, { credentials: 'include' })
       .then((r) => r.json())

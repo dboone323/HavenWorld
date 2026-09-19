@@ -86,30 +86,118 @@
     <div id="room-grid" data-testid="room-grid"></div>
   </div>
 
-  <!-- ══ Room Nav (in-game top bar) ════════════════════════════════════════ -->
-  <div id="room-nav" class="hidden" data-testid="room-nav">
-    <button id="btn-park" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-park">🌳 Haven Park</button>
-    <button id="btn-my-loft" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-my-loft">🏠 My Loft</button>
-    <button id="btn-browse-lofts" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-browse-lofts">🌐 Visit Lofts</button>
-    <button id="btn-decorate" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-decorate">🛋️ Decorate</button>
-    <button id="btn-fishing" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-fishing">🎣 Go Fishing</button>
-    <button id="btn-pizza" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-pizza">🍕 Pizza Chef</button>
-    <button id="btn-workshop" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-workshop">🔨 Workshop</button>
-    <button id="btn-pets" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-pets">🐾 Pets</button>
-    <button id="btn-clubs" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-clubs">🏰 Clubs</button>
-    <button id="btn-gallery" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-gallery">📷 Gallery</button>
-    <button id="btn-loft-settings" class="btn btn--ghost hidden" style="font-size:0.8rem;" data-testid="btn-loft-settings">⚙️ Settings</button>
-    <button id="btn-shop" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-shop">🛍️ Emporium</button>
-    <button id="btn-passport" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-passport">🛂 Passport</button>
-    <button id="btn-avatar" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-avatar">👗 Wardrobe</button>
-    <button id="btn-nav-logout" class="btn btn--ghost" style="font-size:0.8rem;" data-testid="btn-nav-logout">✕ Sign Out</button>
+  <!-- ══ Top Left Room Info Pill (MegaPlanet Style) ════════════════════════ -->
+  <div id="room-info-pill" class="hud-room-info hidden">
+    <div class="room-pill-main">
+      <span class="room-pill-icon">🏡</span>
+      <span id="room-name-display" class="room-pill-title">My Sanctuary Loft</span>
+    </div>
+    <div class="room-pill-sub">
+      <span id="room-badge-type" class="room-sub-badge">Personal Room</span>
+      <span id="room-badge-occupants" class="room-sub-badge">👥 1</span>
+    </div>
   </div>
 
-  <!-- ══ Player Card (in-game top right) ═══════════════════════════════════ -->
-  <div id="player-card" class="hidden" data-testid="player-card" style="display: flex; gap: 0.5rem; align-items: center;">
-    <span>🌿</span>
-    <span class="player-card__username" data-testid="player-card-username"></span>
-    <span id="coin-balance" class="player-card__coins" style="margin-left: 0.5rem; font-weight: 600; color: #ffd700;">🪙 <span id="coin-amount">100</span></span>
+  <!-- ══ Top Right Status & Currency Stack (MegaPlanet Style) ══════════════ -->
+  <div id="player-card" class="hud-status-stack hidden" data-testid="player-card">
+    <div class="status-pill status-pill--coins" title="HavenCoins Balance">
+      <span class="pill-icon">🪙</span>
+      <span id="coin-balance"><span id="coin-amount">120</span></span>
+      <button class="pill-plus-btn" id="btn-quick-shop-coins" title="Earn or Buy Coins">+</button>
+    </div>
+    <div class="status-pill status-pill--gems" title="HavenGems Balance">
+      <span class="pill-icon">💎</span>
+      <span id="gem-amount">0</span>
+      <button class="pill-plus-btn" id="btn-quick-shop-gems" title="Buy HavenGems">+</button>
+    </div>
+    <div class="status-pill status-pill--stars" title="Citizen Level & Rep">
+      <span class="pill-icon">⭐</span>
+      <span id="rep-level">Lv. 1</span>
+    </div>
+    <div class="status-pill status-pill--user" title="Citizen Passport">
+      <span class="pill-icon">🌿</span>
+      <span class="player-card__username" data-testid="player-card-username">Citizen</span>
+    </div>
+  </div>
+
+  <!-- ══ HUD Docks Wrapper (Preserves #room-nav id for test compatibility) ══ -->
+  <div id="room-nav" class="hidden" data-testid="room-nav">
+    <!-- Left Vertical Floating Dock -->
+    <div id="dock-left" class="hud-dock hud-dock--left">
+      <button id="btn-my-loft" class="dock-btn" data-tooltip="My Loft" data-testid="btn-my-loft">
+        <span class="dock-icon">🏠</span>
+      </button>
+      <button id="btn-browse-lofts" class="dock-btn" data-tooltip="Visit Lofts" data-testid="btn-browse-lofts">
+        <span class="dock-icon">🏢</span>
+      </button>
+      <button id="btn-clubs" class="dock-btn" data-tooltip="Clubs" data-testid="btn-clubs">
+        <span class="dock-icon">👥</span>
+      </button>
+      <button id="btn-daily-gift" class="dock-btn dock-btn--badge" data-tooltip="Daily Bonus" data-testid="btn-daily-gift">
+        <span class="dock-icon">🎁</span>
+        <span class="dock-badge">1</span>
+      </button>
+      <button id="btn-shop" class="dock-btn" data-tooltip="Emporium Shop" data-testid="btn-shop">
+        <span class="dock-icon">🛍️</span>
+      </button>
+      <button id="btn-decorate" class="dock-btn hidden" data-tooltip="Decorate Loft" data-testid="btn-decorate">
+        <span class="dock-icon">🛋️</span>
+      </button>
+      <button id="btn-avatar" class="dock-btn" data-tooltip="Wardrobe & Avatar" data-testid="btn-avatar">
+        <span class="dock-icon">👗</span>
+      </button>
+      <button id="btn-pizza" class="dock-btn" data-tooltip="Pizza Chef Job" data-testid="btn-pizza">
+        <span class="dock-icon">🍕</span>
+      </button>
+      <button id="btn-toggle-chat" class="dock-btn" data-tooltip="Toggle Chat" data-testid="btn-toggle-chat">
+        <span class="dock-icon">💬</span>
+      </button>
+    </div>
+
+    <!-- Right Vertical Floating Dock -->
+    <div id="dock-right" class="hud-dock hud-dock--right">
+      <button id="btn-park" class="dock-btn" data-tooltip="Haven Park" data-testid="btn-park">
+        <span class="dock-icon">🌳</span>
+      </button>
+      <button id="btn-passport" class="dock-btn" data-tooltip="Citizen Passport" data-testid="btn-passport">
+        <span class="dock-icon">🛂</span>
+      </button>
+      <button id="btn-gallery" class="dock-btn" data-tooltip="Haven Gallery" data-testid="btn-gallery">
+        <span class="dock-icon">📷</span>
+      </button>
+      <button id="btn-workshop" class="dock-btn" data-tooltip="Crafting Workshop" data-testid="btn-workshop">
+        <span class="dock-icon">🔨</span>
+      </button>
+      <button id="btn-pets" class="dock-btn" data-tooltip="Pet Companions" data-testid="btn-pets">
+        <span class="dock-icon">🐾</span>
+      </button>
+      <button id="btn-fishing" class="dock-btn hidden" data-tooltip="Go Fishing" data-testid="btn-fishing">
+        <span class="dock-icon">🎣</span>
+      </button>
+      <button id="btn-loft-settings" class="dock-btn hidden" data-tooltip="Loft Settings" data-testid="btn-loft-settings">
+        <span class="dock-icon">⚙️</span>
+      </button>
+      <button id="btn-nav-logout" class="dock-btn dock-btn--danger" data-tooltip="Sign Out" data-testid="btn-nav-logout">
+        <span class="dock-icon">🚪</span>
+      </button>
+    </div>
+
+    <!-- Bottom Left Room Controls Card (MegaPlanet style) -->
+    <div id="room-controls-card" class="hud-room-controls hidden">
+      <div class="controls-card-header">
+        <span>🏠 Room Controls</span>
+      </div>
+      <div class="controls-card-row">
+        <span>Lock Room</span>
+        <label class="switch">
+          <input type="checkbox" id="chk-room-lock">
+          <span class="slider round"></span>
+        </label>
+      </div>
+      <div class="controls-card-row">
+        <button id="btn-quick-mood" class="btn-card-action">🎭 Set Room Mood</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══ Modals & Panels ═══════════════════════════════════════════════════ -->

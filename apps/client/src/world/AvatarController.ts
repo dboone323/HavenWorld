@@ -119,7 +119,10 @@ export class AvatarController {
   }
 
   moveTo(target: BABYLON.Vector3): void {
-    this.targetPosition = new BABYLON.Vector3(target.x, this.rootMesh?.position.y ?? 0, target.z);
+    if (this.currentAnimName === 'sit' && this.rootMesh) {
+      this.rootMesh.position.y = 0;
+    }
+    this.targetPosition = new BABYLON.Vector3(target.x, 0, target.z);
     this.isMoving = true;
     if (this.rootMesh) {
       const dir = this.targetPosition.subtract(this.rootMesh.position);
@@ -135,6 +138,9 @@ export class AvatarController {
     this.targetPosition = null;
     this.isMoving = false;
     this.currentAnimName = name;
+    if (name === 'sit' && this.rootMesh) {
+      this.rootMesh.position.y = -0.32;
+    }
     this.crossFadeTo(name, name !== 'wave'); // wave does not loop
   }
 

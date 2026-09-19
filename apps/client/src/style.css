@@ -188,29 +188,36 @@ input:focus { border-color: var(--color-teal); box-shadow: 0 0 0 2px rgba(78,205
   position:      absolute;
   bottom:        1rem;
   right:         1rem;
-  width:         320px;
-  z-index:       20;
-  background:    rgba(13,13,26,0.88);
-  border:        1px solid var(--color-border);
-  border-radius: var(--radius);
+  width:         340px;
+  max-width:     calc(100vw - 2rem);
+  z-index:       25;
+  background:    rgba(255, 255, 255, 0.92);
+  border:        1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 16px;
   display:       flex;
   flex-direction: column;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:    0 8px 32px rgba(0, 0, 0, 0.12);
+  color:         #1e293b;
+  pointer-events: auto;
+  transition:    opacity 0.2s ease, transform 0.2s ease;
 }
 
 #chat-log {
-  height:    220px;
+  height:    180px;
   overflow-y: auto;
-  padding:   0.5rem 0.75rem;
+  padding:   0.6rem 0.8rem;
   display:   flex;
   flex-direction: column;
-  gap:       0.25rem;
-  font-size: 0.8rem;
+  gap:       0.35rem;
+  font-size: 0.825rem;
+  color:     #334155;
 }
 
 .chat-log__entry { word-break: break-word; }
-.chat-log__entry--own .chat-log__username { color: var(--color-teal); }
-.chat-log__username { font-weight: 600; }
+.chat-log__entry--own .chat-log__username { color: #6366f1; }
+.chat-log__username { font-weight: 700; color: #0284c7; margin-right: 4px; }
 
 #chat-error {
   color:     var(--color-error);
@@ -220,52 +227,323 @@ input:focus { border-color: var(--color-teal); box-shadow: 0 0 0 2px rgba(78,205
 
 .chat-input-row {
   display: flex;
-  border-top: 1px solid var(--color-border);
-  padding: 0.4rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0.5rem;
   gap: 0.4rem;
+  background: rgba(248, 250, 252, 0.75);
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
 }
 #chat-input {
   flex:    1;
   font-size: 0.85rem;
-  background: var(--color-surface2);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  color: var(--color-text);
-  padding: 0.3rem 0.5rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  color: #0f172a;
+  padding: 0.4rem 0.8rem;
+  outline: none;
+}
+#chat-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
-/* ── Room nav ────────────────────────────────────────────────────────────── */
+/* ── Room Nav & HUD Container (MegaPlanet & YoWorld Dual Docks) ───────────── */
 #room-nav {
   position:   absolute;
-  top:        0.75rem;
-  left:       50%;
-  transform:  translateX(-50%);
+  inset:      0;
   z-index:    20;
-  display:    flex;
-  gap:        0.5rem;
-  background: rgba(13,13,26,0.7);
-  padding:    0.4rem 0.8rem;
-  border-radius: 999px;
-  border:     1px solid var(--color-border);
-  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 
-/* ── Player card ─────────────────────────────────────────────────────────── */
-#player-card {
-  position:      absolute;
-  top:           0.75rem;
-  right:         1rem;
-  z-index:       20;
-  background:    rgba(13,13,26,0.75);
-  border:        1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding:       0.5rem 0.75rem;
-  display:       flex;
-  align-items:   center;
-  gap:           0.5rem;
-  backdrop-filter: blur(6px);
+/* Floating Vertical Icon Docks */
+.hud-dock {
+  position: absolute;
+  top: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+  z-index: 25;
 }
-.player-card__username { font-weight: 600; font-size: 0.875rem; }
+.hud-dock--left {
+  left: 16px;
+}
+.hud-dock--right {
+  right: 16px;
+}
+
+/* Circular Floating Action Buttons */
+.dock-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(255, 255, 255, 0.98);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  position: relative;
+  outline: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background 0.15s ease;
+  user-select: none;
+}
+.dock-btn:hover {
+  transform: scale(1.14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 3px 8px rgba(0, 0, 0, 0.10);
+  background: #ffffff;
+}
+.dock-btn:active {
+  transform: scale(0.96);
+}
+
+.dock-btn--danger {
+  background: rgba(254, 226, 226, 0.94);
+  border-color: #fecaca;
+}
+.dock-btn--danger:hover {
+  background: #fee2e2;
+}
+
+/* Notification Badge on Dock Button */
+.dock-btn--badge .dock-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 1px 6px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+/* Tooltips */
+.dock-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.hud-dock--left .dock-btn::after {
+  left: 56px;
+  transform: translateX(-6px);
+}
+.hud-dock--left .dock-btn:hover::after {
+  opacity: 1;
+  transform: translateX(0);
+}
+.hud-dock--right .dock-btn::after {
+  right: 56px;
+  transform: translateX(6px);
+}
+.hud-dock--right .dock-btn:hover::after {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── Top Left Room Info Pill ─────────────────────────────────────────────── */
+.hud-room-info {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 25;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.room-pill-main {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 24px;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+.room-pill-icon { font-size: 16px; }
+.room-pill-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1e293b;
+}
+.room-pill-sub {
+  display: flex;
+  gap: 6px;
+  padding-left: 8px;
+}
+.room-sub-badge {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+/* ── Top Right Status & Currency Stack (Player Card) ─────────────────────── */
+.hud-status-stack {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 25;
+  pointer-events: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.status-pill {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+.status-pill--coins #coin-amount { color: #b45309; }
+.status-pill--gems #gem-amount { color: #0284c7; }
+.status-pill--stars #rep-level { color: #d97706; }
+.status-pill--user { color: #4338ca; }
+.player-card__username { font-weight: 700; font-size: 12px; color: #1e293b; }
+
+.pill-plus-btn {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.pill-plus-btn:hover {
+  background: #059669;
+  transform: scale(1.15);
+}
+
+/* ── Bottom Left Room Controls Card (MegaPlanet style) ───────────────────── */
+.hud-room-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  width: 175px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  pointer-events: auto;
+  z-index: 25;
+  font-size: 12px;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.controls-card-header {
+  font-weight: 700;
+  font-size: 12px;
+  color: #1e293b;
+  margin-bottom: 2px;
+}
+.controls-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+.btn-card-action {
+  width: 100%;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn-card-action:hover {
+  background: #e2e8f0;
+}
+
+/* Toggle Switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #cbd5e1;
+  transition: .2s;
+  border-radius: 18px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .2s;
+  border-radius: 50%;
+}
+input:checked + .slider {
+  background-color: #f59e0b;
+}
+input:checked + .slider:before {
+  transform: translateX(16px);
+}
 
 /* ── Avatar panel ────────────────────────────────────────────────────────── */
 #avatar-panel {

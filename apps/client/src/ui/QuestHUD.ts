@@ -21,16 +21,16 @@ export class QuestHUD {
     this.container.id = 'quest-hud';
     this.container.style.cssText = `
       position: fixed;
-      top: 60px;
-      right: 16px;
-      width: 260px;
+      top: 66px;
+      right: 80px;
+      width: 220px;
       background: rgba(26, 26, 46, 0.9);
       border: 1px solid #4ecdc4;
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 8px 12px;
       color: #e2e8f0;
       font-family: Calibri, sans-serif;
-      z-index: 1000;
+      z-index: 80;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
       transition: all 200ms;
     `;

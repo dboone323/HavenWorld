@@ -12,6 +12,8 @@ import { PassportModal } from './passport/PassportModal';
 import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
 import { socketService } from './services/socket';
+import { DailyLoginModal } from './ui/DailyLoginModal';
+import { SOCKET_EVENTS } from '@havenworld/shared';
 import { SERVER_URL } from './config';
 import './style.css';
 
@@ -104,6 +106,38 @@ window.addEventListener('DOMContentLoaded', async () => {
   };
 
   document.getElementById('btn-nav-logout')?.addEventListener('click', handleLogout);
+
+  // ── MegaPlanet / YoWorld Floating Dock & Quick Actions ────────────────────
+  document.getElementById('btn-quick-shop-coins')?.addEventListener('click', () => {
+    shopModal.open().catch(console.error);
+  });
+
+  document.getElementById('btn-quick-shop-gems')?.addEventListener('click', () => {
+    shopModal.open().catch(console.error);
+  });
+
+  document.getElementById('btn-daily-gift')?.addEventListener('click', () => {
+    DailyLoginModal.tryShow().catch(console.error);
+  });
+
+  document.getElementById('btn-toggle-chat')?.addEventListener('click', () => {
+    document.getElementById('chat-panel')?.classList.toggle('hidden');
+  });
+
+  document.getElementById('chk-room-lock')?.addEventListener('change', (e) => {
+    const isLocked = (e.target as HTMLInputElement).checked;
+    const roomId = (window as any).__havenRoomId;
+    if (roomId) {
+      socketService.emit(SOCKET_EVENTS.SET_ROOM_PRIVACY, {
+        roomId,
+        mode: isLocked ? 'LOCKED' : 'PUBLIC',
+      });
+    }
+  });
+
+  document.getElementById('btn-quick-mood')?.addEventListener('click', () => {
+    document.getElementById('btn-loft-settings')?.click();
+  });
 
   // ── Initial scene routing based on auth ──────────────────────────────────
   try {
