@@ -19,8 +19,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 export const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (server-to-server, curl, tests) in non-production
-    if (!origin && process.env.NODE_ENV !== 'production') {
+    // Requests with no origin (server-to-server, curl, health monitors, same-origin)
+    if (!origin) {
       return callback(null, true);
     }
     if (origin && ALLOWED_ORIGINS.includes(origin)) {
