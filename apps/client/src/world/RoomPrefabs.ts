@@ -7,6 +7,7 @@ import {
   Tags,
   PointLight,
   DirectionalLight,
+  HemisphericLight,
   AbstractMesh,
 } from '@babylonjs/core';
 import { createPlaceholderRoom } from './PlaceholderRoom';
@@ -146,9 +147,9 @@ function buildHavenPark(scene: Scene): PrefabResult {
   meshes.push(ground);
   walkable.push(ground);
 
-  // Sidewalk ring around fountain
+      // Sidewalk ring around fountain (outer disc as walkable path)
   const pathMat = makeMaterial(scene, 'park_path', [0.45, 0.45, 0.48]);
-  const pathRing = MeshBuilder.CreateDisc('park_path_ring', { radius: 4.5, innerRadius: 3.5 }, scene);
+  const pathRing = MeshBuilder.CreateDisc('park_path_ring', { radius: 4.5 }, scene);
   pathRing.rotation.x = Math.PI / 2;
   pathRing.position.y = 0.01;
   pathRing.material = pathMat;
@@ -237,8 +238,8 @@ function buildCafe(scene: Scene): PrefabResult {
   const walkable: AbstractMesh[] = [];
   const interactable: AbstractMesh[] = [];
 
-  // Indoor lighting — warm, cozy
-  const ambientLight = new BABYLON.HemisphericLight('cafe_ambient', new Vector3(0, 1, 0), scene);
+    // Indoor lighting — warm, cozy
+  const ambientLight = new HemisphericLight('cafe_ambient', new Vector3(0, 1, 0), scene);
   ambientLight.intensity = 0.55;
   ambientLight.specular = new Color3(0.1, 0.1, 0.1);
 
@@ -257,8 +258,134 @@ function buildCafe(scene: Scene): PrefabResult {
   const ground = MeshBuilder.CreateGround('Walkable_CafeFloor', { width: 18, height: 12 }, scene);
   ground.position.y = 0;
   ground.material = floorMat;
-  ground.isPickable = true;
+    ground.isPickable = true;
   ground.metadata = { walkable: true };
   Tags.AddTagsTo(ground, 'walkable');
   meshes.push(ground);
   walkable.push(ground);
+
+  // Walls (cutaway front for isometric view)
+  const wallH = 4.2;
+  const wallThick = 0.3;
+  const wallL = MeshBuilder.CreateBox('cafe_wall_left', { width: wallThick, depth: 12, height: wallH }, scene);
+  wallL.position.set(-9 + wallThick / 2, wallH / 2, 0);
+  wallL.material = wallMat;
+  meshes.push(wallL);
+
+  const wallR = wallL.clone('cafe_wall_right')!;
+  wallR.position.set(9 - wallThick / 2, wallH / 2, 0);
+  meshes.push(wallR);
+
+  const wallBack = MeshBuilder.CreateBox('cafe_wall_back', { width: 18, depth: wallThick, height: wallH }, scene);
+  wallBack.position.set(0, wallH / 2, -6 + wallThick / 2);
+  wallBack.material = wallMat;
+  meshes.push(wallBack);
+
+  // Coffee counter (back wall)
+  const counter = MeshBuilder.CreateBox('cafe_counter', { width: 12, depth: 1.8, height: 1.0 }, scene);
+  counter.position.set(0, 0.5, -5.1);
+  counter.material = counterMat;
+  counter.isPickable = true;
+  counter.metadata = { interactable: 'npc_trade' };
+  Tags.AddTagsTo(counter, 'interactable coffee_station');
+  meshes.push(counter);
+  interactable.push(counter);
+
+  // Counter overhang
+  const overhang = MeshBuilder.CreateBox('cafe_counter_overhang', { width: 12, depth: 0.25, height: 1.6 }, scene);
+  overhang.position.set(0, 1.55, -4.2);
+  overhang.material = woodMat;
+  meshes.push(overhang);
+
+  // Espresso machine on counter
+  const machine = MeshBuilder.CreateBox('cafe_espresso_machine', { width: 2.2, depth: 0.8, height: 0.8 }, scene);
+  machine.position.set(-4, 1.4, -5.0);
+  machine.material = makeMaterial(scene, 'cafe_machine', [0.15, 0.15, 0.18]);
+  meshes.push(machine);
+
+  // Tables & chairs
+  const tablePositions = [
+    { x: -3, z: -1 }, { x: 3, z: -1 },
+    { x: -5, z: 2 }, { x: 5, z: 2 },
+    { x: 0, z: 3.5 },
+  ];
+
+  for (let i = 0; i < tablePositions.length; i++) {
+    const tp = tablePositions[i];
+    const tableTop = MeshBuilder.CreateCylinder(
+      `cafe_table_${i}`,
+      { diameter: 0.9, height: 0.08, tessellation: 12 },
+      scene
+    );
+    tableTop.position.set(tp.x, 0.75, tp.z);
+    tableTop.material = woodMat;
+    meshes.push(tableTop);
+
+    const tableLeg = MeshBuilder.CreateCylinder(`cafe_table_leg_${i}`, { diameter: 0.1, height: 0.65 }, scene);
+    tableLeg.position.set(tp.x, 0.375, tp.z);
+    tableLeg.material = woodMat;
+    meshes.push(tableLeg);
+
+    // Two chairs per table
+    for (const side of [-1, 1]) {
+      const chair = MeshBuilder.CreateBox(`cafe_chair_${i}_${side}`, { width: 0.45, depth: 0.5, height: 0.85 }, scene);
+      chair.position.set(tp.x + side * 0.65, 0.425, tp.z + side * 0.55);
+      chair.material = woodMat;
+      chair.isPickable = true;
+      chair.metadata = { interactable: 'sit' };
+      Tags.AddTagsTo(chair, 'interactable sit');
+      meshes.push(chair);
+      interactable.push(chair);
+    }
+  }
+
+  // Wall-mounted menu board (near entrance)
+  const menuBoard = MeshBuilder.CreateBox('cafe_menu_board', { width: 3.2, depth: 0.1, height: 1.8 }, scene);
+  menuBoard.position.set(0, 2.8, 5.5);
+  menuBoard.material = woodMat;
+  meshes.push(menuBoard);
+
+  return { meshes, walkableMeshes: walkable, interactableMeshes: interactable };
+}
+
+// ─── Registry ─────────────────────────────────────────────────────────────────
+
+const PREFAB_BUILDERS: Record<string, (scene: Scene) => PrefabResult> = {
+  'room-park': buildHavenPark,
+  'room-cafe': buildCafe,
+};
+
+/**
+ * Build a procedural room for the given roomId.
+ * Returns null if no prefab matches (caller should fall back further).
+ */
+export function buildRoomPrefab(scene: Scene, roomId: string): AbstractMesh[] | null {
+  // Personal lofts — use the existing rich placeholder (already has furniture)
+  if (
+    roomId.startsWith('room-') &&
+    roomId !== 'room-park' &&
+    roomId !== 'room-cafe' &&
+    roomId !== 'room-town-square' &&
+    roomId !== 'room-lobby'
+  ) {
+    return createPlaceholderRoom(scene);
+  }
+
+  const builder = PREFAB_BUILDERS[roomId];
+  if (!builder) {
+    return null;
+  }
+
+  const result = builder(scene);
+  // Ensure walkable meshes are tagged so RoomScene shadow-receiver setup works
+  for (const m of result.walkableMeshes) {
+    m.metadata = { ...(m.metadata || {}), walkable: true };
+    if (!Tags.MatchesQuery(m, 'walkable')) {
+      Tags.AddTagsTo(m, 'walkable');
+    }
+  }
+  return result.meshes;
+}
+
+// Re-export types
+export type { PrefabResult };

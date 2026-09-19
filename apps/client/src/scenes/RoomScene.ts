@@ -15,6 +15,7 @@ import { HavenEngine } from '../engine/HavenEngine';
 import { SceneManager } from '../engine/SceneManager';
 import { RoomLoader } from '../world/RoomLoader';
 import { createPlaceholderRoom } from '../world/PlaceholderRoom';
+import { buildRoomPrefab } from '../world/RoomPrefabs';
 import { AvatarController } from '../world/AvatarController';
 import { RemoteAvatar } from '../world/RemoteAvatar';
 import { FurnitureManager } from '../world/FurnitureManager';
@@ -136,18 +137,18 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   shadowGenerator.useBlurExponentialShadowMap = true;
   shadowGenerator.blurKernel = 32;
 
-  // ── Room Geometry Loading ─────────────────────────────────────────────────
+    // ── Room Geometry Loading ─────────────────────────────────────────────────
   const roomLoader = new RoomLoader(scene);
   let roomMeshes: import('@babylonjs/core').AbstractMesh[] = [];
   try {
     const loadResult = await roomLoader.load(roomId);
     roomMeshes = loadResult.allMeshes || [];
     if (roomMeshes.length === 0) {
-      roomMeshes = createPlaceholderRoom(scene);
+      roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
     }
   } catch {
-    console.warn(`[RoomScene] Room model not found for ${roomId}. Using placeholder room.`);
-    roomMeshes = createPlaceholderRoom(scene);
+    console.warn(`[RoomScene] Room model not found for ${roomId}. Using procedural prefab.`);
+    roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
   }
 
   // Setup shadow receivers
