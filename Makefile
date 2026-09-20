@@ -93,17 +93,20 @@ lint-client: ## Lint client only
 	pnpm --filter client lint
 
 # ── Test ─────────────────────────────────────────────────────────────────────
-.PHONY: test-server
-test-server: dev-up build-shared ## Run server Jest suite (auto-starts Docker)
+.PHONY: push-schema
+push-schema: dev-up ## Push Prisma schema to BOTH dev and test databases
 	pnpm --filter server exec prisma generate
 	pnpm --filter server exec prisma db push --accept-data-loss
+	@set -a && . apps/server/.env.test && set +a \
+	  && DATABASE_URL="$$DATABASE_URL" pnpm --filter server exec prisma db push --accept-data-loss
+
+.PHONY: test-server
+test-server: push-schema build-shared ## Run server Jest suite (auto-starts Docker, syncs both DBs)
 	pnpm --filter server test
 	$(MAKE) dev-down
 
 .PHONY: test-server-coverage
-test-server-coverage: dev-up build-shared ## Server Jest with coverage (auto-starts Docker)
-	pnpm --filter server exec prisma generate
-	pnpm --filter server exec prisma db push --accept-data-loss
+test-server-coverage: push-schema build-shared ## Server Jest with coverage (auto-starts Docker, syncs both DBs)
 	pnpm --filter server run test:coverage
 	$(MAKE) dev-down
 
@@ -116,16 +119,12 @@ test-client-coverage: build-shared ## Client Vitest with coverage
 	pnpm --filter client run test:coverage
 
 .PHONY: test-e2e
-test-e2e: dev-up build-shared ## Run Playwright E2E (Chromium, auto-starts Docker)
-	pnpm --filter server exec prisma generate
-	pnpm --filter server exec prisma db push --accept-data-loss
+test-e2e: push-schema build-shared ## Run Playwright E2E (Chromium, auto-starts Docker)
 	npx playwright test --project=chromium
 	$(MAKE) dev-down
 
 .PHONY: test-e2e-all
-test-e2e-all: dev-up build-shared ## Run full Playwright matrix (all browsers)
-	pnpm --filter server exec prisma generate
-	pnpm --filter server exec prisma db push --accept-data-loss
+test-e2e-all: push-schema build-shared ## Run full Playwright matrix (all browsers)
 	npx playwright test
 	$(MAKE) dev-down
 

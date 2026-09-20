@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { requireAuth, requireRole, AuthRequest } from '../auth';
+import { Response, NextFunction } from 'express';
+import { requireAuth, requireRole, type AuthRequest } from '../auth';
 import { generateTestToken, generateExpiredToken, generateTokenWithWrongSecret } from '../../../__tests__/helpers/jwtHelpers';
+import { truncateAllTables, seedMinimalData } from '../../../__tests__/helpers/dbHelpers';
+import { createTestUser } from '../../../__tests__/helpers/factories';
 
 function createMockReqRes(authHeader?: string) {
   const req = {
@@ -36,6 +37,15 @@ function createMockReqRes(authHeader?: string) {
 }
 
 describe('AuthMiddleware', () => {
+  beforeAll(async () => {
+    await truncateAllTables();
+    await seedMinimalData();
+  });
+
+  afterAll(async () => {
+    await truncateAllTables();
+  });
+
   it('should set req.user when a valid JWT is provided', async () => {
     const userId = 'user_abc123';
     const token = generateTestToken(userId, '15m', { username: 'testuser', role: 'PLAYER' });
@@ -93,19 +103,55 @@ describe('AuthMiddleware', () => {
   });
 
   it('should enforce role-based access with requireRole middleware', async () => {
-    const { req: adminReq, res: adminRes, next: adminNext, getNextStatus: getAdminStatus } = createMockReqRes();
-    adminReq.user = { userId: 'admin_1', username: 'admin', role: 'ADMIN' };
+    // Create real users in the DB — requireRole now does a live DB read
+    const adminUser = await createTestUser({ username: 'admin_user_role_test', isAdmin: true });
+    const playerUser = await createTestUser({ username: 'player_user_role_test', isAdmin: false });
 
     const roleMiddleware = requireRole(['ADMIN']);
-    roleMiddleware(adminReq, adminRes, adminNext);
-    expect(getAdminStatus().called).toBe(true);
 
-    const { req: playerReq, res: playerRes, next: playerNext, getNextStatus: getPlayerStatus } = createMockReqRes();
-    playerReq.user = { userId: 'player_1', username: 'player', role: 'PLAYER' };
+    // Admin user: should pass
+    const adminReq = {
+      headers: {},
+      user: { userId: adminUser.id, username: adminUser.username, role: 'ADMIN' },
+    } as unknown as AuthRequest;
+    let adminNextCalled = false;
+    let adminNextError: any = null;
+    const adminNext: NextFunction = (err?: any) => {
+      adminNextCalled = true;
+      adminNextError = err;
+    };
+    let adminStatusCode = 200;
+    let adminResponseBody: any = null;
+    const adminRes = {
+      status: (code: number) => { adminStatusCode = code; return adminRes; },
+      json: (body: any) => { adminResponseBody = body; return adminRes; },
+    } as unknown as Response;
 
-    roleMiddleware(playerReq, playerRes, playerNext);
-    expect(getPlayerStatus().called).toBe(false);
-    expect(playerRes.getStatusCode()).toBe(403);
-    expect(playerRes.getBody()).toEqual(expect.objectContaining({ error: 'Forbidden' }));
+    await roleMiddleware(adminReq, adminRes, adminNext);
+    expect(adminNextCalled).toBe(true);
+    expect(adminNextError).toBeFalsy();
+
+    // Player user (JWT role PLAYER, DB role PLAYER): should be rejected
+    const playerReq = {
+      headers: {},
+      user: { userId: playerUser.id, username: playerUser.username, role: 'PLAYER' },
+    } as unknown as AuthRequest;
+    let playerNextCalled = false;
+    let playerNextError: any = null;
+    const playerNext: NextFunction = (err?: any) => {
+      playerNextCalled = true;
+      playerNextError = err;
+    };
+    let playerStatusCode = 200;
+    let playerResponseBody: any = null;
+    const playerRes = {
+      status: (code: number) => { playerStatusCode = code; return playerRes; },
+      json: (body: any) => { playerResponseBody = body; return playerRes; },
+    } as unknown as Response;
+
+    await roleMiddleware(playerReq, playerRes, playerNext);
+    expect(playerNextCalled).toBe(false);
+    expect(playerStatusCode).toBe(403);
+    expect(playerResponseBody).toEqual(expect.objectContaining({ error: 'Forbidden' }));
   });
 });

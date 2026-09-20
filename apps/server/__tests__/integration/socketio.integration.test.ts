@@ -90,22 +90,26 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
     // Both join the same room and wait for ROOM_STATE
     socket1.emit(SOCKET_EVENTS.AUTH_JOIN, {
       roomId: room.id,
-      player: { id: user1.id, username: user1.username, x: 0, y: 0, z: 0, rotY: 0, direction: 'down', isMoving: false },
+      player: { id: user1.id, username: user1.username, x: 320, y: 224, z: 0, rotY: 0, direction: 'down', isMoving: false },
     });
     socket2.emit(SOCKET_EVENTS.AUTH_JOIN, {
       roomId: room.id,
-      player: { id: user2.id, username: user2.username, x: 10, y: 10, z: 0, rotY: 0, direction: 'down', isMoving: false },
+      player: { id: user2.id, username: user2.username, x: 325, y: 229, z: 0, rotY: 0, direction: 'down', isMoving: false },
     });
 
-    await Promise.all([
+    const [state1, state2] = await Promise.all([
       waitForEvent(socket1, SOCKET_EVENTS.ROOM_STATE, 5000),
       waitForEvent(socket2, SOCKET_EVENTS.ROOM_STATE, 5000),
     ]);
 
+    // Extract player1's actual spawn position from ROOM_STATE
+    const player1State = state1.players.find((p: any) => p.id === user1.id);
+    const moveTarget = { x: player1State.x + 2, y: player1State.y + 1 };
+
     socket1.emit(SOCKET_EVENTS.PLAYER_MOVE, {
       roomId: room.id,
-      x: 50,
-      y: 5,
+      x: moveTarget.x,
+      y: moveTarget.y,
       z: 0,
       rotY: 1.2,
       direction: 'right',
@@ -115,8 +119,8 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
     const moved = await waitForEvent(socket2, SOCKET_EVENTS.PLAYER_POSITION, 5000);
     expect(moved).toMatchObject({
       playerId: user1.id,
-      x: 50,
-      y: 5,
+      x: moveTarget.x,
+      y: moveTarget.y,
     });
   });
 
@@ -219,22 +223,28 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
 
     socket1.emit(SOCKET_EVENTS.AUTH_JOIN, {
       roomId: room.id,
-      player: { id: user1.id, username: user1.username, x: 10, y: 10, z: 0, rotY: 0, direction: 'down', isMoving: false },
+      player: { id: user1.id, username: user1.username, x: 320, y: 224, z: 0, rotY: 0, direction: 'down', isMoving: false },
     });
     socket2.emit(SOCKET_EVENTS.AUTH_JOIN, {
       roomId: room.id,
-      player: { id: user2.id, username: user2.username, x: 20, y: 20, z: 0, rotY: 0, direction: 'down', isMoving: false },
+      player: { id: user2.id, username: user2.username, x: 325, y: 229, z: 0, rotY: 0, direction: 'down', isMoving: false },
     });
 
-    await Promise.all([
+    const [state1, state2] = await Promise.all([
       waitForEvent(socket1, SOCKET_EVENTS.ROOM_STATE, 5000),
       waitForEvent(socket2, SOCKET_EVENTS.ROOM_STATE, 5000),
     ]);
 
+    // Extract each player's actual spawn position from ROOM_STATE
+    // state2 was emitted after both players joined, so it contains both
+    const player1State = state2.players.find((p: any) => p.id === user1.id);
+    const player2State = state2.players.find((p: any) => p.id === user2.id);
+
+    // Player 1 moves slightly from spawn position
     socket1.emit(SOCKET_EVENTS.PLAYER_MOVE, {
       roomId: room.id,
-      x: 15,
-      y: 15,
+      x: player1State.x + 2,
+      y: player1State.y + 1,
       z: 0,
       rotY: 0,
       direction: 'right',
@@ -243,10 +253,11 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
     const move1 = await waitForEvent(socket2, SOCKET_EVENTS.PLAYER_POSITION, 5000);
     expect(move1.playerId).toBe(user1.id);
 
+    // Player 2 moves slightly from spawn position
     socket2.emit(SOCKET_EVENTS.PLAYER_MOVE, {
       roomId: room.id,
-      x: 25,
-      y: 25,
+      x: player2State.x + 2,
+      y: player2State.y + 1,
       z: 0,
       rotY: 0,
       direction: 'left',

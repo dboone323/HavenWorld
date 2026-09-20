@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.gitignore
+*.log
+*.tsbuildinfo
+coverage
+.nyc_output
+.env
+.env.test
+.env.local
+.env.*.local
+.dockerignore
+Dockerfile*
+!.dockerignore
+!.gitattributes

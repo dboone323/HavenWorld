@@ -147,9 +147,15 @@ describe('Auth Integration — Full HTTP Flow', () => {
       .post('/api/auth/login')
       .send({ email: 'logout@test.com', password: 'SecurePass1!' });
 
+    // Extract CSRF token from login response cookies (login sets csrf_token cookie)
+    const loginCookies = loginRes.headers['set-cookie'] as unknown as string[] | undefined;
+    const csrfCookie = loginCookies?.find((c) => c.startsWith('csrf_token='));
+    const csrfToken = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : '';
+
     const res = await request(app)
       .post('/api/auth/logout')
-      .set('Cookie', loginRes.headers['set-cookie']);
+      .set('Cookie', loginCookies || [])
+      .set('X-CSRF-Token', csrfToken);
 
     expect(res.status).toBe(200);
     const setCookieHeader = res.headers['set-cookie'] as unknown as string[] | undefined;

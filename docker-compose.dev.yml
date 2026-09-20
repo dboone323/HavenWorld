@@ -10,6 +10,7 @@ services:
       - '5432:5432'
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-dev-databases.sql:/docker-entrypoint-initdb.d/init-dev-databases.sql:ro
 
   redis:
     image: redis:7-alpine

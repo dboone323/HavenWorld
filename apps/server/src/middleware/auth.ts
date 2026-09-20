@@ -44,9 +44,28 @@ export const requireAuth = (
 };
 
 export const requireRole = (roles: string[]) =>
-  (req: AuthRequest, res: Response, next: NextFunction): void => {
+  async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     const upperRoles = roles.map((r) => r.toUpperCase());
-    if (!req.user || !upperRoles.includes((req.user.role || '').toUpperCase())) {
+    if (!req.user) {
+      res.status(403).json({ error: 'Forbidden', code: 'INSUFFICIENT_ROLE' });
+      return;
+    }
+    // Phase 8 Security Hardening: verify role from the live database, not just
+    // the JWT claims. A forged or stale JWT with role: ADMIN in the payload
+    // must not grant access if the DB record still says PLAYER.
+    const dbUser = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { role: true, isBanned: true },
+    });
+    if (!dbUser) {
+      res.status(403).json({ error: 'Forbidden', code: 'USER_NOT_FOUND' });
+      return;
+    }
+    if (dbUser.isBanned) {
+      res.status(403).json({ error: 'Account banned', code: 'ACCOUNT_BANNED' });
+      return;
+    }
+    if (!upperRoles.includes(dbUser.role.toUpperCase())) {
       res.status(403).json({ error: 'Forbidden', code: 'INSUFFICIENT_ROLE' });
       return;
     }

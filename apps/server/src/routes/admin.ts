@@ -168,6 +168,10 @@ router.post('/users/:id/mute', async (req: AuthRequest, res) => {
 // POST /api/admin/users/:id/ban — permanently ban a player
 router.post('/users/:id/ban', requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!target) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
   await prisma.user.update({
     where: { id },
     data: { status: 'BANNED', isBanned: true, bannedAt: new Date(), mutedUntil: null },
