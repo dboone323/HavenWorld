@@ -1,0 +1,13 @@
+# .actrc — configuration for `act` (local GitHub Actions runner)
+# https://github.com/nektos/act
+#
+# Install: brew install act
+# Usage:   make ci-pr
+#
+# Uses the medium nektos image which has Node, pnpm, and common tools pre-installed.
+# Full image list: https://github.com/nektos/act#runners
+
+-P ubuntu-latest=catthehacker/ubuntu:act-22.04
+
+# Use the local .env.test as the secret store for CI jobs
+--secret-file=.env.test

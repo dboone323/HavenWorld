@@ -35,6 +35,25 @@ else
   logger -t havenworld-backup "Backup ${FILENAME} created"
 fi
 
-# Prune backups older than 7 days
+# ── Off-site: push to Cloudflare R2 ──────────────────────────────────────────
+# Requires: rclone installed, R2_BUCKET env var set, rclone remote 'havenworld-r2' configured.
+# Set R2_BUCKET in /opt/havenworld/apps/server/.env or call with:
+#   R2_BUCKET=havenworld-backups bash backup.sh
+if command -v rclone > /dev/null 2>&1 && [ -n "${R2_BUCKET:-}" ]; then
+  echo "[$(date)] Pushing backup to Cloudflare R2 bucket: ${R2_BUCKET}/db-backups/"
+  rclone copy "$BACKUP_DIR" "havenworld-r2:${R2_BUCKET}/db-backups/" \
+    --include "*.gpg" \
+    --include "*.sql.gz" \
+    --s3-no-check-bucket \
+    --transfers 2 \
+    --quiet
+  echo "[$(date)] R2 upload complete."
+  logger -t havenworld-backup "Backup pushed to R2 ${R2_BUCKET}/db-backups/"
+else
+  echo "[$(date)] Skipping R2 upload (rclone not found or R2_BUCKET not set)."
+fi
+
+# Prune local backups older than 7 days
 find "$BACKUP_DIR" -name "*.sql.gz*" -mtime +7 -delete
-echo "[$(date)] Pruned backups older than 7 days."
+echo "[$(date)] Pruned local backups older than 7 days."
+

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/generate_assets.mjs && node scripts/generate_icons.mjs && node -e \"const fs=require('fs'); const p=require.resolve('@babylonjs/havok'); const dir=require('path').dirname(p); const files=['HavokPhysics.wasm','HavokPhysics.js.wasm']; files.forEach(f=>{ const src=require('path').join(dir,'lib/esm/HavokPhysics.wasm'); if(fs.existsSync(src)) fs.copyFileSync(src, 'public/'+f); });\"",
+    "prebuild": "node scripts/generate_assets.mjs && node scripts/generate_icons.mjs && node scripts/copy-havok.cjs",
     "build": "vite build",
     "test": "vitest run --config vitest.config.ts",
     "test:client": "vitest run --config vitest.config.ts",

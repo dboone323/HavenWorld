@@ -17,18 +17,18 @@ jobs:
       - name: Copy load test scripts to Oracle VM
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.ORACLE_VM_HOST }}
-          username: ${{ secrets.ORACLE_VM_USER }}
-          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          host: ${{ secrets.ORACLE_HOST }}
+          username: havenworld
+          key: ${{ secrets.ORACLE_SSH_KEY }}
           source: "load-tests/"
           target: "/home/havenworld/load-tests/"
 
       - name: Run k6 load tests on Oracle VM
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.ORACLE_VM_HOST }}
-          username: ${{ secrets.ORACLE_VM_USER }}
-          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          host: ${{ secrets.ORACLE_HOST }}
+          username: havenworld
+          key: ${{ secrets.ORACLE_SSH_KEY }}
           script: |
             cd /home/havenworld
             mkdir -p load-test-results
@@ -43,9 +43,9 @@ jobs:
       - name: Download load test results
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.ORACLE_VM_HOST }}
-          username: ${{ secrets.ORACLE_VM_USER }}
-          key: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          host: ${{ secrets.ORACLE_HOST }}
+          username: havenworld
+          key: ${{ secrets.ORACLE_SSH_KEY }}
           source: "/home/havenworld/load-test-results/*.json"
           target: "load-test-results/"
 
