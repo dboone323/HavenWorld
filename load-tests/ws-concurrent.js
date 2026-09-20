@@ -18,19 +18,31 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'ws://localhost:3000';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+const WS_BASE = BASE_URL.replace(/^http/, 'ws');
 const TEST_TOKEN = __ENV.TEST_JWT || 'dummy_token';
+const WS_URL = `${WS_BASE}/socket.io/?EIO=4&transport=websocket&token=${TEST_TOKEN}`;
 
 export default function () {
   const joinStart = Date.now();
-  const url = `${BASE_URL}/socket.io/?EIO=4&transport=websocket`;
 
-  const res = ws.connect(url, { headers: { Authorization: `Bearer ${TEST_TOKEN}` } }, function (socket) {
+  const res = ws.connect(WS_URL, {}, function (socket) {
     socket.on('open', () => {
-      socket.send(
-        JSON.stringify({
-          event: 'auth:join',
-          data: {
+      // socket.io v4 protocol handler
+      // "2" = PING → respond with PONG "3"
+      // "40" = CONNECT ack → server confirmed connection, safe to send events
+      // "42" = EVENT (incoming from server)
+      // "42" + JSON array = send event to server
+      socket.on('message', (raw) => {
+        if (raw === '2' || raw.startsWith('2[')) {
+          socket.send('3');
+        }
+
+        if (raw.startsWith('40')) {
+          joinLatency.add(Date.now() - joinStart);
+
+          // Join room — socket.io v4 event format
+          socket.send('42' + JSON.stringify(['auth:join', {
             roomId: 'room-park',
             player: {
               id: `vu_${__VU}`,
@@ -42,33 +54,19 @@ export default function () {
               direction: 'down',
               isMoving: false,
             },
-          },
-        })
-      );
-    });
-
-    socket.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw);
-        if (msg.event === 'room:state') {
-          joinLatency.add(Date.now() - joinStart);
+          }]));
 
           // Send chat messages
           for (let i = 0; i < 5; i++) {
             const chatStart = Date.now();
-            socket.send(
-              JSON.stringify({
-                event: 'chat:send',
-                data: { message: `Load test message ${i} from VU ${__VU}` },
-              })
-            );
+            socket.send('42' + JSON.stringify(['chat:send', {
+              message: `Load test message ${i} from VU ${__VU}`,
+            }]));
             chatLatency.add(Date.now() - chatStart);
             sleep(0.5);
           }
         }
-      } catch {
-        // Ignore unparseable frames (like Socket.io handshake '0{...}')
-      }
+      });
     });
 
     socket.on('error', (e) => {

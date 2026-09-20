@@ -60,7 +60,7 @@ jobs:
         if: failure()
         run: |
           curl -X POST https://api.resend.com/emails \
-            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}"
             -H "Content-Type: application/json" \
             -d '{
               "from": "noreply@havenworld.gg",

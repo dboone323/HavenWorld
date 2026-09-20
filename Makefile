@@ -6,6 +6,7 @@
 # Prerequisites (one-time):
 #   brew install act          # run GHA workflows locally via Docker
 #   brew install rclone       # R2 asset + backup sync
+#   brew install k6           # local load testing
 #   npm install -g wrangler   # Cloudflare Pages CLI
 #
 # Usage:
@@ -225,6 +226,10 @@ health: ## Check live /health endpoint
 .PHONY: load-test
 load-test: ## Run k6 load tests on Oracle (requires k6 on VM)
 	ssh $(ORACLE_HOST) 'cd $(APP_DIR) && bash scripts/run-load-tests.sh'
+
+.PHONY: load-test-local
+load-test-local: dev-up ## Run k6 WebSocket load test locally (requires k6 locally)
+	k6 run load-tests/ws-concurrent.js --env BASE_URL=http://localhost:3000
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 .PHONY: clean

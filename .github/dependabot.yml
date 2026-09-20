@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Maintain dependencies for npm packages across the monorepo
+  # Root pnpm workspace dependencies
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
@@ -29,7 +29,72 @@ updates:
           - 'version-update:semver-major'
           - 'version-update:semver-minor'
 
-  # Maintain GitHub Actions dependencies
+  # Server dependencies
+  - package-ecosystem: 'npm'
+    directory: '/apps/server'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '04:00'
+      timezone: 'America/New_York'
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: 'chore(server-deps)'
+      include: 'scope'
+    labels:
+      - 'server'
+      - 'dependencies'
+    groups:
+      patch-updates:
+        update-types:
+          - 'patch'
+    ignore:
+      - dependency-name: 'socket.io'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
+
+  # Client dependencies
+  - package-ecosystem: 'npm'
+    directory: '/apps/client'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '04:00'
+      timezone: 'America/New_York'
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: 'chore(client-deps)'
+      include: 'scope'
+    labels:
+      - 'client'
+      - 'dependencies'
+    groups:
+      patch-updates:
+        update-types:
+          - 'patch'
+
+  # Shared package dependencies
+  - package-ecosystem: 'npm'
+    directory: '/packages/shared'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '04:00'
+      timezone: 'America/New_York'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(shared-deps)'
+      include: 'scope'
+    labels:
+      - 'shared'
+      - 'dependencies'
+    groups:
+      patch-updates:
+        update-types:
+          - 'patch'
+
+  # GitHub Actions dependencies
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:

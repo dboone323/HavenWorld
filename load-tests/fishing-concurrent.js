@@ -15,19 +15,25 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'ws://localhost:3000';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+const WS_BASE = BASE_URL.replace(/^http/, 'ws');
 const TEST_TOKEN = __ENV.TEST_JWT || 'dummy_token';
+const WS_URL = `${WS_BASE}/socket.io/?EIO=4&transport=websocket&token=${TEST_TOKEN}`;
 
 export default function () {
   let caughtOnce = false;
-  const url = `${BASE_URL}/socket.io/?EIO=4&transport=websocket`;
 
-  ws.connect(url, { headers: { Authorization: `Bearer ${TEST_TOKEN}` } }, function (socket) {
+  ws.connect(WS_URL, {}, function (socket) {
     socket.on('open', () => {
-      socket.send(
-        JSON.stringify({
-          event: 'auth:join',
-          data: {
+      socket.on('message', (raw) => {
+        // socket.io v4 protocol: "2" = PING, respond with PONG ("3")
+        if (raw === '2' || raw.startsWith('2[')) {
+          socket.send('3');
+        }
+
+        // "40" = CONNECT ack — server is ready for events
+        if (raw.startsWith('40')) {
+          socket.send('42' + JSON.stringify(['auth:join', {
             roomId: 'room-fishing-dock',
             player: {
               id: `fisher_${__VU}`,
@@ -39,47 +45,44 @@ export default function () {
               direction: 'down',
               isMoving: false,
             },
-          },
-        })
-      );
-    });
+          }]));
 
-    socket.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw);
-        if (msg.event === 'room:state') {
-          // Cast line
-          socket.send(
-            JSON.stringify({
-              event: 'fishing:cast_line',
-              data: { roomId: 'room-fishing-dock' },
-            })
-          );
+          // Cast line immediately after joining
+          socket.send('42' + JSON.stringify(['fishing:cast_line', {
+            roomId: 'room-fishing-dock',
+          }]));
         }
 
-        if (msg.event === 'fishing:tension_update') {
-          // Move reel into sweet spot
-          const target = (msg.data.sweetSpotMin + msg.data.sweetSpotMax) / 2;
-          socket.send(
-            JSON.stringify({
-              event: 'fishing:reel_position',
-              data: { value: target },
-            })
-          );
-        }
+        // "42" = EVENT from server
+        if (raw.startsWith('42')) {
+          try {
+            const payload = JSON.parse(raw.slice(2));
+            const eventName = payload[0];
+            const data = payload[1];
 
-        if (msg.event === 'fishing:caught') {
-          if (caughtOnce) {
-            duplicateDetected.add(1);
+            if (eventName === 'fishing:tension_update') {
+              const target = (data.sweetSpotMin + data.sweetSpotMax) / 2;
+              socket.send('42' + JSON.stringify(['fishing:reel_position', {
+                value: target,
+              }]));
+            }
+
+            if (eventName === 'fishing:caught') {
+              if (caughtOnce) {
+                duplicateDetected.add(1);
+              }
+              caughtOnce = true;
+              totalCoinsAwarded.add(data.coinsEarned || 0);
+              socket.close();
+            }
+          } catch {
+            // Ignore unparseable frames
           }
-          caughtOnce = true;
-          totalCoinsAwarded.add(msg.data.coinsEarned || 0);
-          socket.close();
         }
-      } catch {
-        // Ignore handshake
-      }
+      });
     });
+
+    socket.on('error', () => {});
 
     sleep(15);
     socket.close();
