@@ -37,17 +37,34 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ORACLE_HOST }}
-          username: havenworld
+          username: ubuntu
           key: ${{ secrets.ORACLE_SSH_KEY }}
           script: |
+            set -euo pipefail
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd /opt/havenworld
+            APP_DIR="/opt/havenworld"
+            LOG_DIR="$APP_DIR/logs"
+            echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — starting"
+            cd "$APP_DIR"
+            echo "[deploy] git pull origin main"
             sudo -u havenworld git pull origin main
-            pnpm install --frozen-lockfile
-            pnpm --filter '@havenworld/shared' build
-            pnpm --filter server exec prisma migrate deploy
-            pnpm --filter server build
-            mkdir -p /opt/havenworld/logs
-            pm2 restart havenworld-server || pm2 start ecosystem.config.js
-            pm2 save
+            echo "[deploy] pnpm install"
+            sudo -u havenworld pnpm install --frozen-lockfile
+            echo "[deploy] build shared package"
+            sudo -u havenworld pnpm --filter '@havenworld/shared' build
+            echo "[deploy] prisma generate + migrate deploy"
+            sudo -u havenworld pnpm --filter server exec prisma generate
+            sudo -u havenworld pnpm --filter server exec prisma migrate deploy
+            echo "[deploy] build server"
+            sudo -u havenworld pnpm --filter server build
+            mkdir -p "$LOG_DIR"
+            echo "[deploy] pm2 reload / start"
+            if sudo -u havenworld pm2 describe havenworld-server > /dev/null 2>&1; then
+              sudo -u havenworld pm2 reload havenworld-server --update-env
+            else
+              sudo -u havenworld pm2 start "$APP_DIR/ecosystem.config.js"
+            fi
+            sudo -u havenworld pm2 save
+            echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — complete ✓"
+            sudo -u havenworld pm2 list
