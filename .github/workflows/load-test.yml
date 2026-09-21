@@ -33,11 +33,11 @@ jobs:
             cd /home/havenworld
             mkdir -p load-test-results
             echo "Running WebSocket concurrent test..."
-            k6 run --out json=load-test-results/ws-$(date +%Y%m%d).json load-tests/load-tests/ws-concurrent.js
+            k6 run --out json=load-test-results/ws-$(date +%Y%m%d).json load-tests/ws-concurrent.js
             echo "Running Auth API load test..."
-            k6 run -e BASE_URL="http://localhost:3000" --out json=load-test-results/auth-$(date +%Y%m%d).json load-tests/load-tests/api-auth.js
+            k6 run -e BASE_URL="http://localhost:3000" --out json=load-test-results/auth-$(date +%Y%m%d).json load-tests/api-auth.js
             echo "Running Fishing economy test..."
-            k6 run --out json=load-test-results/fishing-$(date +%Y%m%d).json load-tests/load-tests/fishing-concurrent.js
+            k6 run --out json=load-test-results/fishing-$(date +%Y%m%d).json load-tests/fishing-concurrent.js
             echo "All load tests complete."
 
       - name: Download load test results
