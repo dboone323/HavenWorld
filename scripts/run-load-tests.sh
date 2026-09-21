@@ -38,9 +38,9 @@ run_test() {
   fi
 }
 
-run_test "ws-concurrent"      "load-tests/ws-concurrent.js"
-run_test "api-auth"           "load-tests/api-auth.js"        "-e BASE_URL=http://localhost:3000"
-run_test "fishing-concurrent" "load-tests/fishing-concurrent.js"
+run_test "ws-concurrent"      "ws-concurrent.js"
+run_test "api-auth"           "api-auth.js"        "-e BASE_URL=http://localhost:3000"
+run_test "fishing-concurrent" "fishing-concurrent.js"
 
 echo ""
 echo "Load test summary: ${ok} passed, ${fail} failed"
