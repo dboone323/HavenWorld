@@ -8,7 +8,7 @@ banaction = iptables-multiport
 
 [sshd]
 enabled = true
-port = 2222
+port = 22
 filter = sshd
 logpath = /var/log/auth.log
 maxretry = 5

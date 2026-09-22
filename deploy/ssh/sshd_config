@@ -1,5 +1,5 @@
 # /etc/ssh/sshd_config — HavenWorld hardened SSH configuration
-Port 2222
+Port 22
 AddressFamily inet
 
 # Authentication
@@ -23,7 +23,7 @@ AllowUsers ubuntu
 
 # Disable unused features
 X11Forwarding no
-AllowTcpForwarding no
+AllowTcpForwarding yes
 GatewayPorts no
 PermitUserEnvironment no
 
