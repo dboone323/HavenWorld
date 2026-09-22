@@ -13,7 +13,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
-BASE_URL="https://147-224-145-168.nip.io"
+BASE_URL="https://147-224-184-148.nip.io"
 CLIENT_URL="https://havenworld-game.pages.dev"
 LOCAL_MODE=0
 

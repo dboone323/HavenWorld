@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const PROD_URL = 'https://havenworld-game.pages.dev';
-const BACKEND_URL = 'https://147-224-145-168.nip.io';
+const BACKEND_URL = 'https://147-224-184-148.nip.io';
 
 test.describe('Live Production E2E Tests - HavenWorld Web Client', () => {
   test.beforeEach(async ({ page }) => {

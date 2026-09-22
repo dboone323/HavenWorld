@@ -221,7 +221,7 @@ backup: ## Trigger encrypted DB backup on Oracle
 
 .PHONY: health
 health: ## Check live /health endpoint
-	@curl -fsS https://147-224-145-168.nip.io/health | python3 -m json.tool
+	@curl -fsS https://147-224-184-148.nip.io/health | python3 -m json.tool
 
 .PHONY: load-test
 load-test: ## Run k6 load tests on Oracle (requires k6 on VM)
