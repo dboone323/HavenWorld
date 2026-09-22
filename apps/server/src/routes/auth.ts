@@ -187,7 +187,7 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 
   // 9. Send verification email via Resend
-  const serverUrl = process.env.SERVER_URL || 'https://147-224-164-228.nip.io';
+  const serverUrl = process.env.SERVER_URL || 'https://147-224-184-148.nip.io';
   const verifyUrl = `${serverUrl}/api/auth/verify?token=${emailVerifyToken}`;
 
   if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
