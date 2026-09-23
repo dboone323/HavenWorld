@@ -25,7 +25,9 @@ test.describe('Tier 4: Mobile Emulation & Touch Interactions', () => {
     expect(submitBox!.height).toBeGreaterThanOrEqual(32);
   });
 
-  test('Tap-to-move touch event triggers on canvas in mobile view', async ({ page }) => {
+  test('Tap-to-move touch event triggers on canvas in mobile view', async ({ page, hasTouch }) => {
+    // page.touchscreen requires hasTouch — only mobile-chrome/mobile-safari enable it.
+    test.skip(!hasTouch, 'Touch events require hasTouch (mobile projects only)');
     const ts = Date.now();
     const login = new LoginPage(page);
     const room = new RoomPage(page);

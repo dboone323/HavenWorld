@@ -13,15 +13,16 @@ Companion to `09_DEPLOY_AND_DATABASE_RUNBOOK.md` — that doc covers *deploying*
 | Layer | What it is | Safe command | Result |
 | --- | --- | --- | --- |
 | L0 Typecheck | `tsc --noEmit` for both apps | `pnpm lint` | **PASS** (exit 0) |
-| L1 Server unit | Jest `unit` project, mocks only | see §6.1 | **PASS** 6 suites / 43 tests (28.8 s) |
-| L2 Server integration | Jest `integration`, real local Postgres + Redis | see §6.1 | **PASS** 6 suites / 51 tests (32.9 s) |
-| L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 11 files / 92 tests (29.5 s) |
-| L4 E2E | Playwright Chromium, 22 specs | see §6.2 | **PARTIAL** — harness repaired; 3 defects found & 2 fixed, 1 open (§5.5) |
+| L1 Server unit | Jest `unit` project, mocks only | see §6.1 | **PASS** 7 suites / 50 tests |
+| L2 Server integration | Jest `integration`, real local Postgres + Redis | see §6.1 | **PASS** 6 suites / 51 tests |
+| L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 12 files / 98 tests |
+| L4 E2E | Playwright chromium: 18 local tests (`live-*` gated) | see §6.2 | **PASS** 17 passed / 1 skipped — `fullFlow` green (§5.5–§5.6) |
 | L5 Live gate | `scripts/beta-gate-check.sh` | `./scripts/beta-gate-check.sh` | **GO** 16 PASS / 0 FAIL / 2 SKIP |
 | L6 Live API smoke | register → verify → login → cleanup on prod | see §6.6 | **PASS** (register 201, login 200) |
 | L7 Load | k6 (`load-tests/*.js`), k6 installed | see §6.5 | **NOT YET RUN** |
 
-**186 automated tests green** at L0–L3 today, plus a green beta gate and a live login smoke.
+**199 automated tests green** at L1–L3 (101 server + 98 client, `pnpm lint` exit 0 on both apps),
+plus a green full-chromium E2E run (17 passed / 1 skipped) and a green beta gate (L5).
 
 ## 2. Verified production state
 
@@ -39,10 +40,11 @@ Companion to `09_DEPLOY_AND_DATABASE_RUNBOOK.md` — that doc covers *deploying*
 
 ---
 
-## 3. ⚠️ Two landmines — read before running any test target
+## 3. ⚠️ Two landmines — **both FIXED 2026-09-23** (history retained for context)
 
-Both were discovered on 2026-09-23 and neither is theoretical. Both make a *test* command mutate
-**production**.
+Both were discovered on 2026-09-23 and neither was theoretical: each made a *test* command mutate
+**production**. Fixes landed in commit `79a9021` and session-2 follow-ups (details per item below) —
+re-read this section before re-introducing a Makefile target or an env shortcut.
 
 ### L1 — `make push-schema` pushes to production with `--accept-data-loss`
 
@@ -76,6 +78,10 @@ DATABASE_URL="$LOCAL_DEV"  pnpm --filter server exec prisma db push --accept-dat
 
 Production schema changes go through `prisma migrate deploy` only (runbook §5).
 
+**✅ FIXED (commit `79a9021`)** — the `push-schema` target no longer pushes with the production
+`.env` at all; it resolves the local test URL from `apps/server/.env.test` and the local dev URL
+explicitly. The prod-`.env` first line shown above is gone.
+
 ### L2 — Playwright boots a *production-pointing* server, then calls `/api/test/reset`
 
 - `apps/server/src/index.ts:1` is `import 'dotenv/config'` → loads `apps/server/.env` (production).
@@ -106,10 +112,16 @@ To run **only** the live specs against the deployed site, note the config alread
 BASE_URL=https://havenworld-game.pages.dev npx playwright test e2e/live-prod-login.spec.ts --project=chromium
 ```
 
-**Recommended permanent fixes** (not yet applied): (a) make `push-schema` depend on the local URLs
-only; (b) load `.env.test` in `index.ts` when `NODE_ENV === 'test'`; (c) add an
-`if (process.env.NODE_ENV === 'test' && !DATABASE_URL.includes('_test')) throw` assertion inside
-`testRoutes.ts`, mirroring the guard Jest already has in `tests/jest.globalSetup.ts:8`.
+**✅ FIXED (commit `79a9021` + session 2):** (a) `push-schema` targets local URLs only (see L1);
+(b) the Playwright `webServer` now passes `apps/server/.env.test` explicitly as `env:`, with
+`NODE_ENV=test`, `SERVER_AUTOSTART=true` and `PORT=3000` forced — no more dotenv fallback to
+production; (c) `testRoutes.ts` additionally requires `DATABASE_URL` to contain `_test`;
+(d) `middleware/security.ts` throws at startup when `NODE_ENV=test` with a non-`_test` database
+(unit-tested in `middleware/__tests__/security.test.ts`);
+(e) `playwright.config.ts` fail-fasts before booting if `DATABASE_URL` lacks `_test`
+(override: `E2E_ALLOW_NON_TEST_DB=1`);
+(f) `e2e/globalSetup.ts` **throws** when `/api/test/reset` returns a non-OK status with the local
+stack enabled. Verified: `playwright test --list` loads `havenworld_test` and refuses a prod DB.
 
 ## 4. Prerequisites (all verified present on this machine)
 
@@ -127,9 +139,10 @@ Start the stack: `docker compose -f docker-compose.dev.yml up -d`
 Stop it: `docker compose -f docker-compose.dev.yml down`
 
 > Note: `apps/server/.env.test` is the file Jest uses (`127.0.0.1:5432/havenworld_test`,
-> `redis://127.0.0.1:6379/1`). The **root** `.env.test` is **empty**, yet `playwright.config.ts:5`
-> loads it — that is why Playwright silently falls back to `http://localhost:5173` and starts its own
-> web servers.
+> `redis://127.0.0.1:6379/1`), and `playwright.config.ts` now parses it and passes it to the
+> API `webServer` as `env:`. The **root** `.env.test` holds the browser-side `VITE_*` URLs — it was
+> empty before session 2 and is now aligned on port 3000 (`VITE_SERVER_URL=http://localhost:3000`),
+> matching the server file and Playwright's `PORT`.
 
 ---
 
@@ -172,7 +185,7 @@ Stop it: `docker compose -f docker-compose.dev.yml down`
 | `src/ui/__tests__/wardrobe.test.ts` | `normalizeGender`, `applyGenderPreset`, `getItemAccentColor`, `groupWardrobeItems` |
 | `src/game/__tests__/audioEngine.test.ts`, `src/game/__tests__/roomScene.test.ts` | older duplicate copies of the audio/scene specs above |
 
-### 5.4 E2E (`e2e`, Playwright, Chromium; 22 tests across 10 specs)
+### 5.4 E2E (`e2e`, Playwright; 90 tests / 7 files listed by default, chromium project = 18 — `live-*` specs gated behind `E2E_LIVE=1`)
 
 | Spec | Tests | Needs | Status |
 | --- | --- | --- | --- |
@@ -223,15 +236,41 @@ Also confirmed: `apps/server/.env` sets `ALPHA_INVITE_ONLY=true` (the VM has `fa
 answers **403 `INVITE_REQUIRED`** on a local run unless `ALPHA_INVITE_ONLY=false` is exported or a
 seeded invite code is supplied.
 
-**STILL OPEN** — with the harness repaired, `fullFlow.spec.ts` reaches `POST /api/auth/register` and
-then hangs: the Playwright trace records the request with `"time": -1` (never completed), the button
-sits on "Please wait…" and no account is created, while the *same* request via `curl` against a
-manually started server returns **201 in 0.34 s** (verified for both `tsx src/index.ts` and
-`pnpm --filter server dev`). The handler's first log line
-(`[Auth] RESEND_API_KEY/EMAIL_FROM not set…`) does appear in Playwright's `[WebServer]` output, so the
-route is entered and the stall happens after it. Next diagnostic steps: enable Prisma query logging,
-watch `pg_stat_activity` for lock waits during a run, and try `NO_SERVER=1` with manually started
-API+Vite to determine whether this is specific to Playwright-managed `webServer` stdio.
+**✅ RESOLVED (session 2)** — the register stall was the L2 landmine in disguise: Playwright's
+`webServer` had no `env:`, so the child ran `import 'dotenv/config'` → `apps/server/.env` →
+**production Supabase pooler**, where the interactive `$transaction` stalled (trace: request
+`"time": -1`, never completed). Passing `apps/server/.env.test` explicitly and aligning all three
+port sources on 3000 fixed `POST /api/auth/register` → **201** deterministically. Session 2 then
+found and fixed three more app-level defects on the way to a green `fullFlow` — see §5.6.
+
+### 5.6 Session-2 findings — 2026-09-23 (three app defects + six spec defects, all fixed)
+
+1. **FIXED — client socket dropped pre-connect events and lost pre-connect listeners.**
+   `services/socket.ts`'s `emit()` warned and dropped anything sent before the handshake (so
+   `AUTH_JOIN`, emitted on the line after `connect()`, never reached the server → the `CHAT_SEND`
+   handler's `if (!roomId) return` swallowed every message → empty chat log), and `on()` silently
+   no-opped when `_socket` was null (`RoomScene` constructs `ChatOverlay` ~60 lines before it calls
+   `connect()`, so its `CHAT_MESSAGE` listener never attached). Stale-socket teardown also called
+   `removeAllListeners()`. Fix: module-level handler registry re-attached on every `connect()`, plus
+   a bounded emit queue (50) flushed in order on `connect` and cleared on `disconnect()` (logout).
+   Covered by `src/services/__tests__/socket.test.ts` (6 cases).
+2. **FIXED — `bad-words` mangled underscores in *clean* chat messages.** `filter.clean()` splits on
+   `/\b|_/` and rejoins with the first delimiter, turning `E2E message from e2e_123` into
+   `…e2e123` (caught by the E2E chat assertion). `moderateMessage()` now bypasses `clean()` when
+   `filter.isProfane()` is false; regression tests in `services/__tests__/moderation.test.ts`.
+3. **FIXED — `live-*.spec.ts` were part of every default run** (`playwright test --list` showed the
+   three production-targeting specs across all five projects): a bare `pnpm test:e2e` would have
+   logged into `https://havenworld-game.pages.dev` with committed demo credentials.
+   `playwright.config.ts` now `testIgnore`s `**/live-*.spec.ts` unless `E2E_LIVE=1` (run them
+   explicitly per §6.3).
+4. **Six spec defects fixed in the first full chromium pass** (12 passed / 6 failed → green):
+   `chatvis_`+13-digit timestamp = **21 chars** > username max 20 (visual chat);
+   a11y chat test never entered a room, so `#chat-log` never existed; a11y autocomplete expected
+   `email` on a login field correctly marked `autocomplete="username"` ("Email or Username");
+   avatar customizer targeted the dead `#avatar-panel` div instead of the real
+   `#avatar-customizer` overlay (testid added to the overlay); the touch test ran on desktop
+   projects without `hasTouch` (now `test.skip`s there and runs on mobile projects); perf read
+   `sm.activeScene` but `SceneManager` exposes `currentScene` (count was always 0).
 
 ---
 
@@ -266,16 +305,15 @@ The suite self-guards: `tests/jest.globalSetup.ts:8` throws unless `DATABASE_URL
 ### 6.2 L4 — E2E against the local stack (safe form)
 
 ```bash
-export DATABASE_URL="postgresql://postgres:devpassword123@127.0.0.1:5432/havenworld_test"
-export REDIS_URL="redis://127.0.0.1:6379/1"
-export NODE_ENV=test
+# No env exports needed anymore: playwright.config.ts parses apps/server/.env.test and passes it
+# to the API webServer (NODE_ENV=test, SERVER_AUTOSTART=true, PORT=3000 all forced), and the config
+# fail-fasts if DATABASE_URL is not a *_test database (E2E_ALLOW_NON_TEST_DB=1 overrides).
 
-# Playwright starts the API on :3000 and the client on :5173 itself, and globalSetup
-# POSTs /api/test/reset — which now hits the LOCAL database because DATABASE_URL is exported.
-npx playwright test e2e/fullFlow.spec.ts e2e/multiplayer.spec.ts e2e/avatarCustomizer.spec.ts --project=chromium
+# the §8 exit-criteria pair
+npx playwright test e2e/fullFlow.spec.ts e2e/multiplayer.spec.ts --project=chromium
 
-# the rest of the local specs
-npx playwright test e2e/accessibility e2e/mobile e2e/performance e2e/visual --project=chromium
+# everything local — live-*.spec.ts are excluded unless E2E_LIVE=1 (§5.6 item 3)
+npx playwright test --project=chromium
 ```
 
 Reports: `playwright-report/index.html`; traces/screenshots/video are retained on failure.
@@ -283,8 +321,9 @@ Reports: `playwright-report/index.html`; traces/screenshots/video are retained o
 ### 6.3 L4 — live specs against production
 
 ```bash
-# BASE_URL containing "pages.dev" disables webServer + globalSetup in playwright.config.ts:21-22
-BASE_URL=https://havenworld-game.pages.dev npx playwright test e2e/live-prod-login.spec.ts --project=chromium
+# BASE_URL containing "pages.dev" disables webServer + globalSetup; E2E_LIVE=1 opts the live-*.spec.ts
+# files back in (they are testIgnore'd by default — §5.6 item 3)
+BASE_URL=https://havenworld-game.pages.dev E2E_LIVE=1 npx playwright test e2e/live-prod-login.spec.ts --project=chromium
 ```
 
 Requires real credentials in the spec (currently hardcoded placeholders, §5.4) — expected to fail
@@ -411,7 +450,7 @@ account (or a fresh invite-code account).
 | --- | --- | --- |
 | 1 | L0–L3 green (typecheck + 186 tests) | ✅ met today |
 | 2 | `beta-gate-check.sh` reports GO | ✅ met today (16/0/2) |
-| 3 | Local E2E `fullFlow` + `multiplayer` pass | ⛔ not yet run |
+| 3 | Local E2E `fullFlow` + `multiplayer` pass | ✅ verified 2026-09-23 (full chromium project green) |
 | 4 | Manual checklist §7 A–I passes with no blockers | ⛔ not yet run |
 | 5 | No P1/P2 defects open from the manual pass | ⛔ |
 | 6 | Invite codes minted and the wall re-armed (`ALPHA_INVITE_ONLY=true`) | ⛔ gate still open |
@@ -426,26 +465,28 @@ finds → mint invites → flip the gate.
    `RESEND_API_KEY` unset there is no recovery path at all — if the single admin account's password is
    lost, access is lost. Add `POST /api/auth/change-password` (authenticated) plus a token reset once
    Resend is live (already listed in runbook §8).
-2. **§3 L1 / L2 landmines** — both make test commands mutate production. Fix the `push-schema` target,
-   teach `index.ts` to load `.env.test` when `NODE_ENV=test`, and add the `_test` guard to
-   `testRoutes.ts`.
+2. ~~§3 L1 / L2 landmines~~ — **resolved 2026-09-23** (§3): `push-schema` is local-only, Playwright
+   passes `apps/server/.env.test` explicitly, and `testRoutes` + a startup guard require a `*_test`
+   database.
 3. **Demo credentials committed** in `e2e/live-comprehensive-audit.spec.ts:32` and
    `live-deep-workflow.spec.ts`. The referenced account does not exist; treat the password as burned
    and move both to env vars.
-4. **Root `.env.test` is empty** while `playwright.config.ts` loads it — silent misconfiguration that
-   decides whether Playwright manages servers itself or ignores an existing deployment.
-5. **Visual / perf / a11y E2E specs have never been baselined** here; expect first-run noise
-   (snapshot creation, timing thresholds on a laptop).
+4. ~~Root `.env.test` is empty~~ — **fixed**: it now carries the browser-side `VITE_*` URLs aligned on
+   port 3000, `playwright.config.ts` parses `apps/server/.env.test` for the API child, and the config
+   fail-fasts on a non-`_test` `DATABASE_URL`.
+5. ~~Visual / perf / a11y E2E specs have never been baselined~~ — the first full chromium pass ran
+   2026-09-23 and is green after fixing six spec defects (§5.6 item 4). The visual specs assert DOM
+   structure (no `toHaveScreenshot` baselines), so there are no snapshot files to maintain.
 6. **Coverage floor is low** (20 % branches / 45 % lines globally). Services with real money and state
    logic (`ShopService`, `ClubService`, `QuestService`, `PetManager`, `SeasonalEventService`) have no
    dedicated suites yet.
 7. **Sentry is inert** without `SENTRY_DSN`, and **GitHub Actions is disabled** at the account level,
    so nothing runs these suites automatically — this plan is manual by nature until CI returns.
 8. **k6 load gate has not been executed** against either environment.
-9. **The E2E `register()` helper never asserts success** — `LoginPage.register()` only clicks submit
-   (`e2e/pages/LoginPage.ts:66`), so the spec races ahead to `verify-email` and reports a confusing
-   404 instead of "registration failed". `fullFlow.spec.ts` also never supplies an invite code, so it
-   cannot pass while the local gate is closed.
+9. ~~The E2E `register()` helper never asserts success~~ — **fixed**: `LoginPage.register()` now
+   waits for the `POST /api/auth/register` **201** response before resolving. Invite codes are not
+   needed while `ALPHA_INVITE_ONLY=false`; if the local gate is ever closed, specs will need a seeded
+   code.
 10. **Token storage is inconsistent** — `authService.register()` writes `haven_token` to
     `localStorage` (`apps/client/src/services/authService.ts:152`) although `authService.test.ts`
     asserts tokens live in memory only. Align before beta (localStorage is readable by any XSS).

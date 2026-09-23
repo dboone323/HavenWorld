@@ -11,7 +11,10 @@ export interface ModerationResult {
 export function moderateMessage(content: string): ModerationResult {
   const trimmed = content.trim();
   try {
-    const filtered = filter.clean(trimmed);
+    // bad-words' clean() splits on /\b|_/ (consuming underscores) and rejoins
+    // with the first delimiter, so it silently mangles clean messages
+    // ("e2e_123" → "e2e123"). Only run it when the message really is profane.
+    const filtered = filter.isProfane(trimmed) ? filter.clean(trimmed) : trimmed;
     const wasFiltered = filtered !== trimmed;
     return {
       filtered,

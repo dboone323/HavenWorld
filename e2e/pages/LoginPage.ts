@@ -63,7 +63,23 @@ export class LoginPage {
     if (params.inviteCode) {
       await this.regInviteInput.fill(params.inviteCode);
     }
-    await this.regSubmitBtn.click();
+    // Wait for the response instead of racing it: specs call verifyEmailViaTestRoute() or
+    // login() immediately after this returns, and both need the account to exist already.
+    // Without the wait, a slow or failing register surfaced as a confusing 404 later.
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (res) => res.url().includes('/api/auth/register') && res.request().method() === 'POST',
+        { timeout: 20_000 }
+      ),
+      this.regSubmitBtn.click(),
+    ]);
+
+    if (response.status() !== 201) {
+      expect(
+        response.status(),
+        `POST /api/auth/register failed: ${response.status()} ${await response.text()}`
+      ).toBe(201);
+    }
   }
 
   async login(email: string, password: string): Promise<void> {

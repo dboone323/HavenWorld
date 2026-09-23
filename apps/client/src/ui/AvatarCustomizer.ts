@@ -133,6 +133,7 @@ export class AvatarCustomizer {
   private buildOverlay(): HTMLElement {
     const el = document.createElement('div');
     el.id = 'avatar-customizer';
+    el.setAttribute('data-testid', 'avatar-customizer');
     el.style.cssText = `
       position: fixed;
       inset: 0;

@@ -1,4 +1,4 @@
-import { ModerationService, clearRateLimitEntry } from '../ModerationService';
+import { ModerationService, clearRateLimitEntry, moderateMessage } from '../ModerationService';
 
 describe('ModerationService', () => {
   let mod: ModerationService;
@@ -120,5 +120,24 @@ describe('ModerationService', () => {
     });
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe('EMPTY_MESSAGE');
+  });
+
+  // Regression: bad-words clean() splits on /\b|_/ and rejoins with the first
+  // delimiter, which used to strip underscores from perfectly clean messages
+  // (caught by the E2E chat assertion: "e2e_123" → "e2e123").
+  it('preserves underscores in clean messages', () => {
+    const message = 'E2E message from e2e_1790183817049';
+    const result = moderateMessage(message);
+    expect(result.filtered).toBe(message);
+    expect(result.wasFiltered).toBe(false);
+    expect(result.severity).toBe('none');
+  });
+
+  it('still masks profane words', () => {
+    const result = moderateMessage('you damn fool');
+    expect(result.wasFiltered).toBe(true);
+    expect(result.severity).toBe('mild');
+    expect(result.filtered).toContain('*');
+    expect(result.filtered).not.toContain('damn');
   });
 });

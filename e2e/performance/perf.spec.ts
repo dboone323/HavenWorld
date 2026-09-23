@@ -73,7 +73,7 @@ test.describe('Tier 4: Performance & CDP Metrics', () => {
     // Get initial mesh count
     const initialMeshCount = await page.evaluate(() => {
       const sm = (window as any).__havenSceneManager;
-      return sm?.activeScene?.meshes?.length ?? 0;
+      return sm?.currentScene?.meshes?.length ?? 0;
     });
 
     // Navigate to Park
@@ -81,7 +81,7 @@ test.describe('Tier 4: Performance & CDP Metrics', () => {
 
     const parkMeshCount = await page.evaluate(() => {
       const sm = (window as any).__havenSceneManager;
-      return sm?.activeScene?.meshes?.length ?? 0;
+      return sm?.currentScene?.meshes?.length ?? 0;
     });
 
     expect(parkMeshCount).toBeGreaterThan(0);

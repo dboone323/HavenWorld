@@ -34,7 +34,7 @@ export class RoomPage {
     this.btnBrowseLofts = page.locator('[data-testid="btn-browse-lofts"]');
     this.btnAvatar = page.locator('[data-testid="btn-avatar"]');
     this.btnSignOut = page.locator('[data-testid="btn-nav-logout"]');
-    this.avatarPanel = page.locator('[data-testid="avatar-panel"]');
+    this.avatarPanel = page.locator('[data-testid="avatar-customizer"]');
   }
 
   async waitForRoomReady(timeout = 20_000): Promise<void> {

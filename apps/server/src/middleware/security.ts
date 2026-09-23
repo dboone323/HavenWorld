@@ -60,6 +60,16 @@ export function verifyStartupSecurityAssertions(): void {
   if (!process.env.DATABASE_URL) {
     throw new Error('FATAL: DATABASE_URL environment variable is not set. Refusing to start.');
   }
+  // A test-mode process must never talk to a non-test database. Before this guard existed,
+  // Playwright's webServer booted with NODE_ENV=test while dotenv fell back to
+  // apps/server/.env (the production Supabase pooler), so E2E registration created real
+  // accounts and its interactive $transaction stalled on the pooler.
+  if (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL.includes('_test')) {
+    throw new Error(
+      'FATAL: NODE_ENV=test with a DATABASE_URL that is not a *_test database. Refusing to start. ' +
+        'Point DATABASE_URL at a local test database (see apps/server/.env.test).'
+    );
+  }
   if (!process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
     throw new Error('FATAL: REDIS_URL environment variable is not set. Refusing to start.');
   }

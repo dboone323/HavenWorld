@@ -45,12 +45,12 @@ test.describe('Tier 4: Visual Regression Tests', () => {
 
     await login.goto();
     await login.register({
-      username: `chatvis_${ts}`,
-      email: `chatvis_${ts}@havenworld.test`,
+      username: `cvis_${ts}`,
+      email: `cvis_${ts}@havenworld.test`,
       password: 'Password123!',
     });
-    await login.verifyEmailViaTestRoute(`chatvis_${ts}@havenworld.test`);
-    await login.login(`chatvis_${ts}@havenworld.test`, 'Password123!');
+    await login.verifyEmailViaTestRoute(`cvis_${ts}@havenworld.test`);
+    await login.login(`cvis_${ts}@havenworld.test`, 'Password123!');
 
     await room.waitForRoomReady();
     await expect(room.chatPanel).toBeVisible();
