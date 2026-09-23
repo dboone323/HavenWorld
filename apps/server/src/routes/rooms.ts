@@ -82,15 +82,26 @@ const layoutBodySchema = z.object({
   layout: z.array(furniturePlacementSchema),
 });
 
-// POST /api/rooms/:id/furniture/layout — atomic layout replace (Part 5B)
+async function canDecorateRoom(userId: string, roomId: string): Promise<boolean> {
+  const room = await prisma.room.findUnique({
+    where: { id: roomId },
+    include: { decorators: true },
+  });
+  if (!room) return false;
+  if (room.ownerId === userId) return true;
+  return room.decorators.some((d) => d.userId === userId);
+}
+
+// POST /api/rooms/:id/furniture/layout — atomic layout replace (Part 5B & Track 3.8 Co-Building)
 router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) => {
   const roomId = req.params.id as string;
   const userId = req.user!.userId;
 
   const room = await prisma.room.findUnique({ where: { id: roomId } });
   if (!room) return res.status(404).json({ error: 'Room not found.' });
-  if (room.ownerId !== userId) {
-    return res.status(403).json({ error: 'You do not own this room.' });
+  const allowed = await canDecorateRoom(userId, roomId);
+  if (!allowed) {
+    return res.status(403).json({ error: 'You do not have decorator permissions in this room.' });
   }
 
   const parsed = layoutBodySchema.safeParse(req.body);
@@ -137,6 +148,9 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
         include: { item: true },
         orderBy: { layer: 'asc' },
       },
+      decorators: {
+        include: { user: { select: { id: true, username: true } } },
+      },
     },
   });
 
@@ -145,14 +159,17 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   return res.json(room);
 });
 
-// POST /api/rooms/:id/furniture — place furniture in personal room
+// POST /api/rooms/:id/furniture — place furniture in personal room (Track 3.8 Co-Building)
 router.post('/:id/furniture', requireAuth, async (req: AuthRequest, res) => {
   const roomId = req.params.id as string;
   const room = await prisma.room.findUnique({ where: { id: roomId } });
-  if (!room || room.ownerId !== req.user!.userId) {
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+
+  const allowed = await canDecorateRoom(req.user!.userId, roomId);
+  if (!allowed) {
     return res.status(403).json({
-      error: 'You do not own this room.',
-      code: 'NOT_ROOM_OWNER',
+      error: 'You do not have decorator permissions in this room.',
+      code: 'NOT_ROOM_DECORATOR',
     });
   }
 
@@ -210,10 +227,13 @@ router.delete('/:id/furniture/:furnitureId', requireAuth, async (req: AuthReques
   const roomId = req.params.id as string;
   const furnitureId = req.params.furnitureId as string;
   const room = await prisma.room.findUnique({ where: { id: roomId } });
-  if (!room || room.ownerId !== req.user!.userId) {
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+
+  const allowed = await canDecorateRoom(req.user!.userId, roomId);
+  if (!allowed) {
     return res.status(403).json({
-      error: 'You do not own this room.',
-      code: 'NOT_ROOM_OWNER',
+      error: 'You do not have decorator permissions in this room.',
+      code: 'NOT_ROOM_DECORATOR',
     });
   }
 
@@ -223,6 +243,164 @@ router.delete('/:id/furniture/:furnitureId', requireAuth, async (req: AuthReques
 
   roomManager.removeFurniture(roomId, furnitureId);
   return res.json({ message: 'Furniture removed.' });
+});
+
+// ── Track 3.5: Room Expansions ──────────────────────────────────────────────
+const expandSchema = z.object({
+  width: z.number().int().min(10).max(30),
+  height: z.number().int().min(10).max(30),
+});
+
+router.post('/:id/expand', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  const userId = req.user!.userId;
+  const parsed = expandSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid dimensions', issues: parsed.error.issues });
+  }
+  const { width, height } = parsed.data;
+
+  const room = await prisma.room.findUnique({ where: { id: roomId } });
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+  if (room.ownerId !== userId) {
+    return res.status(403).json({ error: 'You do not own this room.' });
+  }
+  if (width <= room.width && height <= room.height) {
+    return res.status(400).json({ error: 'Expanded dimensions must exceed current dimensions.' });
+  }
+
+  const deltaW = Math.max(0, width - room.width);
+  const deltaH = Math.max(0, height - room.height);
+  const cost = (deltaW + deltaH) * 25; // 25 coins per expanded tile dimension
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.havenCoins < cost) {
+    return res.status(400).json({
+      error: 'Insufficient HavenCoins',
+      required: cost,
+      current: user?.havenCoins ?? 0,
+    });
+  }
+
+  const [updatedUser, updatedRoom] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { havenCoins: { decrement: cost } },
+      select: { havenCoins: true },
+    }),
+    prisma.room.update({
+      where: { id: roomId },
+      data: { width, height },
+    }),
+  ]);
+
+  const io = getIO();
+  if (io) {
+    io.to(roomId).emit(SOCKET_EVENTS.ROOM_EXPANDED, {
+      roomId,
+      width: updatedRoom.width,
+      height: updatedRoom.height,
+    });
+  }
+
+  return res.json({
+    success: true,
+    width: updatedRoom.width,
+    height: updatedRoom.height,
+    coinsSpent: cost,
+    newBalance: updatedUser.havenCoins,
+  });
+});
+
+// ── Track 3.6: Door Linking / Teleporters ──────────────────────────────────
+router.post('/:id/teleport', requireAuth, async (req: AuthRequest, res) => {
+  const { PrivacyManager } = await import('../services/PrivacyManager');
+  const targetRoomId = req.body.targetRoomId as string;
+  const password = req.body.password as string | undefined;
+  if (!targetRoomId) return res.status(400).json({ error: 'targetRoomId required' });
+
+  const access = await PrivacyManager.checkAccess(req.user!.userId, targetRoomId, password);
+  if (!access.allowed) {
+    return res.status(403).json({
+      error: 'Cannot teleport to target room',
+      reason: access.reason,
+      awayMessage: access.awayMessage,
+    });
+  }
+
+  return res.json({
+    allowed: true,
+    targetRoomId,
+    mode: access.mode,
+  });
+});
+
+// ── Track 3.10: Ambient Room Settings ──────────────────────────────────────
+router.put('/:id/ambient', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  const userId = req.user!.userId;
+  const { moodPreset, theme } = req.body;
+
+  const allowed = await canDecorateRoom(userId, roomId);
+  if (!allowed) {
+    return res.status(403).json({ error: 'Unauthorized to configure ambient settings' });
+  }
+
+  const updated = await prisma.room.update({
+    where: { id: roomId },
+    data: {
+      moodPreset: moodPreset || 'day',
+      theme: theme || undefined,
+    },
+  });
+
+  const io = getIO();
+  if (io) {
+    io.to(roomId).emit(SOCKET_EVENTS.ROOM_MOOD_CHANGED, {
+      roomId,
+      mood: updated.moodPreset,
+      theme: updated.theme,
+    });
+  }
+
+  return res.json({ success: true, moodPreset: updated.moodPreset, theme: updated.theme });
+});
+
+// ── Track 3.8: Co-Building Rights Management ──────────────────────────────
+router.get('/:id/decorators', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  const decorators = await prisma.roomDecorator.findMany({
+    where: { roomId },
+    include: { user: { select: { id: true, username: true } } },
+  });
+  return res.json(decorators);
+});
+
+router.post('/:id/decorators', requireAuth, async (req: AuthRequest, res) => {
+  const { PrivacyManager } = await import('../services/PrivacyManager');
+  const roomId = req.params.id as string;
+  const targetUserId = req.body.targetUserId as string;
+  if (!targetUserId) return res.status(400).json({ error: 'targetUserId required' });
+
+  try {
+    const decorator = await PrivacyManager.grantDecorator(req.user!.userId, roomId, targetUserId);
+    return res.status(201).json(decorator);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/:id/decorators/:targetUserId', requireAuth, async (req: AuthRequest, res) => {
+  const { PrivacyManager } = await import('../services/PrivacyManager');
+  const roomId = req.params.id as string;
+  const targetUserId = req.params.targetUserId as string;
+
+  try {
+    await PrivacyManager.revokeDecorator(req.user!.userId, roomId, targetUserId);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 export default router;

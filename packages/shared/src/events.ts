@@ -31,6 +31,8 @@ export const SOCKET_EVENTS = {
   ROOM_FURNITURE_UPDATED: 'room:furniture_updated',
   FURNITURE_PLACE:        'furniture:place',
   FURNITURE_REMOVE:       'furniture:remove',
+  ROOM_EXPANDED:          'room:expanded',
+  DOOR_TELEPORT:          'room:door_teleport',
 
   // ── Phase 3: Fishing Mini-Game (§1) ──────────────────────────────────────
   CAST_LINE:      'fishing:cast_line',

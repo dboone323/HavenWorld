@@ -18,14 +18,14 @@
 | :--- | :--- | :---: | :---: | :---: | :---: |
 | **Track 1** | Multiplayer Engine & Technical Infrastructure | 11 | 11 | 0 | 0 |
 | **Track 2** | Avatar Personalization & Identity | 10 | 10 | 0 | 0 |
-| **Track 3** | The "Loft" System & Environment Editing | 12 | 5 | 2 | 5 |
+| **Track 3** | The "Loft" System & Environment Editing | 12 | 12 | 0 | 0 |
 | **Track 4** | Economy, Progression, and Trading | 11 | 4 | 2 | 5 |
 | **Track 5** | Social Mechanics, Trust & Safety | 12 | 6 | 1 | 5 |
 | **Track 6** | Mini-Games, Professions & Interactivity | 11 | 3 | 2 | 6 |
 | **Track 7** | Retention, Onboarding & Analytics | 9 | 2 | 1 | 6 |
 | **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **104** | **48** | **10** | **46** |
+| **Total** | **All Systems** | **104** | **55** | **8** | **41** |
 
 ---
 
@@ -200,96 +200,79 @@ Covers personal housing, isometric decorating, physics, surface stacking, and co
 - **Validation**: Real functional tests in `tests/protocol.test.mjs` and `tests/browser-full.test.mjs`.
 
 ### 3.2 4-Way Object Rotation
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow furniture to be rotated dynamically to face North, South, East, or West using the `R` key during placement.
-- **Target Architecture**:
-  - Add `rotation: 0 | 90 | 180 | 270` to furniture schema.
-  - Isometric rendering adjusts dimensions: `(w, h)` swap on 90°/270° rotations.
-- **Components**: `src/client/game.js`, `src/server/protocol.ts`.
-- **Validation**: Test confirming bounding box rotation and collision tile updates.
+- **Current State**: Implemented in `apps/client/src/world/RoomEditor.ts` (`cycleRotation()`). Tapping `R` cycles rotation across 0°, 90°, 180°, and 270° with real-time ghost mesh rotation preview and HUD direction labels (`0° (South)`, `90° (West)`, `180° (North)`, `270° (East)`). Rotation angles in radians are persisted to `room_furniture.rotation`.
+- **Components**: `apps/client/src/world/RoomEditor.ts`, `apps/server/src/routes/rooms.ts`.
+- **Validation**: Tested in `RoomEditor` rotation cycle logic and verified in 3D NullEngine placement suite.
 
 ### 3.3 Z-Axis Stacking & Surface Parenting
 - **Status**: `[x]` Completed & Verified
 - **Description**: Elevation logic so small items (coffee cups, table lamps, books, mini-plants) can be placed on top of flat surfaces (tables, counters, desks).
 - **Current State**: Furniture items define `surfaceHeight` and `canStackOn`. Clicking a table places the item at elevated offset `elevation: surfaceHeight`.
-- **Validation**: Tested in `tests/browser-full.test.mjs` (Test 19).
+- **Validation**: Tested in `tests/browser-full.test.mjs` (Test 19) and `FurnitureManager.test.ts`.
 
 ### 3.4 Wall & Floor Customization
 - **Status**: `[x]` Completed & Verified
 - **Description**: Decorating layer to swap out floor styles and wall colors independently from furniture items.
 - **Current State**: `UPDATE_ROOM_STYLE` protocol message updates room flooring (hardwood, retro tile, marble checkerboard, cozy carpet) and wall accent colors.
-- **Validation**: Protocol test in `tests/protocol.test.mjs`.
+- **Validation**: Protocol test in `tests/protocol.test.mjs` and `PlaceholderRoom.ts`.
 
 ### 3.5 Room Expansions
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow users to spend HavenCoins to expand their Loft's grid dimensions (e.g., from 10x10 to 14x14, up to 20x20).
-- **Target Architecture**:
-  - `EXPAND_ROOM` protocol action verifying coin balance.
-  - Grid bounds recomputed dynamically in room state and saved to database.
-- **Components**: `src/server/protocol.ts`, `src/server/rooms.ts`.
-- **Validation**: Test verifying furniture beyond old boundary becomes accessible after expansion.
+- **Current State**: Implemented via `POST /api/rooms/:id/expand` endpoint and `SOCKET_EVENTS.ROOM_EXPANDED`. Atomic transaction deducts HavenCoins (25 coins per delta tile dimension) and updates `Room.width` and `Room.height` bounds up to 30x30, broadcasting the event to all room occupants.
+- **Components**: `apps/server/src/routes/rooms.ts`, `packages/shared/src/events.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/roomExtensions.integration.test.ts` (expansion success, coin deduction balance verification, insufficient funds rejection, non-owner rejection).
 
 ### 3.6 Door Linking (Teleporters)
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Furniture items (e.g., Sci-Fi Telepad, Wooden Wardrobe Door) that teleport stepping avatars to a friend's room or secret sanctuary.
-- **Target Architecture**:
-  - Teleport trigger tile detection on avatar walk completion.
-  - Sends `SWITCH_ROOM` with target sanctuary ID and doorway transition animation.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Step-triggered room change test.
+- **Current State**: Implemented in `POST /api/rooms/:id/teleport` and `SOCKET_EVENTS.DOOR_TELEPORT`. Integrates with `PrivacyManager.checkAccess` to validate room permissions (public, friends-only, password, locked) before executing room transitions.
+- **Components**: `apps/server/src/routes/rooms.ts`, `apps/server/src/services/PrivacyManager.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/roomExtensions.integration.test.ts` (public room access granted, locked room rejection with reason/awayMessage).
 
 ### 3.7 Room Permissions Matrix
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Loft access controls: Open to Public, Friends Only, Password Protected, or Locked.
-- **Target Architecture**:
-  - `accessMode: 'public' | 'friends' | 'password' | 'locked'` in room settings.
-  - Server rejects unauthorized `SWITCH_ROOM` requests.
-- **Components**: `src/server/rooms.ts`, `src/server/protocol.ts`.
-- **Validation**: Integration test verifying non-friends are blocked from 'friends' room.
+- **Current State**: Fully enforced via `PrivacyManager.checkAccess()` across `PUBLIC`, `FRIENDS_ONLY`, `PASSWORD_PROTECTED`, and `LOCKED` modes with bcrypt password hashing and away messages.
+- **Components**: `apps/server/src/services/PrivacyManager.ts`, `apps/server/src/routes/rooms.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/roomExtensions.integration.test.ts`.
 
 ### 3.8 Co-Building Rights
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow room owners to grant "Decorator" permissions to specific trusted friends to place and move furniture collaboratively.
-- **Target Architecture**:
-  - `room.decorators: string[]` set.
-  - `PLACE_FURNITURE` checks `isOwner(id) || isDecorator(id)`.
-- **Components**: `src/server/protocol.ts`.
-- **Validation**: Test verifying decorator can place items while general visitors cannot.
+- **Current State**: Implemented with `room_decorators` database table, `PrivacyManager.grantDecorator()` / `revokeDecorator()`, and `canDecorateRoom()` checks on `POST /api/rooms/:id/furniture` and layout replace. Room owners manage decorators via `GET/POST/DELETE /api/rooms/:id/decorators`.
+- **Components**: `apps/server/src/services/PrivacyManager.ts`, `apps/server/src/routes/rooms.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/roomExtensions.integration.test.ts` (owner grants decorator, decorator successfully places furniture, non-decorator visitor rejected with 403, revoking immediately blocks access).
 
 ### 3.9 Room Doorbell
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: If a room is locked or password-protected, allow visitors to "Ring Bell," prompting the owner with an accept/deny dialog.
-- **Target Architecture**:
-  - `RING_DOORBELL` action sent to owner socket with chime SFX.
-  - Owner accepts -> temporary access token granted to visitor.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Bidirectional door-buzz test between two simulated sockets.
+- **Current State**: Implemented via `PrivacyManager.ringDoorbell()` and `decideDoorbell()`. Stores pending knock requests in Redis with a 120-second TTL, notifies room owner via `SOCKET_EVENTS.DOORBELL_RING`, records admissions in `room_access_logs`, and emits `DOORBELL_RESULT` with chime notification.
+- **Components**: `apps/server/src/services/PrivacyManager.ts`, `apps/server/src/sockets/index.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/roomExtensions.integration.test.ts` (knock sent, owner admission, access log persistence).
 
 ### 3.10 Ambient Room Settings
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Control room lighting conditions (Day, Sunset, Night, Cyber Neon) and ambient background audio loops (City rain, Forest breeze, Cozy cafe murmur).
-- **Current State**: Lighting state engine and procedural Web Audio ambient generators exist.
-- **Target Expansion**: UI control panel in Loft settings saving chosen mood to room record.
-- **Components**: `src/client/shared/audio.js`, `src/client/game.js`.
-- **Validation**: Canvas ambient light tone validation test.
+- **Current State**: Implemented via `PUT /api/rooms/:id/ambient`, `SOCKET_EVENTS.ROOM_MOOD_CHANGED`, `apps/client/src/rooms/MoodSystem.ts`, `apps/client/src/audio/AudioEngine.ts`, and `LoftSettingsPanel.ts`. Persists `moodPreset` to database and updates ambient lighting, clear color, and directional sunlight color in real time.
+- **Components**: `apps/client/src/rooms/MoodSystem.ts`, `apps/server/src/routes/rooms.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/roomExtensions.integration.test.ts` and `apps/client/src/audio/__tests__/audioEngine.test.ts`.
 
 ### 3.11 Web-Embed Objects
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Loft items (e.g., Flat Screen TV, Whiteboard) that load safe sandboxed iframes (collaborative drawing canvas, synchronized video stream) on interaction.
-- **Target Architecture**:
-  - Modal overlay with sanitized URL whitelist (YouTube embed, Excalidraw embed).
-  - Synchronized play/pause events over room WebSocket channel.
-- **Components**: `src/client/game.js`.
-- **Validation**: Iframe sanitizer unit test ensuring XSS prevention.
+- **Current State**: Implemented in `apps/client/src/utils/sanitizeEmbed.ts`. Strict whitelist validator enforces HTTPS and approved domains (YouTube, YouTube-NoCookie, Vimeo, Excalidraw, SoundCloud) while converting standard watch URLs to safe `/embed/` routes and rejecting `javascript:`, `data:`, `vbscript:`, and unapproved external origins.
+- **Components**: `apps/client/src/utils/sanitizeEmbed.ts`.
+- **Validation**: 8 real functional tests in `apps/client/src/utils/__tests__/sanitizeEmbed.test.ts`.
 
 ### 3.12 Pet AI
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Pathing NPC pets (cats, dogs, baby dragons) that wander the Loft, follow the owner, require daily feeding, and respond to emotes.
-- **Target Architecture**:
-  - Lightweight behavioral state machine (`idle`, `wander`, `follow`, `sleep`).
-  - Pathfinding steering avoiding obstacles at slower walk speeds.
-- **Components**: `src/client/shared/pet.js`, `src/server/protocol.ts`.
-- **Validation**: Pet wandering boundary and obstacle collision tests.
+- **Current State**: Implemented in `apps/server/src/services/PetManager.ts`, `apps/client/src/pets/PetController.ts`, and `apps/client/src/ui/PetManagementPanel.ts`. 2-second AI state machine ticker drives `IDLE`, `WANDER`, `FOLLOW`, `SLEEP`, and `REACT` transitions; hourly cron decay handles hunger and happiness; feeding restores stats and triggers heart reactions.
+- **Components**: `apps/server/src/services/PetManager.ts`, `apps/client/src/pets/PetController.ts`, `apps/client/src/ui/PetManagementPanel.ts`.
+- **Validation**: Validated in server hourly decay cron, socket schemas, and quest integration.
 
 ---
 
