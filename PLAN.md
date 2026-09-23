@@ -23,9 +23,9 @@
 | **Track 5** | Social Mechanics, Trust & Safety | 11 | 11 | 0 | 0 |
 | **Track 6** | Mini-Games, Professions & Interactivity | 11 | 11 | 0 | 0 |
 | **Track 7** | Retention, Onboarding & Analytics | 9 | 9 | 0 | 0 |
-| **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
+| **Track 8** | Advanced Client Polish & UX | 12 | 12 | 0 | 0 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **103** | **82** | **2** | **19** |
+| **Total** | **All Systems** | **103** | **89** | **2** | **12** |
 
 ---
 
@@ -585,13 +585,11 @@ Covers first-time player experience, quest loops, streaks, leaderboards, telemet
 Covers camera kinematics, UI ergonomics, accessibility, audio controls, and state preservation.
 
 ### 8.1 Smooth Camera Following
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Smooth camera panning with cubic interpolation following the avatar as they move across expansive room maps, avoiding abrupt viewport jumps.
-- **Target Architecture**:
-  - Camera state `{ x, y, targetX, targetY, zoom }`.
-  - Spring-damper smoothing: `camera.x += (camera.targetX - camera.x) * 0.08`.
-- **Components**: `src/client/game.js` (`renderScene()`).
-- **Validation**: Mathematical camera lerp unit test.
+- **Current State**: Implemented in `SmoothCamera.ts` with spring-damper exponential interpolation (`smoothing = 0.08`), deadzone thresholds, and target snapping.
+- **Components**: `apps/client/src/world/SmoothCamera.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.2 In-World Hover Tooltips
 - **Status**: `[x]` Completed & Verified
@@ -600,37 +598,32 @@ Covers camera kinematics, UI ergonomics, accessibility, audio controls, and stat
 - **Validation**: Tested in `tests/browser-full.test.mjs` (Test 10f).
 
 ### 8.3 Draggable & Resizable UI Panels
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow modals (Wardrobe, Decorate, Passport, Trade) to be repositioned freely so users can inspect their avatar and room without occlusion.
-- **Target Architecture**:
-  - Lightweight DOM drag handler (`mousedown` on modal header, clamped to viewport boundaries).
-- **Components**: `src/client/shared/drag.js`, `src/client/style.css`.
-- **Validation**: DOM mouse drag position assertion test.
+- **Current State**: Implemented in `DraggablePanel.ts` supporting pointer and touch dragging with strict viewport boundary clamping.
+- **Components**: `apps/client/src/ui/DraggablePanel.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.4 Minimap Radar
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Small isometric radar pill in the screen corner showing real-time player dots and room boundaries.
-- **Target Architecture**:
-  - Scaled down 2D canvas drawing avatar coordinates as color-coded blips.
-- **Components**: `src/client/shared/minimap.js`.
-- **Validation**: Minimap projection coordinate test.
+- **Current State**: Implemented in `MinimapRadar.ts` projecting isometric room dimensions to normalized 2D radar blips with color-coded markers for local and remote players.
+- **Components**: `apps/client/src/ui/MinimapRadar.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.5 AFK & Idle Dimming State
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Dim avatar slightly and render floating "Zzz" particles if the user tab is unfocused or idle for > 60 seconds.
-- **Target Architecture**:
-  - `document.addEventListener('visibilitychange')` and mouse idle timer.
-  - Broadcasts `PLAYER_IDLE_STATE` to room.
-- **Components**: `src/client/game.js`, `src/server/protocol.ts`.
-- **Validation**: Idle timeout trigger test.
+- **Current State**: Implemented in `IdleStateManager.ts` with activity tracking, automatic transitions between `ACTIVE`, `IDLE`, and `AFK`, and subscription event dispatches.
+- **Components**: `apps/client/src/engine/IdleStateManager.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.6 Client-Side Prediction & Reconciliation
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Immediately render avatar footsteps on click and verify the path asynchronously with the server to achieve 0ms input feel.
-- **Current State**: Client computes A* path immediately for local avatar while dispatching `MOVE` order to WebSocket server.
-- **Target Expansion**: Server acknowledgement sequence number reconciliation.
-- **Components**: `src/client/game.js`, `src/server/protocol.ts`.
-- **Validation**: High-latency simulated move reconciliation test.
+- **Current State**: Implemented in `MovementReconciliation.ts` managing input sequence numbers, instantaneous client path prediction, and drift reconciliation upon server authority acknowledgement.
+- **Components**: `apps/client/src/engine/MovementReconciliation.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.7 Context Radial Menus
 - **Status**: `[x]` Completed & Verified
@@ -639,20 +632,18 @@ Covers camera kinematics, UI ergonomics, accessibility, audio controls, and stat
 - **Validation**: Headless browser test verifying menu generation on avatar click.
 
 ### 8.8 Multi-Channel Audio Mixing
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Dedicated volume sliders in Settings: Master Volume, UI SFX, Ambient Soundscapes, and Player Footsteps.
-- **Current State**: Web Audio master gain node and mute persistence implemented in `src/client/shared/audio.js`.
-- **Target Expansion**: Independent `GainNode` channels for SFX, Ambience, and Music.
-- **Components**: `src/client/shared/audio.js`, `src/client/index.html`.
-- **Validation**: Gain node ratio test in `tests/audio.test.mjs`.
+- **Current State**: Implemented in `AudioEngine.ts` with master gain node, muting, and independent category filters (`movement`, `ui`, `social`, `gameplay`).
+- **Components**: `apps/client/src/audio/AudioEngine.ts`.
+- **Validation**: Verified in `apps/client/src/audio/__tests__/audioEngine.test.ts`.
 
 ### 8.9 Accessibility & Colorblind Modes
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: High-contrast chat modes, dyslexia-friendly fonts, and UI scaling toggles (100%, 125%, 150%).
-- **Target Architecture**:
-  - CSS custom properties (`--ui-scale`, `--chat-contrast`, `--font-family`).
-- **Components**: `src/client/style.css`, `src/client/index.html`.
-- **Validation**: DOM attribute and CSS property toggling test.
+- **Current State**: Implemented in `AccessibilityManager.ts` managing `--ui-scale`, `--colorblind-filter`, `--chat-contrast`, and `.dyslexia-font` CSS properties with persistence.
+- **Components**: `apps/client/src/ui/AccessibilityManager.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.10 Custom Contextual Cursors
 - **Status**: `[x]` Completed & Verified
@@ -661,12 +652,11 @@ Covers camera kinematics, UI ergonomics, accessibility, audio controls, and stat
 - **Validation**: Tested in `tests/browser-full.test.mjs`.
 
 ### 8.11 Chat Typing Indicators
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Subtle floating "..." speech bubble above avatars when their chat input field is actively focused.
-- **Target Architecture**:
-  - `PLAYER_TYPING { isTyping: boolean }` broadcast debounced at 300ms.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Typing state broadcast and timeout dismissal test.
+- **Current State**: Implemented in `TypingIndicatorManager.ts` with debounced typing state transitions, automatic timer dismissals, and listener broadcasts.
+- **Components**: `apps/client/src/ui/TypingIndicatorManager.ts`.
+- **Validation**: Verified in `apps/client/src/__tests__/clientPolishUX.test.ts`.
 
 ### 8.12 Crash Recovery & Coordinate Rehydration
 - **Status**: `[x]` Completed & Verified
