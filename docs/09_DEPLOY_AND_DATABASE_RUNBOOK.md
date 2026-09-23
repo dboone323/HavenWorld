@@ -91,8 +91,12 @@ environments is the **schema** (via migrations in git) and **backups** (via `pg_
 
 - `oracle-cloud:/tmp/legacy_backup.sql.gz` — full pre-migration dump (pg_dump 17.11).
 - Local copy: `~/havenworld-legacy-backup-20260923.sql.gz`.
-- The original 8 tables were **not dropped**. They were moved into a `legacy` schema:
-  `select * from legacy.profiles;` still returns the original 282 rows.
+- The original 8 tables were **not dropped**. They were renamed with a `legacy_` prefix and
+  moved into a `legacy` schema, so the original 282 profiles are one query away:
+  `select count(*) from legacy.legacy_profiles;`
+  (`legacy.legacy_rooms`, `legacy.legacy_placed_furniture`, `legacy.legacy_avatar_profiles`,
+  `legacy.legacy_user_inventory`, `legacy.legacy_messages`, `legacy.legacy_user_friends`,
+  `legacy.legacy__prisma_migrations`.)
 
 ### Restoring
 
