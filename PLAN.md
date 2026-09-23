@@ -22,10 +22,10 @@
 | **Track 4** | Economy, Progression, and Trading | 11 | 11 | 0 | 0 |
 | **Track 5** | Social Mechanics, Trust & Safety | 11 | 11 | 0 | 0 |
 | **Track 6** | Mini-Games, Professions & Interactivity | 11 | 11 | 0 | 0 |
-| **Track 7** | Retention, Onboarding & Analytics | 9 | 2 | 1 | 6 |
+| **Track 7** | Retention, Onboarding & Analytics | 9 | 9 | 0 | 0 |
 | **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **103** | **75** | **3** | **25** |
+| **Total** | **All Systems** | **103** | **82** | **2** | **19** |
 
 ---
 
@@ -519,22 +519,18 @@ Covers gameplay loops, professions, plaza activities, crafting, and server-wide 
 Covers first-time player experience, quest loops, streaks, leaderboards, telemetry, and feedback.
 
 ### 7.1 Interactive First-Time Tutorial
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Replace plain text prompts with a 3-step interactive onboarding sequence: (1) Walk to Fountain -> (2) Open Wardrobe & Pick Hat -> (3) Claim First Daily Gift.
-- **Target Architecture**:
-  - Tutorial state tracker (`step: 1 | 2 | 3 | complete`) in client storage.
-  - Pulsing isometric target ring on canvas guiding player movement.
-- **Components**: `src/client/shared/tutorial.js`, `src/client/game.js`.
-- **Validation**: Tutorial progression step test.
+- **Current State**: Implemented in `TutorialService.ts` and `/api/tutorial` endpoints tracking sequential steps, granting 100 bonus coins, and awarding the permanent `welcomeBadgeAt` timestamp.
+- **Components**: `apps/server/src/services/TutorialService.ts`, `apps/server/src/routes/tutorial.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.2 Daily Task Board
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Replace static login claims with 3 daily mini-quests (e.g., "Say hello to 2 players", "Bake 3 pizzas", "Rearrange a furniture item").
-- **Target Architecture**:
-  - Deterministic daily quests resetting at 00:00 UTC.
-  - Claim button unlocks when all 3 criteria are satisfied.
-- **Components**: `src/client/shared/tasks.js`, `src/server/protocol.ts`.
-- **Validation**: Task increment and reward claim validation test.
+- **Current State**: Implemented in `QuestService.ts` generating 3 deterministic daily quests per UTC day, recording progress increments, and awarding HavenCoins and HavenGems on completion.
+- **Components**: `apps/server/src/services/QuestService.ts`, `apps/server/src/routes/quests.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.3 Login Streak Multipliers
 - **Status**: `[x]` Completed & Verified
@@ -543,45 +539,39 @@ Covers first-time player experience, quest loops, streaks, leaderboards, telemet
 - **Validation**: Tested in `tests/protocol.test.mjs` and `tests/integration-runner.mjs`.
 
 ### 7.4 Global Leaderboards
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Plaza display boards showing top rankings for "Master Pizza Chefs", "Richest Residents", and "Top Decorators".
-- **Target Architecture**:
-  - Cached SQLite view refreshed hourly.
-  - Leaderboard modal accessible via Plaza monument.
-- **Components**: `src/server/leaderboard.ts`, `src/client/game.js`.
-- **Validation**: Ranking query sorting and speed test.
+- **Current State**: Implemented in `LeaderboardService.ts` and `/api/leaderboard` ranking players across Richest Residents, Master Pizza Chefs, Master Anglers, and Top Decorators.
+- **Components**: `apps/server/src/services/LeaderboardService.ts`, `apps/server/src/routes/leaderboard.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.5 Seasonal Map Overlays
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Dynamic tileset swap engine (e.g., snowy grass, autumn leaves, Halloween pumpkins) without rebuilding room data arrays.
-- **Target Architecture**:
-  - `season: 'spring' | 'summer' | 'autumn' | 'winter'` theme skinning layer for tile renderers.
-- **Components**: `src/client/game.js` (`drawTile()`).
-- **Validation**: Theme asset swapping unit test.
+- **Current State**: Implemented in `SeasonalThemeService.ts` providing dynamic seasonal tileset keys (`outdoor-winter`, `outdoor-spring`, etc.), particle systems (`snowflakes`, `blossoms`, `falling_leaves`), and atmospheric tint overlays.
+- **Components**: `apps/server/src/services/SeasonalThemeService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.6 Browser Web Push Notifications
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Standard Web Push API allowing opted-in users to receive alerts when friends send trade requests or loft guestbook signatures.
-- **Target Architecture**:
-  - Service worker push subscription handler with free VAPID keys.
-- **Components**: `src/client/sw.js`, `src/server/push.ts`.
-- **Validation**: Push notification payload generation test.
+- **Current State**: Implemented in `PushService.ts` managing user VAPID browser push subscriptions and notification formatting for trade offers, gifts, and guestbook entries.
+- **Components**: `apps/server/src/services/PushService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.7 Privacy-Respecting Telemetry & Analytics
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Silent, zero-cookie performance and engagement tracking (DAU, average session duration, minigame drop-offs).
-- **Current State**: Live telemetry endpoints `/api/health` and `/api/status` expose uptime, memory, and connection metrics.
-- **Target Expansion**: SQLite `session_telemetry` table logging anonymized session durations.
-- **Components**: `src/server/server.ts`, `src/server/db.ts`.
-- **Validation**: Real endpoint assertions in CI suite.
+- **Current State**: Implemented in `AnalyticsService.ts` recording silent telemetry events in `GameEvent` table and computing DAU and session duration aggregations for staff.
+- **Components**: `apps/server/src/services/AnalyticsService.ts`, `apps/server/src/routes/admin.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.8 In-Game Bug & Feedback Reporting Pane
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Native modal within Settings allowing players to submit bug reports and feature ideas directly to the development backlog.
-- **Target Architecture**:
-  - `SUBMIT_FEEDBACK` protocol action writing to SQLite `user_feedback` table.
-- **Components**: `src/client/index.html`, `src/server/protocol.ts`.
-- **Validation**: Feedback submission sanitization and storage test.
+- **Current State**: Implemented in `FeedbackService.ts` and `/api/feedback` endpoints accepting validated player bug reports and feature requests, persisted in persistent telemetry.
+- **Components**: `apps/server/src/services/FeedbackService.ts`, `apps/server/src/routes/feedback.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/retentionOnboardingAnalytics.integration.test.ts`.
 
 ### 7.9 Performance Heartbeats
 - **Status**: `[x]` Completed & Verified

@@ -27,6 +27,9 @@ import questRoutes from './routes/quests';
 import clubRoutes from './routes/clubs';
 import workshopRoutes from './routes/workshop';
 import marketplaceRoutes from './routes/marketplace';
+import feedbackRoutes from './routes/feedback';
+import leaderboardRoutes from './routes/leaderboard';
+import tutorialRoutes from './routes/tutorial';
 import testRoutes from './routes/testRoutes';
 import { PetManager } from './services/PetManager';
 import { FishingService } from './services/FishingService';
@@ -119,6 +122,9 @@ app.use('/api/quests', questRoutes);
 app.use('/api/clubs', clubRoutes);
 app.use('/api/workshop', workshopRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/tutorial', tutorialRoutes);
 
 if (process.env.NODE_ENV === 'test') {
   app.use('/api/test', testRoutes);
