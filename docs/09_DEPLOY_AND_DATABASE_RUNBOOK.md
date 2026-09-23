@@ -179,6 +179,38 @@ pnpm --filter server exec tsx src/scripts/generate-invites.ts 25 30 you@example.
 As of 2026-09-23 the gate is left **open** (`ALPHA_INVITE_ONLY=false`) precisely so the
 owner can create the first account; run steps 3–4 immediately afterwards.
 
+### 6.1 There is no legacy credential to import (audited 2026-09-23)
+
+Recreating the account is the *only* option, and that is a data finding rather than a
+data-loss finding. Before asking anyone to re-register, the old store was checked for
+salvageable credentials:
+
+| Check | Result |
+| --- | --- |
+| `auth.users` (Supabase GoTrue) in the live DB | **0 rows** |
+| `auth.users` in the pre-migration dump | **0 data rows** (the `COPY` block exists and is empty) |
+| `legacy.legacy_profiles.password_hash` | **NULL for all 282 rows** |
+| `legacy.legacy_profiles.auth_user_id` | **NULL for all 282 rows** — no auth linkage ever existed |
+| `legacy_prototype/havenworld.db` (SQLite) | 156 profiles, **no password column at all** |
+
+The 282 Supabase rows are synthetic load-test rows (`Traveler #101`, `Traveler #102`, …) and the
+156 SQLite rows are more of the same (`DualTester`, `Player_buyer_buy_*`). No store ever held a
+real credential. Worse, the live 8-table schema had no `users` table at all, so
+`POST /api/auth/login` on the deployed API could only ever have failed with `P2021` — whatever
+login worked "last time" was the local prototype, or its browser-only guest id
+(`haven_guest_id` in `localStorage`). The current client has no guest mode, so an account is
+required.
+
+Consequences worth knowing:
+
+- Nothing can be copied in, so §6 step 2 (register) is mandatory — do not hunt for an export.
+- Even a recovered prototype hash would not drop straight in: the prototype hashed with
+  **PBKDF2-SHA256** (`legacy_prototype/src/server/db.ts`), while the current server uses
+  **bcryptjs** (`$2b$`). A genuine import would need a verify-then-rehash-on-first-login shim.
+- The `legacy` schema therefore holds nothing irreplaceable — see the backlog item in §8.
+- Still keep `/tmp/legacy_backup.sql.gz` **and** its local copy: `/tmp` is volatile, and that
+  dump is the only snapshot of the pre-migration database.
+
 ---
 
 ## 7. Troubleshooting index
@@ -207,5 +239,6 @@ owner can create the first account; run steps 3–4 immediately afterwards.
 - GitHub Actions is disabled at the account level (HTTP 422 on dispatch); deploys are manual
   via `make deploy-server`. `CF_API_TOKEN` is still missing from repo secrets.
 - Client-side build/deploy is separate: `make deploy-client` (Cloudflare Pages).
-- `legacy` schema can be dropped once the old prototype data is confirmed unwanted:
-  `DROP SCHEMA legacy CASCADE;`
+- `legacy` schema can be dropped whenever you like: its contents are confirmed synthetic test
+  rows, not player data (§6.1), and the dump is archived. `DROP SCHEMA legacy CASCADE;`
+  (keep it only if you still want the 282 `Traveler #NNN` rows for reference).
