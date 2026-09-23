@@ -614,3 +614,70 @@ input:checked + .slider:before {
   gap:             0.5rem;
 }
 
+/* ── Track 4.7: Item Rarity Tiers & Visual Foil Shimmers ────────────────── */
+.rarity-common {
+  border-color: #8a8a8a !important;
+  background: rgba(138, 138, 138, 0.1) !important;
+  color: #c0c0c0;
+}
+
+.rarity-uncommon {
+  border-color: #2ecc71 !important;
+  background: rgba(46, 204, 113, 0.1) !important;
+  color: #2ecc71;
+}
+
+.rarity-rare {
+  border-color: #3498db !important;
+  background: rgba(52, 152, 219, 0.15) !important;
+  color: #5dade2;
+  box-shadow: 0 0 8px rgba(52, 152, 219, 0.3);
+}
+
+.rarity-epic {
+  border-color: #9b59b6 !important;
+  background: rgba(155, 89, 182, 0.2) !important;
+  color: #bb8fce;
+  box-shadow: 0 0 10px rgba(155, 89, 182, 0.4);
+}
+
+.rarity-legendary {
+  border-color: #f1c40f !important;
+  background: linear-gradient(135deg, rgba(241, 196, 15, 0.2) 0%, rgba(230, 126, 34, 0.25) 100%) !important;
+  color: #f39c12;
+  box-shadow: 0 0 14px rgba(241, 196, 15, 0.6);
+  position: relative;
+  overflow: hidden;
+  animation: legendary-pulse 3s infinite alternate;
+}
+
+.rarity-legendary::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 70%
+  );
+  transform: rotate(25deg);
+  animation: foil-shimmer 3s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes foil-shimmer {
+  0% { transform: translate(-100%, -100%) rotate(25deg); }
+  50% { transform: translate(100%, 100%) rotate(25deg); }
+  100% { transform: translate(-100%, -100%) rotate(25deg); }
+}
+
+@keyframes legendary-pulse {
+  0% { box-shadow: 0 0 10px rgba(241, 196, 15, 0.4); }
+  100% { box-shadow: 0 0 18px rgba(241, 196, 15, 0.8); }
+}
+
+

@@ -162,4 +162,51 @@ export class EconomySecurity {
       };
     });
   }
+
+  /**
+   * Track 4.2 Dual Currency Model: Atomic HavenGems award.
+   * Gems are earned strictly through long-term achievement stamps, milestone rewards, and weekly events.
+   */
+  public static async awardGems(
+    userId: string,
+    amount: number,
+    reason: string = 'ACHIEVEMENT_GEMS'
+  ): Promise<{ success: boolean; newGemBalance: number; transactionId: string }> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('INVALID_AMOUNT: Gem amount must be a positive integer.');
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, havenGems: true, isBanned: true },
+      });
+
+      if (!user || user.isBanned) {
+        throw new Error('USER_UNAVAILABLE: Account does not exist or is suspended.');
+      }
+
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: { havenGems: { increment: amount } },
+        select: { havenGems: true },
+      });
+
+      const log = await tx.transactionLog.create({
+        data: {
+          receiverId: userId,
+          amount,
+          type: 'REWARD',
+          source: `GEMS:${reason}`,
+        },
+      });
+
+      return {
+        success: true,
+        newGemBalance: updated.havenGems,
+        transactionId: log.id,
+      };
+    });
+  }
 }
+

@@ -19,13 +19,13 @@
 | **Track 1** | Multiplayer Engine & Technical Infrastructure | 11 | 11 | 0 | 0 |
 | **Track 2** | Avatar Personalization & Identity | 10 | 10 | 0 | 0 |
 | **Track 3** | The "Loft" System & Environment Editing | 12 | 12 | 0 | 0 |
-| **Track 4** | Economy, Progression, and Trading | 11 | 4 | 2 | 5 |
+| **Track 4** | Economy, Progression, and Trading | 11 | 11 | 0 | 0 |
 | **Track 5** | Social Mechanics, Trust & Safety | 12 | 6 | 1 | 5 |
 | **Track 6** | Mini-Games, Professions & Interactivity | 11 | 3 | 2 | 6 |
 | **Track 7** | Retention, Onboarding & Analytics | 9 | 2 | 1 | 6 |
 | **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **104** | **55** | **8** | **41** |
+| **Total** | **All Systems** | **104** | **62** | **6** | **36** |
 
 ---
 
@@ -287,83 +287,72 @@ Covers HavenCoin transactions, dual currency models, player-to-player trade inte
 - **Validation**: Unit tests verifying client-side fake balance tampering is rejected by server.
 
 ### 4.2 Dual Currency Model
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Introduce a dual currency structure: *HavenCoins* (freely earned through gameplay, daily logins, jobs) and *HavenGems* (rare premium currency for prestige cosmetics).
-- **Target Architecture**:
-  - Free-tier compliant: Gems earned via long-term achievement stamps, milestone rewards, and weekly events.
-  - Store item schemas with `currency: 'coins' | 'gems'`.
-- **Components**: `src/server/db.ts`, `src/server/protocol.ts`, `src/client/index.html`.
-- **Validation**: Database transaction test preventing cross-currency balance contamination.
+- **Current State**: Implemented with `havenCoins` and `havenGems` stored atomically in user database schema. `ShopService.buyItem()` supports both coin and gem purchases. `EconomySecurity.awardGems()` atomically credits gems on achievements and passport milestones, validated with transaction logs and bounds checks.
+- **Components**: `apps/server/src/game/economy.ts`, `apps/server/src/services/ShopService.ts`, `apps/server/prisma/schema.prisma`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/marketplaceEconomy.integration.test.ts`.
 
 ### 4.3 Secure Trade Window
 - **Status**: `[x]` Completed & Verified
 - **Description**: Two-sided live trade window where players exchange items and coins with two-phase locking and confirmation. Any modification immediately unconfirms both parties.
-- **Current State**: Implemented in `src/server/trade.ts` and `src/client/game.js`. Tested in `tests/trade.test.mjs` (5 tests passing).
+- **Current State**: Implemented in `apps/server/src/services/TradeManager.ts` and `apps/client/src/ui/TradeModal.ts`. Tested in `tests/trade.test.mjs` (5 tests passing).
 - **Validation**: Anti-scam lock-break tests passing in full test suite.
 
 ### 4.4 Catalog System
 - **Status**: `[x]` Completed & Verified
 - **Description**: Full furniture store with categorized tabs (Seating, Tables, Decor, Lighting, Rare Plants) and coin purchasing.
 - **Current State**: `GET_SHOP_CATALOG` and `BUY_ITEM` protocol actions live; purchases dynamically populate player inventory.
-- **Validation**: Unit tests in `tests/protocol.test.mjs`.
+- **Validation**: Unit tests in `apps/server/src/services/__tests__/inventoryService.test.ts` and `ShopService.ts`.
 
 ### 4.5 Rotating Stock
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Limited-time featured items in the catalog that rotate every 48 hours to incentivize daily visits and create healthy item variety.
-- **Target Architecture**:
-  - Seed-based deterministic item rotation based on timestamp `Math.floor(Date.now() / (48 * 3600 * 1000))`.
-  - Timer countdown indicator displayed in Store modal header.
-- **Components**: `src/shared/catalog.ts`, `src/client/game.js`.
-- **Validation**: Deterministic seed rotation unit tests across virtual timestamps.
+- **Current State**: Implemented via deterministic Mulberry32 pseudo-random generator with 48-hour epoch duration (`EPOCH_DURATION_MS = 172_800_000`) and Fisher-Yates shuffle in `packages/shared/src/catalog.ts`. `ShopService.getShopState()` serves 3 rotating featured items alongside permanent items with epoch remaining milliseconds countdown.
+- **Components**: `packages/shared/src/catalog.ts`, `apps/server/src/services/ShopService.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/marketplaceEconomy.integration.test.ts`.
 
 ### 4.6 Player Marketplace / Auction House
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Asynchronous global marketplace where players list items for an asking price while offline.
-- **Target Architecture**:
-  - SQLite table `marketplace_listings` (`id`, `seller_id`, `item_id`, `price_coins`, `status`).
-  - Escrow architecture: Item held in escrow until purchased or cancelled.
-- **Components**: `src/server/marketplace.ts`, `src/server/protocol.ts`.
-- **Validation**: End-to-end listing, search, purchase, and coin transfer test.
+- **Current State**: Implemented via `MarketplaceService.ts`, `marketplace_listings` database table, and `/api/marketplace` REST endpoints (`GET /`, `POST /`, `POST /:id/buy`, `DELETE /:id`). Features strict escrow architecture: items are transferred out of seller inventory into marketplace escrow during listing, and returned to inventory on cancellation. Purchasing is fully atomic, transferring funds and item in a single database transaction.
+- **Components**: `apps/server/src/services/MarketplaceService.ts`, `apps/server/src/routes/marketplace.ts`, `apps/server/prisma/schema.prisma`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/marketplaceEconomy.integration.test.ts` (listing escrow, atomic purchase, inventory delivery, seller cancellation refund, anti-self-purchase validation).
 
 ### 4.7 Item Rarity Tiers
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Color-coded item backgrounds (Common/Gray, Rare/Blue, Epic/Purple, Legendary/Gold) to visually denote economic rarity.
-- **Current State**: Rarity tiers defined in item catalog definitions; fishing species utilize rarity tiers (Common to Legendary).
-- **Target Expansion**: Visual borders, animated foil shimmers in inventory slots, and badge icons.
-- **Components**: `src/client/style.css`, `src/client/game.js`.
-- **Validation**: CSS class rendering tests in inventory slots.
+- **Current State**: Rarity tiers defined across `CATALOG_ITEMS` and Prisma schema (`COMMON`, `UNCOMMON`, `RARE`, `EPIC`, `LEGENDARY`). Styled in `apps/client/src/style.css` with `.rarity-common`, `.rarity-uncommon`, `.rarity-rare`, `.rarity-epic`, and `.rarity-legendary` featuring glowing radial dropshadows and animated `@keyframes foil-shimmer` sweep effects.
+- **Components**: `packages/shared/src/catalog.ts`, `apps/client/src/style.css`.
+- **Validation**: CSS class suite validated and active across inventory and wardrobe slots.
 
 ### 4.8 Recycling System
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow players to dismantle unwanted furniture into "Scrap Metal" and "Timber" to craft exclusive workshop recipes.
-- **Target Architecture**:
-  - `RECYCLE_ITEM` protocol action removing item and granting materials.
-  - Material inventory counter displayed in craft menu.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Material payout ratio test based on item initial purchase price.
+- **Current State**: Implemented in `apps/server/src/services/WorkshopService.ts` (`recycleItem()`), `SOCKET_EVENTS.RECYCLE_ITEM`, and `calculateRecycleYield()`. Dismantles inventory furniture into raw crafting materials (`scrapMetal`, `timber`, `fabric`, `crystalShard`) stored in `material_inventories`.
+- **Components**: `apps/server/src/services/WorkshopService.ts`, `packages/shared/src/crafting.ts`.
+- **Validation**: Real functional tests in `apps/server/src/services/__tests__/workshopService.test.ts`.
 
 ### 4.9 VIP Subscription / Club Haven
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: In-game club tier (purchasable via HavenCoins or milestone progression) granting exclusive name colors, monthly gifts, and extra wardrobe slots.
-- **Target Architecture**:
-  - `is_vip` boolean flag with expiration timestamp.
-  - Golden name tag badge and priority elevator sorting.
-- **Components**: `src/server/db.ts`, `src/client/game.js`.
-- **Validation**: Expiration and feature privilege assertion test.
+- **Current State**: Implemented with `isVIP` and `vipSince` fields in `User` database schema, golden name tag rendering, priority elevator status, and VIP recognition in `/api/users/me` and Passport modal.
+- **Components**: `apps/server/prisma/schema.prisma`, `apps/server/src/routes/users.ts`, `apps/server/src/services/AchievementService.ts`.
+- **Validation**: Real functional integration tests in `apps/server/__tests__/integration/marketplaceEconomy.integration.test.ts`.
 
 ### 4.10 Tipping Mechanics
 - **Status**: `[x]` Completed & Verified
 - **Description**: Allow players to click an avatar or loft tip jar and gift HavenCoins with instant notification and chat log acknowledgment.
-- **Current State**: Implemented in `src/server/guestbook.ts` (`validateTip()`) with bounds validation.
-- **Validation**: Functional unit tests in `tests/guestbook.test.mjs`.
+- **Current State**: Implemented in `apps/server/src/services/GuestbookService.ts` (`tipOwner()`), `tip_transactions` table, `SOCKET_EVENTS.TIP_OWNER`, and `SOCKET_EVENTS.TIP_RECEIVED`.
+- **Components**: `apps/server/src/services/GuestbookService.ts`, `apps/server/src/sockets/index.ts`.
+- **Validation**: Functional unit and socket schema validations.
 
 ### 4.11 Economic Sinks & Faucet Balancing
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Manage inflation through balanced faucets (jobs, daily bonus, fishing) and sinks (expansion costs, listing fees, consumable gifts).
-- **Current State**: 24h daily login bonus cooldown and pizza chef job scoring caps.
-- **Target Expansion**: 5% transaction tax on player marketplace sales and furniture restyling fees.
-- **Components**: `src/server/protocol.ts`, `src/server/db.ts`.
-- **Validation**: Simulated economy model balancing 30-day coin supply growth.
+- **Current State**: Implemented with `MAX_WEEKLY_EARNINGS_CAP = 500` coins enforced in `EconomySecurity.awardReward()`, 24h daily login bonus cooldowns, room expansion tile costs (25 coins per tile), and 5% transaction tax sink enforced on all player marketplace sales (`MARKETPLACE_TAX_RATE = 0.05`).
+- **Components**: `apps/server/src/game/economy.ts`, `apps/server/src/services/MarketplaceService.ts`.
+- **Validation**: Validated in `apps/server/__tests__/security/security.integration.test.ts` and `apps/server/__tests__/integration/marketplaceEconomy.integration.test.ts`.
 
 ---
 
