@@ -27,6 +27,9 @@ SHELL       := /bin/bash
 ORACLE_HOST ?= oracle-cloud
 APP_DIR     ?= /opt/havenworld
 DC_FILE     ?= docker-compose.dev.yml
+# Local dev database. Schema pushes must target THIS, never the Supabase pooler that
+# apps/server/.env points at (production schema changes go through `prisma migrate deploy`).
+DEV_DATABASE_URL ?= postgresql://postgres:devpassword123@127.0.0.1:5432/havenworld_dev
 
 # Colours
 BOLD  = \033[1m
@@ -95,11 +98,16 @@ lint-client: ## Lint client only
 
 # ── Test ─────────────────────────────────────────────────────────────────────
 .PHONY: push-schema
-push-schema: dev-up ## Push Prisma schema to BOTH dev and test databases
-	pnpm --filter server exec prisma generate
-	pnpm --filter server exec prisma db push --accept-data-loss
+push-schema: dev-up ## Push Prisma schema to the LOCAL dev + test databases only
+	@pnpm --filter server exec prisma generate
+	@DATABASE_URL="$(DEV_DATABASE_URL)" pnpm --filter server exec prisma db push --accept-data-loss
 	@set -a && . apps/server/.env.test && set +a \
 	  && DATABASE_URL="$$DATABASE_URL" pnpm --filter server exec prisma db push --accept-data-loss
+	@# Registration grants DEFAULT_FREE_ITEM_IDS, so an unseeded database makes
+	@# POST /api/auth/register 500 *after* it has already committed the user. Seed both local DBs.
+	@DATABASE_URL="$(DEV_DATABASE_URL)" pnpm --filter server exec ts-node prisma/seed.ts >/dev/null
+	@set -a && . apps/server/.env.test && set +a \
+	  && DATABASE_URL="$$DATABASE_URL" pnpm --filter server exec ts-node prisma/seed.ts >/dev/null
 
 .PHONY: test-server
 test-server: push-schema build-shared ## Run server Jest suite (auto-starts Docker, syncs both DBs)

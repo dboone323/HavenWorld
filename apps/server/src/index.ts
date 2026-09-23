@@ -195,7 +195,13 @@ process.on('SIGTERM', async () => {
   });
 });
 
-if (process.env.NODE_ENV !== 'test') {
+// Jest imports this module and builds its own HTTP server around `app`, so it must not bind
+// a port in test mode. Playwright's webServer (and .github/workflows/e2e.yml) still need a real
+// listener while running under NODE_ENV=test, so they set SERVER_AUTOSTART=true explicitly.
+const shouldAutoStart =
+  process.env.NODE_ENV !== 'test' || process.env.SERVER_AUTOSTART === 'true';
+
+if (shouldAutoStart) {
   start();
 }
 

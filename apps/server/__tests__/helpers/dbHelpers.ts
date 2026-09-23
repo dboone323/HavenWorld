@@ -134,7 +134,10 @@ export async function seedMinimalData(): Promise<void> {
 
   for (const item of defaultFreeItems) {
     await prisma.item.upsert({
-      where: { name: item.name },
+      // Look up by primary key: prisma/seed.ts may already have created these ids with
+      // different display names, and a name-based lookup would miss them and then try to
+      // INSERT a duplicate id, failing with "Unique constraint failed on the fields: (id)".
+      where: { id: item.id },
       create: {
         id: item.id,
         name: item.name,
@@ -148,7 +151,7 @@ export async function seedMinimalData(): Promise<void> {
   }
 
   await prisma.item.upsert({
-    where: { name: 'Basic Chair' },
+    where: { id: 'item-basic-chair' },
     create: {
       id: 'item-basic-chair',
       name: 'Basic Chair',
@@ -161,7 +164,7 @@ export async function seedMinimalData(): Promise<void> {
   });
 
   await prisma.item.upsert({
-    where: { name: 'Cozy Lamp' },
+    where: { id: 'item-cozy-lamp' },
     create: {
       id: 'item-cozy-lamp',
       name: 'Cozy Lamp',

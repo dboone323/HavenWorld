@@ -5,10 +5,18 @@ const router = Router();
 
 /**
  * Guard check: test routes are strictly enabled only when NODE_ENV === 'test'
+ * AND the database is a *_test database. Without the second check a server booted with
+ * NODE_ENV=test but a production DATABASE_URL would expose /api/test/reset, which deletes
+ * users — the same guard Jest applies in tests/jest.globalSetup.ts.
  */
 router.use((_req: Request, res: Response, next) => {
   if (process.env.NODE_ENV !== 'test') {
     return res.status(403).json({ error: 'Test routes only available in test environment' });
+  }
+  if (!(process.env.DATABASE_URL ?? '').includes('_test')) {
+    return res.status(403).json({
+      error: 'Test routes require a *_test database; refusing to run against this target',
+    });
   }
   next();
 });

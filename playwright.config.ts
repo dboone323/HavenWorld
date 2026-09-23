@@ -50,7 +50,7 @@ export default defineConfig({
   ],
   webServer: (process.env.NO_SERVER || process.env.BASE_URL?.includes('pages.dev')) ? undefined : [
     {
-      command: 'NODE_ENV=test PORT=3000 pnpm --filter server dev',
+      command: 'NODE_ENV=test SERVER_AUTOSTART=true PORT=3000 pnpm --filter server dev',
       url: 'http://localhost:3000/health',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,

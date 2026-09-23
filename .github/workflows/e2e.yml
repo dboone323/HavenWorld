@@ -56,6 +56,9 @@ jobs:
       JWT_REFRESH_SECRET: ci_refresh_secret_not_for_production
       NODE_ENV: test
       PORT: 3000
+      # index.ts does not auto-listen under NODE_ENV=test (Jest imports `app` directly),
+      # so the Playwright webServer must opt in explicitly.
+      SERVER_AUTOSTART: 'true'
       BASE_URL: http://localhost:5173
 
     steps:
@@ -79,10 +82,11 @@ jobs:
       - name: Build Shared Package
         run: pnpm --filter '@havenworld/shared' build
 
-      - name: Generate Prisma client & Push DB
+      - name: Generate Prisma client, push DB & seed the item catalogue
         run: |
           pnpm --filter server exec prisma generate
           pnpm --filter server exec prisma db push --accept-data-loss
+          pnpm --filter server exec ts-node prisma/seed.ts
 
       - name: Install Playwright Chromium & System Dependencies
         run: npx playwright install --with-deps chromium
