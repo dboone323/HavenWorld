@@ -83,6 +83,40 @@ export class ClubService {
   }
 
   /**
+   * Directly joins a club
+   */
+  static async joinClub(userId: string, clubId: string) {
+    const existing = await prisma.clubMember.findUnique({ where: { userId } });
+    if (existing) throw new Error('You are already a member of a club');
+
+    const memberCount = await prisma.clubMember.count({ where: { clubId } });
+    if (memberCount >= 50) throw new Error('Club is full (max 50 members)');
+
+    return await prisma.clubMember.create({
+      data: {
+        clubId,
+        userId,
+        role: 'MEMBER',
+      },
+    });
+  }
+
+  /**
+   * Retrieves full club details including members and clubhouse
+   */
+  static async getClubDetails(clubId: string) {
+    return await prisma.club.findUnique({
+      where: { id: clubId },
+      include: {
+        members: {
+          include: { user: { select: { id: true, username: true, lastLoginAt: true } } },
+        },
+        room: true,
+      },
+    });
+  }
+
+  /**
    * Kicks a member from the club
    */
   static async kickMember(requesterId: string, clubId: string, targetUserId: string) {

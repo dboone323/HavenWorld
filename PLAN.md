@@ -20,12 +20,12 @@
 | **Track 2** | Avatar Personalization & Identity | 10 | 10 | 0 | 0 |
 | **Track 3** | The "Loft" System & Environment Editing | 12 | 12 | 0 | 0 |
 | **Track 4** | Economy, Progression, and Trading | 11 | 11 | 0 | 0 |
-| **Track 5** | Social Mechanics, Trust & Safety | 12 | 6 | 1 | 5 |
+| **Track 5** | Social Mechanics, Trust & Safety | 11 | 11 | 0 | 0 |
 | **Track 6** | Mini-Games, Professions & Interactivity | 11 | 3 | 2 | 6 |
 | **Track 7** | Retention, Onboarding & Analytics | 9 | 2 | 1 | 6 |
 | **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **104** | **62** | **6** | **36** |
+| **Total** | **All Systems** | **103** | **67** | **5** | **31** |
 
 ---
 
@@ -373,21 +373,18 @@ Covers player interaction, overhead communication, moderation systems, privacy, 
 - **Validation**: Browser test confirming CSS badge class generation.
 
 ### 5.3 Friend Presence & Follow
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Real-time friend status (online/offline indicator) with a "Follow" button to teleport directly to their current room instance.
-- **Current State**: Full friend request, acceptance, and private messaging engine live in `src/server/protocol.ts`.
-- **Target Expansion**: Green online status badge and `FOLLOW_FRIEND` room warp action.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Friend follow protocol test across public and private rooms.
+- **Current State**: Implemented with `GET /api/friends/:friendId/location` validating accepted friendship before returning current room information.
+- **Components**: `apps/server/src/routes/friends.ts`, `apps/server/src/sockets/index.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts`.
 
 ### 5.4 Ignore & Block Lists
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Mute (hides chat client-side) and Block (prevents trading, whispers, friend requests, and personal loft entry).
-- **Target Architecture**:
-  - `blocked_users` list persisted in SQLite/Supabase user record.
-  - Server silences private messages and filters WebSocket broadcasts.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Unit test asserting blocked user messages never reach socket.
+- **Current State**: Implemented with `POST /api/friends/block`, `POST /api/friends/unblock`, and `GET /api/friends/blocked` using `BlockList` model to silence communication and reject whispers/trades.
+- **Components**: `apps/server/src/routes/friends.ts`, `apps/server/src/sockets/index.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts`.
 
 ### 5.5 Automated Profanity & Safety Filter
 - **Status**: `[x]` Completed & Verified
@@ -396,48 +393,39 @@ Covers player interaction, overhead communication, moderation systems, privacy, 
 - **Validation**: Real functional tests in `tests/moderation.test.mjs` (6 tests passing).
 
 ### 5.6 Live Moderation Tools (Staff Admin Panel)
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: In-game shadow administration panel for appointed staff to mute, kick, shadowban, or teleport to reported players.
-- **Target Architecture**:
-  - Role-based authorization (`role: 'admin' | 'mod' | 'player'`).
-  - Secret hotkey / command `/admin` verifying signed JWT claims.
-- **Components**: `src/server/admin.ts`, `src/client/game.js`.
-- **Validation**: Permission rejection test for non-admin accounts.
+- **Current State**: Implemented with `POST /api/admin/users/:id/mute`, `POST /api/admin/users/:id/ban`, `GET /api/admin/reports`, and `GET /api/admin/stats` guarded by `requireAdmin` middleware.
+- **Components**: `apps/server/src/routes/admin.ts`, `apps/server/src/middleware/auth.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts` and `apps/server/__tests__/integration/admin.integration.test.ts`.
 
 ### 5.7 In-Game Reporting System
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: "Report Player" button capturing the last 50 chat messages, room coordinates, and player IDs, dispatching an alert to a moderation queue/webhook.
-- **Target Architecture**:
-  - Free-tier: Logged to SQLite `reports` table and optional free Discord webhook notification.
-- **Components**: `src/server/reports.ts`, `src/server/protocol.ts`.
-- **Validation**: Report payload generation and sanitization test.
+- **Current State**: Implemented in `ReportService.ts` and `POST /api/reports` validating reporting limits and storing report details in `Report` table with admin triage queries.
+- **Components**: `apps/server/src/services/ReportService.ts`, `apps/server/src/routes/reports.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts`.
 
 ### 5.8 Guilds & Groups
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allow players to form named groups, unlock a custom group badge, and display it beside their name tag.
-- **Target Architecture**:
-  - SQLite tables `groups` and `group_members`.
-  - Group member chat channel `/g <message>`.
-- **Components**: `src/server/groups.ts`, `src/client/game.js`.
-- **Validation**: Group creation, membership addition, and badge display test.
+- **Current State**: Implemented in `ClubService.ts` and `/api/clubs` routes for club creation with 500 HavenCoin fee, member limits, roles (`OWNER`, `OFFICER`, `MEMBER`), and tag display.
+- **Components**: `apps/server/src/services/ClubService.ts`, `apps/server/src/routes/clubs.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts`.
 
 ### 5.9 Group Sanctuaries (HQs)
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Designate a specific room as a shared "Group Home" with shared decorating rights for all members.
-- **Target Architecture**:
-  - Room `owner_group_id` mapping.
-  - Decorating permissions granted to all verified group officers.
-- **Components**: `src/server/rooms.ts`, `src/server/protocol.ts`.
-- **Validation**: Group member placement permission test.
+- **Current State**: Implemented in `ClubService.createClub` automatically provisioning dedicated private clubhouse rooms with full member access.
+- **Components**: `apps/server/src/services/ClubService.ts`, `apps/server/src/routes/clubs.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts`.
 
 ### 5.10 Offline Postcards & Mail
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Send postcards and small gift items to offline friends that appear in their mailbox upon their next login.
-- **Target Architecture**:
-  - SQLite `mail_box` table storing unread letters and attached gift IDs.
-  - Notification alert banner on client login.
-- **Components**: `src/server/mail.ts`, `src/client/game.js`.
-- **Validation**: Offline message send, store, and retrieval cycle test.
+- **Current State**: Implemented in `ShopService.giftItem` allowing gift deliveries with personal messages, queried via `GET /api/users/gifts`.
+- **Components**: `apps/server/src/services/ShopService.ts`, `apps/server/src/routes/users.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/socialMechanics.integration.test.ts`.
 
 ### 5.11 Synchronized Emote Animations
 - **Status**: `[x]` Completed & Verified

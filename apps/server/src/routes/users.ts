@@ -46,6 +46,21 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   });
 });
 
+// GET /api/users/gifts — Track 5.10 Offline Postcards & Mail
+router.get('/gifts', requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.user!.userId;
+  const gifts = await prisma.giftTransaction.findMany({
+    where: { receiverId: userId },
+    include: {
+      sender: { select: { id: true, username: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+
+  return res.json(gifts);
+});
+
 // POST /api/users/daily-claim — claim daily login reward
 router.post('/daily-claim', requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user!.userId;
