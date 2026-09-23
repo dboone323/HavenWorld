@@ -434,6 +434,8 @@ export class AvatarController {
     }
   }
 
+  private moveEmitTimer = 0;
+
   // ─── Movement Update Loop ─────────────────────────────────────────────────
   public updateMovement(): void {
     if (!this.rootMesh || !this.targetPosition || !this.isMoving) return;
@@ -449,6 +451,7 @@ export class AvatarController {
       this.rootMesh.position.copyFrom(this.targetPosition);
       this.isMoving = false;
       this.targetPosition = null;
+      this.moveEmitTimer = 0;
       this.crossFadeTo('idle');
 
       // Confirm final position to server
@@ -472,6 +475,22 @@ export class AvatarController {
     // Move toward target
     const step = dir.normalize().scale(WALK_SPEED * delta);
     this.rootMesh.position.addInPlace(step);
+
+    // Stream position updates at 10Hz for smooth multiplayer sync
+    this.moveEmitTimer += dt;
+    if (this.moveEmitTimer >= 100) {
+      this.moveEmitTimer = 0;
+      const roomId =
+        (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+        this.roomId;
+      socketService.emit('player:move', {
+        roomId,
+        x: this.rootMesh.position.x,
+        y: this.rootMesh.position.y,
+        z: this.rootMesh.position.z,
+        rotY: this.rootMesh.rotation.y,
+      });
+    }
   }
 
   private registerUpdateLoop(): void {

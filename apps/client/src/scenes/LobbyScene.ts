@@ -63,7 +63,11 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
       <button class="btn btn--teal room-card__join">${isOwner ? 'Enter' : 'Visit'}</button>
     `;
 
-    card.querySelector('.room-card__join')?.addEventListener('click', () => {
+    card.querySelector('.room-card__join')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      enterRoom(room);
+    });
+    card.addEventListener('click', () => {
       enterRoom(room);
     });
 

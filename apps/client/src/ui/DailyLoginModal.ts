@@ -16,7 +16,7 @@ interface DailyClaimResponse {
 export class DailyLoginModal {
   private static panel: HTMLElement | null = null;
 
-  static async tryShow(): Promise<void> {
+  static async tryShow(explicit = false): Promise<void> {
     const token = authService.token || (await authService.getToken());
     if (!token) return;
 
@@ -35,7 +35,16 @@ export class DailyLoginModal {
       return; // Non-critical — don't block game load
     }
 
-    if (data.alreadyClaimed || data.coinsAwarded === 0) return;
+    if (data.alreadyClaimed || data.coinsAwarded === 0) {
+      if (explicit) {
+        showToast({
+          icon: '🎁',
+          title: 'Daily Bonus',
+          subtitle: `Already claimed today! Current streak: ${data.streak} day(s).`,
+        });
+      }
+      return;
+    }
 
     DailyLoginModal.show(data.streak, data.coinsAwarded);
   }

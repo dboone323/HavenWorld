@@ -121,7 +121,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('btn-daily-gift')?.addEventListener('click', () => {
-    DailyLoginModal.tryShow().catch(console.error);
+    DailyLoginModal.tryShow(true).catch(console.error);
   });
 
   document.getElementById('btn-toggle-chat')?.addEventListener('click', () => {

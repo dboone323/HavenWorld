@@ -55,6 +55,20 @@ export class MovementValidator {
       };
     }
 
+    const stateIsPixel = Math.abs(state.x) > 100 || Math.abs(state.y) > 100;
+    const reqIsPixel = Math.abs(requested.x) > 100 || Math.abs(requested.y) > 100;
+    if (stateIsPixel !== reqIsPixel) {
+      state.x = requested.x;
+      state.y = requested.y;
+      state.z = requested.z ?? 0;
+      state.timestamp = now;
+      return {
+        valid: true,
+        correctedPosition: requested,
+        violations: 0,
+      };
+    }
+
     const elapsedMs = Math.max(16, Math.min(2000, now - state.timestamp)); // clamp between 16ms and 2s
     const elapsedSec = elapsedMs / 1000;
 

@@ -174,6 +174,16 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   avatarController.roomId = roomId;
   await avatarController.init();
   (window as unknown as Record<string, unknown>).__havenAvatarController = avatarController;
+  (window as unknown as Record<string, unknown>).__havenGetAvatarPosition = () => {
+    if (!avatarController || !avatarController.rootMesh) return null;
+    return {
+      x: avatarController.rootMesh.position.x,
+      y: avatarController.rootMesh.position.y,
+      z: avatarController.rootMesh.position.z,
+      rotY: avatarController.rootMesh.rotation.y,
+      isMoving: Boolean(avatarController.isMoving),
+    };
+  };
 
   // Camera smooth follow
   const cameraFollowCallback = () => {
