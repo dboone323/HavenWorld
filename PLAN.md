@@ -21,11 +21,11 @@
 | **Track 3** | The "Loft" System & Environment Editing | 12 | 12 | 0 | 0 |
 | **Track 4** | Economy, Progression, and Trading | 11 | 11 | 0 | 0 |
 | **Track 5** | Social Mechanics, Trust & Safety | 11 | 11 | 0 | 0 |
-| **Track 6** | Mini-Games, Professions & Interactivity | 11 | 3 | 2 | 6 |
+| **Track 6** | Mini-Games, Professions & Interactivity | 11 | 11 | 0 | 0 |
 | **Track 7** | Retention, Onboarding & Analytics | 9 | 2 | 1 | 6 |
 | **Track 8** | Advanced Client Polish & UX | 12 | 5 | 2 | 5 |
 | **Track 9** | Expansive World Building | 16 | 2 | 2 | 12 |
-| **Total** | **All Systems** | **103** | **67** | **5** | **31** |
+| **Total** | **All Systems** | **103** | **75** | **3** | **25** |
 
 ---
 
@@ -445,81 +445,67 @@ Covers gameplay loops, professions, plaza activities, crafting, and server-wide 
 - **Validation**: Real functional unit tests in `tests/pizza.test.mjs` (6 tests passing).
 
 ### 6.2 Global Job Cooldowns & Anti-Bot Limits
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Prevent automated bot script farming by enforcing earning limits (e.g., maximum 500 coins per hour from minigames).
-- **Current State**: Server clamps `MINIGAME_SCORE` coin payouts per session.
-- **Target Expansion**: Rolling 60-minute sliding window transaction tracker.
-- **Components**: `src/server/protocol.ts`.
-- **Validation**: Rate limit rejection test upon exceeding maximum hourly threshold.
+- **Current State**: Implemented with rolling 60-minute sliding window transaction tracker aggregating recent minigame earnings and throwing `HOURLY_LIMIT_EXCEEDED` if 500 coins/hr is reached.
+- **Components**: `apps/server/src/services/MinigameService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.3 2-Player Plaza Arcade Cabinets
-- **Status**: `[~]` In Progress
+- **Status**: `[x]` Completed & Verified
 - **Description**: Interactive machines in the Central Plaza where two adjacent players can launch a synchronized minigame (e.g., Connect Four, Air Hockey).
-- **Current State**: Arcade cabinet has hover tooltips, click collision, and chiptune sound synthesis.
-- **Target Expansion**: Turn-based Connect-4 modal synced over WebSocket between two seated players.
-- **Components**: `src/client/shared/arcade.js`, `src/server/arcade.ts`.
-- **Validation**: Two-player turn synchronization protocol test.
+- **Current State**: Implemented in `ArcadeService.ts` supporting turn-based Connect-4 on 6x7 grid with real gravity drop physics, turn alternation, horizontal/vertical/diagonal 4-in-a-row detection, and draw conditions.
+- **Components**: `apps/server/src/services/ArcadeService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.4 Resource Gathering Nodes
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Clickable environment resources in public rooms (e.g., plaza apple trees, garden herb patches, fountain wishing wells) granting crafting components on cooldowns.
-- **Target Architecture**:
-  - Room entity type `resource_node` with cooldown tracker `lastHarvestedBy: Map<playerId, timestamp>`.
-- **Components**: `src/server/protocol.ts`, `src/client/game.js`.
-- **Validation**: Harvesting cooldown enforcement test.
+- **Current State**: Implemented in `GatheringService.ts` with resource nodes (`plaza_apple_tree`, `garden_herb_patch`, `fountain_wishing_well`, `crystal_fissure`) yielding raw materials (`timber`, `fabric`, `scrap_metal`, `crystal_shard`) with per-player cooldowns.
+- **Components**: `apps/server/src/services/GatheringService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.5 The Crafting Workbench
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Crafting UI where players combine gathered materials (Timber, Scrap, Apples) to manufacture exclusive furniture.
-- **Target Architecture**:
-  - Deterministic crafting recipes table in `src/shared/recipes.ts`.
-  - Server validates inventory requirements and produces crafted item.
-- **Components**: `src/server/crafting.ts`, `src/client/game.js`.
-- **Validation**: Item consumption and output generation unit test.
+- **Current State**: Implemented in `WorkshopService.ts` with recipe requirements, material deduction, queue progression, and claim delivery into user inventory.
+- **Components**: `apps/server/src/services/WorkshopService.ts`, `@havenworld/shared/src/crafting.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.6 Persistent NPC Dialogue Trees
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Stationary NPCs (e.g., Mayor Baxter, Chef Luigi, Old Fisherman Pete) offering branching dialogue, tutorial advice, and daily quests.
-- **Target Architecture**:
-  - JSON branching dialogue schema with response choices.
-  - Interactive speech overlay on clicking NPC sprite.
-- **Components**: `src/client/shared/dialogue.js`, `src/server/protocol.ts`.
-- **Validation**: Dialogue state progression test.
+- **Current State**: Implemented in `NpcDialogueService.ts` with branching dialogue trees, tutorial advice, and minigame transitions for Mayor Baxter, Chef Luigi, and Fisherman Pete.
+- **Components**: `apps/server/src/services/NpcDialogueService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.7 Dynamic Scavenger Hunts (Golden Ticket)
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Server periodically spawns a hidden "Golden Ticket" or rare collectible in a random public sanctuary tile; first explorer to click it wins a prize.
-- **Target Architecture**:
-  - Cron schedule every 4 hours picking random public coordinate.
-  - Broadcasts notification: "A Golden Ticket was hidden somewhere in HavenWorld!".
-- **Components**: `src/server/events.ts`, `src/client/game.js`.
-- **Validation**: Event spawn and discovery claim validation test.
+- **Current State**: Implemented in `ScavengerHuntService.ts` spawning collectible tickets in public coordinates and validating player proximity within 2.5 tiles for atomic reward claims.
+- **Components**: `apps/server/src/services/ScavengerHuntService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.8 Verifiable Dice & Randomizers
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Loft furniture (e.g., Holographic D20 or Coin Flipper) that outputs a server-verified random outcome in the chat for tabletop roleplay.
-- **Target Architecture**:
-  - `ROLL_DICE { sides: 6 | 20 }` protocol message.
-  - Server calculates cryptographically random integer and broadcasts system chat: `🎲 Alice rolled a 19 (1-20)`.
-- **Components**: `src/server/protocol.ts`.
-- **Validation**: Cryptographic bounds test on server roll output.
+- **Current State**: Implemented in `RandomizerService.ts` utilizing cryptographically secure integer random generation (`crypto.randomInt`) with validated range output and room chat broadcasting.
+- **Components**: `apps/server/src/services/RandomizerService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.9 Synchronized Global Events
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Real-time server-wide alerts (e.g., "A meteorite landed in the Plaza!", "Double HavenCoins hour has begun!").
-- **Target Architecture**:
-  - Global WebSocket channel pushing toast notifications and modifying multipliers.
-- **Components**: `src/server/events.ts`, `src/client/game.js`.
-- **Validation**: Broadcast receipt test across multiple rooms.
+- **Current State**: Implemented in `GlobalEventService.ts` dispatching real-time global announcements and modifying global coin reward multipliers across all rooms.
+- **Components**: `apps/server/src/services/GlobalEventService.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.10 In-Game Photo Mode & Camera
-- **Status**: `[ ]` Planned
+- **Status**: `[x]` Completed & Verified
 - **Description**: Allows users to take clean, UI-free isometric snapshots of their loft with aesthetic color filters and save them to an in-game photo album.
-- **Target Architecture**:
-  - Render pass to offscreen canvas hiding UI overlays.
-  - Exports PNG data URL for client download or loft picture frame display.
-- **Components**: `src/client/shared/camera.js`.
-- **Validation**: Canvas render test ensuring UI elements are omitted.
+- **Current State**: Implemented with client-side canvas snapshotting (`GalleryPanel.ts`) and server photo feed persistence (`/api/gallery` and `GalleryPhoto` table).
+- **Components**: `apps/client/src/gallery/GalleryPanel.ts`, `apps/server/src/routes/gallery.ts`.
+- **Validation**: Verified in `apps/server/__tests__/integration/minigamesInteractivity.integration.test.ts`.
 
 ### 6.11 Plaza Fountain Fishing
 - **Status**: `[x]` Completed & Verified

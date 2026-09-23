@@ -64,6 +64,22 @@ export class MinigameService {
     const multiplier = combo >= 3 ? 1.5 : 1.0;
     const coinsToAward = Math.round(baseCoins * multiplier);
 
+    // Track 6.2: Enforce rolling 60-minute anti-bot earnings limit (500 coins/hr)
+    const oneHourAgo = new Date(Date.now() - 3600 * 1000);
+    const hourlySessions = await prisma.minigameSession.aggregate({
+      where: {
+        userId,
+        completedAt: { gte: oneHourAgo },
+      },
+      _sum: { coinsEarned: true },
+    });
+
+    const hourlyTotal = hourlySessions._sum?.coinsEarned ?? 0;
+    const MAX_HOURLY = 500;
+    if (hourlyTotal >= MAX_HOURLY) {
+      throw new Error(`HOURLY_LIMIT_EXCEEDED: Maximum earnings rate of ${MAX_HOURLY} coins/hour from minigames reached.`);
+    }
+
     // Enforce weekly earnings cap (2,000 coins max per week)
     const startOfWeek = new Date();
     startOfWeek.setUTCHours(0, 0, 0, 0);
