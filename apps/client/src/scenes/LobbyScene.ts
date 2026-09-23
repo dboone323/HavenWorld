@@ -4,6 +4,7 @@ import { HavenEngine } from '../engine/HavenEngine';
 import { SceneManager } from '../engine/SceneManager';
 import { authService } from '../services/auth';
 import { SERVER_URL } from '../config';
+import { escapeHtml } from '../utils/escapeHtml';
 
 export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   const scene = new Scene(haven.engine);
@@ -153,13 +154,4 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   });
 
   return scene;
-}
-
-function escapeHtml(text?: string | null): string {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

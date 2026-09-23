@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasNoMarkup } from '../validation/schemas';
 
 /**
  * Zod validation schemas for every Socket.io event payload.
@@ -10,6 +11,11 @@ import { z } from 'zod';
 const uuid = z.string().uuid();
 const safeString = (maxLen: number) =>
   z.string().min(1).max(maxLen).transform((s) => s.trim());
+// Pet names are display text re-rendered in styled UI → reject markup outright
+// (unlike chat/guestbook free text, which allows "<3" and relies on output escaping).
+const petName = safeString(32).refine((s) => s.length > 0 && hasNoMarkup(s), {
+  message: 'Pet name may not contain HTML markup (< >)',
+});
 const coord = z.number().finite().min(-10000).max(10000);
 
 // ── Room join ──────────────────────────────────────────────────────────────────
@@ -125,12 +131,12 @@ export const OfferCoinsSchema = z.object({
 // ── Pets ──────────────────────────────────────────────────────────────────────
 export const AdoptPetSchema = z.object({
   petType: z.enum(['CAT', 'DOG', 'BABY_DRAGON']),
-  name: safeString(32),
+  name: petName,
 });
 
 export const NamePetSchema = z.object({
   petId: uuid,
-  name: safeString(32),
+  name: petName,
 });
 
 export const FeedPetSchema = z.object({

@@ -23,6 +23,7 @@ import { RoomEditor } from '../world/RoomEditor';
 import { FishingController } from '../fishing/FishingController';
 import { MoodSystem } from '../rooms/MoodSystem';
 import { audioEngine } from '../audio/AudioEngine';
+import { GuestbookPanel } from '../ui/GuestbookPanel';
 import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
@@ -402,7 +403,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
         SceneManager.getInstance().switchTo('lobby').catch(console.error);
         audioEngine.playDoorbell();
       } else if (meshName.includes('guestbook') || meshName === 'guestbook-mesh') {
-        socketService.emit(SOCKET_EVENTS.GET_GUESTBOOK, { roomId, page: 1 });
+        GuestbookPanel.show(roomId, { canDelete: isOwner });
       } else if (meshName.includes('tip_jar') || meshName === 'tip-jar-mesh') {
         const amount = prompt('Enter tip amount in Haven Coins:');
         if (amount && parseInt(amount, 10) > 0) {
@@ -525,7 +526,6 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     }
   };
   unsubs.push(socketService.on<{ roomId: string }>(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, onFurnitureUpdate));
-  unsubs.push(socketService.on<{ roomId: string }>('room:furniture_updated', onFurnitureUpdate));
 
   // Avatar customization updated in real-time
   const onAvatarUpdate = (data: { userId: string; avatarData?: any }) => {
@@ -542,7 +542,6 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     }
   };
   unsubs.push(socketService.on<{ userId: string; avatarData?: any }>(SOCKET_EVENTS.AVATAR_UPDATE, onAvatarUpdate));
-  unsubs.push(socketService.on<{ userId: string; avatarData?: any }>('avatar:update', onAvatarUpdate));
 
   // Ambient mood changed
   unsubs.push(

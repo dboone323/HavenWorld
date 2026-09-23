@@ -4,7 +4,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Tags } from '@babylonjs/core/Misc/tags';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import { HeadlessRoomScene } from '../../src/game/roomScene';
+import { HeadlessRoomScene } from '../../src/scenes/HeadlessRoomScene';
 
 describe('Headless RoomScene (Babylon.js NullEngine)', () => {
   let engine: NullEngine;

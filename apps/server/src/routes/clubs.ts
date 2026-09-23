@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { ClubService } from '../services/ClubService';
 import { prisma } from '../prisma';
-import { z } from 'zod';
+import { CreateClubSchema } from '../validation/schemas';
 
 const router = Router();
 
@@ -49,15 +49,9 @@ router.get('/', requireAuth, async (_req, res) => {
   return res.json(formatted);
 });
 
-const createClubSchema = z.object({
-  name: z.string().min(3).max(24),
-  motto: z.string().max(80).optional(),
-  tag: z.string().max(5).optional(),
-});
-
 // POST /api/clubs — create club (500 HavenCoins)
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
-  const parsed = createClubSchema.safeParse(req.body);
+  const parsed = CreateClubSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid club details' });
 
   try {

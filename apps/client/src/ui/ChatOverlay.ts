@@ -2,6 +2,7 @@ import type { ChatMessage } from '@havenworld/shared';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
+import { escapeHtml } from '../utils/escapeHtml';
 
 const MAX_LOG_ENTRIES = 50;
 const RATE_ERR_DURATION = 4000;
@@ -86,7 +87,6 @@ export class ChatOverlay {
     if (!text) return;
 
     socketService.emit(SOCKET_EVENTS.CHAT_SEND, { content: text, text });
-    socketService.emit('CHAT_MESSAGE' as any, { content: text, text });
     input.value = '';
   }
 
@@ -108,8 +108,8 @@ export class ChatOverlay {
       (msg.senderId && msg.senderId === authService.user?.id);
     entry.classList.toggle('chat-log__entry--own', !!isOwn);
 
-    const username = this._escapeHtml(msg.username || msg.senderName || 'Player');
-    const text = this._escapeHtml(msg.text || msg.content || '');
+    const username = escapeHtml(msg.username || msg.senderName || 'Player');
+    const text = escapeHtml(msg.text || msg.content || '');
 
     entry.innerHTML = `<span class="chat-log__username">${username}</span>: <span class="chat-log__text">${text}</span>`;
     log.appendChild(entry);
@@ -133,12 +133,7 @@ export class ChatOverlay {
   }
 
   private _escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    return escapeHtml(text);
   }
 
   public dispose(): void {

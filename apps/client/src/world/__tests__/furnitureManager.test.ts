@@ -5,7 +5,7 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { InstancedMesh } from '@babylonjs/core/Meshes/instancedMesh';
 import { PickingInfo } from '@babylonjs/core/Collisions/pickingInfo';
-import { FurnitureManager } from '../furnitureManager';
+import { FurnitureManager } from '../FurnitureManager';
 
 describe('FurnitureManager (Babylon.js NullEngine)', () => {
   let engine: NullEngine;

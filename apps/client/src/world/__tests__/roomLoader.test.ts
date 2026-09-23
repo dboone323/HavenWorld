@@ -4,7 +4,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Tags } from '@babylonjs/core/Misc/tags';
 import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
-import { RoomLoader } from '../roomLoader';
+import { RoomLoader } from '../RoomLoader';
 
 describe('RoomLoader (Babylon.js NullEngine)', () => {
   let engine: NullEngine;

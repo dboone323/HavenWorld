@@ -56,8 +56,16 @@ test.describe('Tier 4: Full Game Flow E2E', () => {
     await roomPage.sendChatMessage(chatText);
     await roomPage.waitForChatMessage(chatText);
 
-    // Step 7: Clean Sign Out
+    // Step 7: Clean Sign Out (client must send X-CSRF-Token or the server 403s
+    // and the session cookie survives — audit finding #1)
     await roomPage.signOut();
     await expect(loginPage.loginPanel).toBeVisible();
+
+    // Step 8: The server-side session must be dead: refresh with the (cleared)
+    // refresh cookie has to 401. A broken logout (missing CSRF header) leaves
+    // the httpOnly refresh cookie intact and this call would return 200.
+    const serverUrl = process.env.VITE_SERVER_URL || 'http://localhost:3000';
+    const refreshResp = await page.request.post(`${serverUrl}/api/auth/refresh`);
+    expect(refreshResp.status()).toBe(401);
   });
 });

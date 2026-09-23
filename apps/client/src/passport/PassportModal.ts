@@ -1,6 +1,7 @@
 import { authService } from '../services/auth';
 import type { PassportData } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
+import { escapeHtml } from '../utils/escapeHtml';
 
 export const STAMP_NAMES = [
   'First Step',
@@ -91,8 +92,8 @@ export class PassportModal {
             🛂
           </div>
           <div>
-            <h2 style="margin: 0; font-size: 1.4rem; color: #a5b4fc;">${passport.username}'s Passport</h2>
-            <div style="font-size: 0.8rem; color: #94a3b8;">Citizen since ${joinDateStr} · ${passport.stamps.length}/20 Stamps</div>
+            <h2 style="margin: 0; font-size: 1.4rem; color: #a5b4fc;">${escapeHtml(passport.username)}'s Passport</h2>
+            <div style="font-size: 0.8rem; color: #94a3b8;">Citizen since ${escapeHtml(joinDateStr)} · ${passport.stamps.length}/20 Stamps</div>
           </div>
         </div>
         <button id="btn-close-passport" style="background: transparent; border: none; color: #aaa; font-size: 1.4rem; cursor: pointer;">✕</button>
@@ -101,15 +102,15 @@ export class PassportModal {
       <!-- Stats Row -->
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
         <div style="background: #312e81; padding: 10px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 1.2rem; font-weight: bold; color: #38bdf8;">${passport.fishCount}</div>
+          <div style="font-size: 1.2rem; font-weight: bold; color: #38bdf8;">${escapeHtml(passport.fishCount)}</div>
           <div style="font-size: 0.75rem; color: #94a3b8;">Fish Caught</div>
         </div>
         <div style="background: #312e81; padding: 10px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 1.2rem; font-weight: bold; color: #ffd700;">${passport.totalTips} 🪙</div>
+          <div style="font-size: 1.2rem; font-weight: bold; color: #ffd700;">${escapeHtml(passport.totalTips)} 🪙</div>
           <div style="font-size: 0.75rem; color: #94a3b8;">Loft Tips Received</div>
         </div>
         <div style="background: #312e81; padding: 10px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 1.2rem; font-weight: bold; color: #4ecdc4;">${passport.completedTrades}</div>
+          <div style="font-size: 1.2rem; font-weight: bold; color: #4ecdc4;">${escapeHtml(passport.completedTrades)}</div>
           <div style="font-size: 0.75rem; color: #94a3b8;">Trades Completed</div>
         </div>
       </div>
@@ -122,7 +123,7 @@ export class PassportModal {
           return `
             <div style="background: ${isEarned ? '#3730a3' : '#1e1b4b'}; border: 1px solid ${isEarned ? '#818cf8' : '#312e81'}; border-radius: 8px; padding: 10px; text-align: center; opacity: ${isEarned ? '1' : '0.45'}; transition: transform 120ms;">
               <div style="font-size: 1.5rem; margin-bottom: 4px;">${isEarned ? '🏅' : '🔒'}</div>
-              <div style="font-size: 0.75rem; font-weight: 600; color: #fff;">${name}</div>
+              <div style="font-size: 0.75rem; font-weight: 600; color: #fff;">${escapeHtml(name)}</div>
             </div>
           `;
         }).join('')}

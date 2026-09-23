@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { prisma } from '../prisma';
-import { z } from 'zod';
+import { CreateGalleryPhotoSchema } from '../validation/schemas';
 
 const router = Router();
 
@@ -36,16 +36,10 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
   return res.json(formatted);
 });
 
-const uploadSchema = z.object({
-  imageUrl: z.string(), // base64 or storage url
-  caption: z.string().max(80).optional(),
-  roomName: z.string().default('Haven Park'),
-});
-
 // POST /api/gallery — upload photo
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user!.userId;
-  const parsed = uploadSchema.safeParse(req.body);
+  const parsed = CreateGalleryPhotoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid photo data' });
 
   // Check daily upload limit (max 5)

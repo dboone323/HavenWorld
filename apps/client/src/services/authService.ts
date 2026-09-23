@@ -32,6 +32,7 @@ export class AuthService {
   private _accessToken: string | null = null;
   private _user: AuthUser | null = null;
   private _apiUrl: string;
+  private _refreshPromise: Promise<boolean> | null = null;
 
   constructor(apiUrl?: string) {
     this._apiUrl = apiUrl || API_URL;
@@ -189,7 +190,19 @@ export class AuthService {
     return this._user!;
   }
 
+  /** Single-flight refresh: concurrent callers (parallel getToken / me /
+   *  socket boot) share ONE in-flight /auth/refresh request. Refresh tokens
+   *  are one-time-use — racing requests would rotate twice and trip the
+   *  server's token-reuse detection, killing the session's token family. */
   async refresh(): Promise<boolean> {
+    if (this._refreshPromise) return this._refreshPromise;
+    this._refreshPromise = this._performRefresh().finally(() => {
+      this._refreshPromise = null;
+    });
+    return this._refreshPromise;
+  }
+
+  private async _performRefresh(): Promise<boolean> {
     try {
       const res = await fetch(`${this._apiUrl}/auth/refresh`, {
         method: 'POST',
@@ -213,9 +226,13 @@ export class AuthService {
 
   async logout(): Promise<void> {
     try {
+      // Logout clears an httpOnly cookie, so the server requires the
+      // double-submit CSRF header (cookie + X-CSRF-Token must match).
+      const csrf = this.getCsrfToken();
       await fetch(`${this._apiUrl}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
+        headers: csrf ? { 'X-CSRF-Token': csrf } : undefined,
       });
     } catch {
       // Ignore network errors on logout
@@ -228,6 +245,41 @@ export class AuthService {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    const res = await fetch(`${this._apiUrl}/auth/resend-verification`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res
+        .json()
+        .catch(() => ({ message: 'Could not resend verification email' }));
+      throw new AuthError(err.error || err.message || 'Could not resend verification email');
+    }
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const token = await this.getToken();
+    const res = await fetch(`${this._apiUrl}/auth/change-password`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Password change failed' }));
+      throw new AuthError(err.error || err.message || 'Password change failed');
+    }
+    // The server revoked every refresh session — mirror that locally so this
+    // device doesn't sit on a dead session until the access token expires.
+    await this.logout();
   }
 
   updateAvatar(avatar: AvatarData): void {

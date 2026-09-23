@@ -97,3 +97,10 @@ export function captureSecurityEvent(
     });
   }
 }
+
+/** Report a caught-but-serious error (used by the process crash handlers in
+ *  index.ts). No-ops when Sentry is not configured. */
+export function captureException(error: unknown): void {
+  if (!process.env.SENTRY_DSN) return;
+  Sentry.captureException(error);
+}

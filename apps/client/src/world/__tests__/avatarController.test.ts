@@ -8,7 +8,7 @@ import { MorphTarget } from '@babylonjs/core/Morph/morphTarget';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { AvatarController } from '../avatarController';
+import { AvatarController } from '../AvatarController';
 
 describe('AvatarController (Babylon.js NullEngine)', () => {
   let engine: NullEngine;

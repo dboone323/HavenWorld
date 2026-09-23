@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
+import { verifyAccessToken } from '../auth/tokens';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -21,21 +21,17 @@ export const requireAuth = (
     return;
   }
   const token = authHeader.slice(7);
-  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
-  if (!secret) {
-    res.status(500).json({ error: 'Server auth configuration missing' });
-    return;
-  }
   try {
-    const payload = jwt.verify(
-      token,
-      secret,
-      { algorithms: ['HS256'] }
-    ) as { userId: string; username: string; role: string };
-    req.user = payload;
+    // Single verifier: enforces HS256 + issuer/audience pinning + unified secret
+    const payload = verifyAccessToken(token);
+    req.user = {
+      userId: payload.userId,
+      username: payload.username,
+      role: payload.role ?? 'PLAYER',
+    };
     next();
-  } catch (err: any) {
-    if (err.name === 'TokenExpiredError') {
+  } catch (err) {
+    if ((err as Error)?.name === 'TokenExpiredError') {
       res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
     } else {
       res.status(401).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });

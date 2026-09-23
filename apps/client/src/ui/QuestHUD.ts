@@ -4,6 +4,7 @@ import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { audioEngine } from '../audio/AudioEngine';
 import { SERVER_URL } from '../config';
+import { escapeHtml } from '../utils/escapeHtml';
 
 export class QuestHUD {
   private container: HTMLElement | null = null;
@@ -103,13 +104,13 @@ export class QuestHUD {
                   (q) => `
           <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #2a2a4a;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-              <span style="${q.completed ? 'text-decoration: line-through; color: #888;' : ''}">${q.title}</span>
-              <span style="color: #ffd700; font-size: 0.75rem;">+${q.rewardCoins} 🪙</span>
+              <span style="${q.completed ? 'text-decoration: line-through; color: #888;' : ''}">${escapeHtml(q.title)}</span>
+              <span style="color: #ffd700; font-size: 0.75rem;">+${escapeHtml(q.rewardCoins)} 🪙</span>
             </div>
             <div style="background: #111; height: 6px; border-radius: 3px; margin-top: 4px; overflow: hidden;">
               <div style="width: ${Math.min(100, Math.round((q.progress / q.goal) * 100))}%; height: 100%; background: ${q.completed ? '#4ecdc4' : '#ffaa00'};"></div>
             </div>
-            <div style="font-size: 0.7rem; color: #777; margin-top: 2px;">${q.progress} / ${q.goal}</div>
+            <div style="font-size: 0.7rem; color: #777; margin-top: 2px;">${escapeHtml(q.progress)} / ${escapeHtml(q.goal)}</div>
           </div>
         `
                 )

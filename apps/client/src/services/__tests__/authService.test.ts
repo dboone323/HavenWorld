@@ -86,7 +86,7 @@ describe('AuthService', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('(e) logout() → token cleared from memory, refresh endpoint called', async () => {
+  it('(e) logout() → token cleared from memory, refresh endpoint called WITH X-CSRF-Token', async () => {
     const token = makeJwt(3600);
     global.fetch = vi
       .fn()
@@ -95,6 +95,9 @@ describe('AuthService', () => {
         json: async () => ({ accessToken: token }),
       } as Response)
       .mockResolvedValueOnce({ ok: true } as Response); // logout endpoint
+
+    // Double-submit CSRF: server requires cookie + X-CSRF-Token header to match.
+    document.cookie = 'csrf_token=csrf-e2e-token-123';
 
     await service.login('user@havenworld.com', 'pass');
     await service.logout();
@@ -105,7 +108,24 @@ describe('AuthService', () => {
     // Confirm logout API was called to clear httpOnly refresh cookie
     expect(fetch).toHaveBeenLastCalledWith(
       expect.stringContaining('/api/auth/logout'),
-      expect.objectContaining({ method: 'POST' })
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'X-CSRF-Token': 'csrf-e2e-token-123' },
+      })
+    );
+
+    // Clean up the cookie for other tests
+    document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  });
+
+  it("(e2) logout() without a csrf cookie → request still attempted, no header sent", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({ ok: true } as Response);
+
+    await service.logout();
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/auth/logout'),
+      expect.objectContaining({ method: 'POST', headers: undefined })
     );
   });
 
@@ -131,5 +151,101 @@ describe('AuthService', () => {
     await service.login('user@havenworld.com', 'pass');
     // isAuthenticated should treat "within 60s of expiry" as expired
     expect(service.isAuthenticated()).toBe(false);
+  });
+
+  it('(i) concurrent getToken() with an expired token → exactly ONE refresh request (single-flight)', async () => {
+    const expiredToken = makeJwt(-10);
+    const freshToken = makeJwt(3600);
+
+    global.fetch = vi
+      .fn()
+      // login → soon-to-expire token
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ accessToken: expiredToken }),
+      } as Response)
+      // refresh → slow response so both callers overlap in-flight
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  ok: true,
+                  json: async () => ({ accessToken: freshToken }),
+                } as Response),
+              20
+            );
+          })
+      );
+
+    await service.login('user@havenworld.com', 'pass');
+
+    const [a, b] = await Promise.all([service.getToken(), service.getToken()]);
+
+    expect(a).toBe(freshToken);
+    expect(b).toBe(freshToken);
+    // login(1) + refresh(1) — a second concurrent refresh would rotate the
+    // one-time-use refresh token twice and trip server reuse detection
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('(j) resendVerification() posts the email and resolves on 200', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true }),
+    } as Response);
+
+    await service.resendVerification('user@havenworld.com');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/auth/resend-verification'),
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
+  it('(j2) resendVerification() non-OK → throws AuthError', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Invalid email address.' }),
+    } as Response);
+
+    await expect(service.resendVerification('nope')).rejects.toThrow(AuthError);
+  });
+
+  it('(k) changePassword() sends Bearer auth and logs the device out locally on success', async () => {
+    const token = makeJwt(3600);
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ accessToken: token }),
+      } as Response) // login
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, devicesLoggedOut: 1 }),
+      } as Response) // change-password
+      .mockResolvedValueOnce({ ok: true } as Response); // logout
+
+    await service.login('user@havenworld.com', 'SecurePass1!');
+    await service.changePassword('SecurePass1!', 'NewPass123!');
+
+    // change-password must carry the Bearer access token
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/api/auth/change-password'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: expect.stringContaining('Bearer '),
+        }),
+      })
+    );
+    // Server revoked all sessions → local session ends too
+    expect(fetch).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/auth/logout'),
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(service.token).toBeNull();
   });
 });

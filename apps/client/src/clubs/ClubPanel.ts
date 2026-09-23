@@ -2,6 +2,7 @@ import { API_URL } from '../config';
 import { authService } from '../services/auth';
 import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
+import { escapeHtml } from '../utils/escapeHtml';
 
 interface ClubSummary {
   id: string;
@@ -81,7 +82,7 @@ export class ClubPanel {
       this.renderCreate(panel);
     });
 
-    this.renderBrowse(panel);
+    await this.renderBrowse(panel);
   }
 
   private static async renderBrowse(panel: HTMLElement): Promise<void> {
@@ -115,12 +116,12 @@ export class ClubPanel {
 
         row.innerHTML = `
           <div>
-            <div style="font-weight:600; font-size:0.95rem;">${c.name} ${c.tag ? `[${c.tag}]` : ''}</div>
+            <div style="font-weight:600; font-size:0.95rem;">${escapeHtml(c.name)} ${c.tag ? `[${escapeHtml(c.tag)}]` : ''}</div>
             <div style="font-size:0.8rem; color:rgba(255,255,255,0.6); margin-top:2px;">
-              ${c.motto || 'No motto'} • ${c.memberCount}/50 members
+              ${escapeHtml(c.motto || 'No motto')} • ${c.memberCount}/50 members
             </div>
           </div>
-          <button class="btn-join-club" data-club-id="${c.id}" style="
+          <button class="btn-join-club" data-club-id="${escapeHtml(c.id)}" style="
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             border: none; border-radius: 8px; color: #fff; padding: 6px 14px;
             font-size: 0.85rem; font-weight: 600; cursor: pointer;

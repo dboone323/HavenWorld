@@ -1,6 +1,11 @@
 import jwt from 'jsonwebtoken';
 
+// Test tokens must be minted EXACTLY like production ones: same secret
+// precedence, same issuer/audience (requireAuth + socket auth pin them via
+// verifyAccessToken) and HS256.
 const TEST_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'test_jwt_secret_not_for_production_use_only';
+const TEST_ISSUER = 'havenworld-api';
+const TEST_AUDIENCE = 'havenworld-client';
 
 /**
  * Generates a valid, cryptographically signed JWT for a given userId
@@ -19,7 +24,11 @@ export function generateTestToken(
       ...extraPayload,
     },
     TEST_SECRET,
-    { expiresIn: expiresIn as any }
+    {
+      expiresIn: expiresIn as jwt.SignOptions['expiresIn'],
+      issuer: TEST_ISSUER,
+      audience: TEST_AUDIENCE,
+    }
   );
 }
 
@@ -34,7 +43,11 @@ export function generateExpiredToken(userId: string): string {
       role: 'PLAYER',
     },
     TEST_SECRET,
-    { expiresIn: -1 }
+    {
+      expiresIn: -1,
+      issuer: TEST_ISSUER,
+      audience: TEST_AUDIENCE,
+    }
   );
 }
 
@@ -49,7 +62,11 @@ export function generateTokenWithWrongSecret(userId: string): string {
       role: 'PLAYER',
     },
     'this_is_definitely_the_wrong_secret',
-    { expiresIn: '15m' }
+    {
+      expiresIn: '15m',
+      issuer: TEST_ISSUER,
+      audience: TEST_AUDIENCE,
+    }
   );
 }
 

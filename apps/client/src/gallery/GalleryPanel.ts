@@ -1,5 +1,6 @@
 import { API_URL } from '../config';
 import { authService } from '../services/auth';
+import { escapeHtml } from '../utils/escapeHtml';
 
 interface GalleryPhoto {
   id: string;
@@ -96,13 +97,13 @@ export class GalleryPanel {
 
         card.innerHTML = `
           <div style="width:100%; height:130px; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-            <img src="${p.imageUrl}" alt="${p.caption || 'Haven photo'}" style="width:100%; height:100%; object-fit:cover;" />
+            <img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.caption || 'Haven photo')}" style="width:100%; height:100%; object-fit:cover;" />
           </div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px;">
-            <div style="font-size:0.85rem; font-weight:600;">${p.caption || 'Untitled'}</div>
-            <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);">By ${p.authorName} • ${p.roomName}</div>
+            <div style="font-size:0.85rem; font-weight:600;">${escapeHtml(p.caption || 'Untitled')}</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);">By ${escapeHtml(p.authorName)} • ${escapeHtml(p.roomName)}</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-              <button class="btn-like-photo" data-photo-id="${p.id}" style="
+              <button class="btn-like-photo" data-photo-id="${escapeHtml(p.id)}" style="
                 background: ${p.isLikedByMe ? 'rgba(236,72,153,0.3)' : 'rgba(255,255,255,0.08)'};
                 border: 1px solid ${p.isLikedByMe ? '#ec4899' : 'rgba(255,255,255,0.15)'};
                 border-radius: 6px; color:#fff; padding:4px 10px; font-size:0.8rem; cursor:pointer;

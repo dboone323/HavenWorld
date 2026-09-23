@@ -699,6 +699,7 @@ model RefreshToken {
 
   @@index([userId])
   @@index([token])
+  @@index([familyId])
   @@map("refresh_tokens")
 }
 

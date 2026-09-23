@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../prisma';
@@ -11,6 +10,7 @@ import { Resend } from 'resend';
 import { setCsrfCookie, generateCsrfToken } from '../middleware/csrf';
 import { generateAccessToken, generateRefreshToken } from '../auth/tokens';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
+import { captureSecurityEvent } from '../monitoring/sentry';
 
 const router = Router();
 const resend = new Resend(process.env.RESEND_API_KEY || 're_placeholder');
@@ -42,20 +42,6 @@ const loginSchema = z.object({
   message: 'Either email or username must be provided.',
 });
 
-export function generateTokens(userId: string, username: string, role: string) {
-  const accessToken = jwt.sign(
-    { userId, username, role },
-    process.env.JWT_ACCESS_SECRET!,
-    { expiresIn: (process.env.JWT_ACCESS_EXPIRES as any) ?? '15m' }
-  );
-  const refreshToken = jwt.sign(
-    { userId },
-    process.env.JWT_REFRESH_SECRET!,
-    { expiresIn: (process.env.JWT_REFRESH_EXPIRES as any) ?? '7d' }
-  );
-  return { accessToken, refreshToken };
-}
-
 export const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
@@ -63,6 +49,61 @@ export const REFRESH_COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: '/api/auth',
 };
+
+/**
+ * Issues a fresh access/refresh token pair, persists the refresh token
+ * (Postgres row + Redis marker) and sets the httpOnly refresh cookie.
+ * Shared by login AND register so every session-establishing flow behaves
+ * identically — register previously set no cookies, which logged users out
+ * the moment their 15-minute access token expired.
+ * Returns the access token for the JSON response body.
+ */
+async function issueSession(
+  res: Response,
+  user: { id: string; username: string; role: string }
+): Promise<string> {
+  const accessToken = generateAccessToken(user.id, user.username, user.role);
+  const refreshToken = await generateRefreshToken(user.id);
+  await redis.setEx(`refresh:${user.id}`, 7 * 24 * 3600, refreshToken);
+  res.cookie('refresh_token', refreshToken, REFRESH_COOKIE_OPTIONS);
+  return accessToken;
+}
+
+/**
+ * Sends the account-verification email via Resend. Shared by /register and
+ * /resend-verification. Fails open: without Resend credentials nothing is
+ * sent and the caller's flow continues (register auto-verifies in that case).
+ */
+async function sendVerificationEmail(
+  email: string,
+  username: string,
+  token: string
+): Promise<void> {
+  const serverUrl = process.env.SERVER_URL || 'https://147-224-184-148.nip.io';
+  const verifyUrl = `${serverUrl}/api/auth/verify?token=${token}`;
+
+  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+    await resend.emails
+      .send({
+        from: process.env.EMAIL_FROM,
+        to: email,
+        subject: 'Verify your HavenWorld account',
+        html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0d1a;color:#fff;border-radius:16px;">
+          <h1 style="color:#4ecdc4;">Welcome to HavenWorld, ${username}!</h1>
+          <p>Click the button below to verify your email and enter the world.</p>
+          <a href="${verifyUrl}" style="display:inline-block;margin:24px 0;padding:14px 28px;background:#4ecdc4;color:#0d0d1a;text-decoration:none;border-radius:8px;font-weight:bold;">
+            Verify My Account
+          </a>
+          <p style="color:#aaa;font-size:0.85rem;">
+            Link expires in 48 hours. If you didn't create this account, ignore this email.
+          </p>
+        </div>
+      `,
+      })
+      .catch((err) => console.error('[Resend] Verification email error:', err));
+  }
+}
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 router.post('/register', async (req: Request, res: Response) => {
@@ -202,35 +243,27 @@ router.post('/register', async (req: Request, res: Response) => {
     });
   }
 
-  // 9. Send verification email via Resend
-  const serverUrl = process.env.SERVER_URL || 'https://147-224-184-148.nip.io';
-  const verifyUrl = `${serverUrl}/api/auth/verify?token=${emailVerifyToken}`;
+  // 9. Send verification email via Resend (shared with /resend-verification)
+  await sendVerificationEmail(email, username, emailVerifyToken);
 
-  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject: 'Verify your HavenWorld account',
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0d1a;color:#fff;border-radius:16px;">
-          <h1 style="color:#4ecdc4;">Welcome to HavenWorld, ${username}!</h1>
-          <p>Click the button below to verify your email and enter the world.</p>
-          <a href="${verifyUrl}" style="display:inline-block;margin:24px 0;padding:14px 28px;background:#4ecdc4;color:#0d0d1a;text-decoration:none;border-radius:8px;font-weight:bold;">
-            Verify My Account
-          </a>
-          <p style="color:#aaa;font-size:0.85rem;">
-            Link expires in 48 hours. If you didn't create this account, ignore this email.
-          </p>
-        </div>
-      `,
-    }).catch((err) => console.error('[Resend] Verification email error:', err));
-  }
+  // 10. Establish the session immediately (same as login). Previously register
+  //     set no cookies at all, so a fresh registration silently expired with
+  //     the 15-minute access token and the user was hard-logged-out.
+  const accessToken = await issueSession(res, {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
+  const csrfToken = generateCsrfToken();
+  setCsrfCookie(res, csrfToken);
 
   return res.status(201).json({
     message: autoVerify
       ? 'Account created! Email verification is disabled on this server, so you can log in right away.'
       : 'Account created! Check your email to verify before logging in.',
     emailVerificationRequired: !autoVerify,
+    accessToken,
+    csrfToken,
   });
 });
 
@@ -336,12 +369,13 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   }
 
-  // Issue Access Token & DB-backed Refresh Token with rotation family
-  const accessToken = generateAccessToken(user.id, user.username, user.role);
-  const refreshToken = await generateRefreshToken(user.id);
-
-  // Store in Redis (optional fast lookup)
-  await redis.setEx(`refresh:${user.id}`, 7 * 24 * 3600, refreshToken);
+  // Issue access token + DB-backed refresh token via the shared session
+  // helper (sets the httpOnly refresh cookie + Redis marker — same as /register)
+  const accessToken = await issueSession(res, {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+  });
 
   // Update last login timestamp and open a new analytics session
   const sessionId = crypto.randomUUID();
@@ -356,11 +390,8 @@ router.post('/login', async (req: Request, res: Response) => {
     payload: { role: user.role },
   });
 
-  // Set httpOnly SameSite=Strict cookies
-  res.cookie('refresh_token', refreshToken, REFRESH_COOKIE_OPTIONS);
-  res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
-
-  // Set CSRF cookie (non-httpOnly for JavaScript client header usage)
+  // Refresh cookie already set by issueSession(); now set the non-httpOnly
+  // CSRF cookie used for double-submit header checks
   setCsrfCookie(res, generateCsrfToken());
 
   return res.json({
@@ -375,6 +406,93 @@ router.post('/login', async (req: Request, res: Response) => {
         name: personalRoom.name,
       },
     },
+  });
+});
+
+// ── POST /api/auth/resend-verification ───────────────────────────────────────
+// Re-issues the verification token for an unverified account. Always answers
+// 200 with the same generic message so the endpoint can't be used to probe
+// which emails are registered. Rate-limited by authRateLimiter (/api/auth/).
+const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+router.post('/resend-verification', async (req: Request, res: Response) => {
+  const parsed = resendVerificationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid email address.' });
+  }
+  const email = parsed.data.email.toLowerCase();
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user && !user.emailVerified) {
+    const token = crypto.randomBytes(32).toString('hex');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifyToken: token },
+    });
+    await sendVerificationEmail(user.email, user.username, token);
+  }
+
+  return res.json({
+    success: true,
+    message:
+      'If that address has an unverified account, a new verification email is on its way.',
+  });
+});
+
+// ── POST /api/auth/change-password ───────────────────────────────────────────
+// Requires the CURRENT password plus a Bearer access token (Bearer requests
+// are CSRF-exempt by design). On success every refresh session is revoked —
+// all devices, including this one — because a password change is a credential
+// compromise response.
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(128, 'Password cannot exceed 128 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+});
+
+router.post('/change-password', requireAuth, async (req: AuthRequest, res: Response) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      fields: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+  if (!user) {
+    return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  }
+
+  const valid = await bcrypt.compare(
+    parsed.data.currentPassword,
+    user.passwordHash ?? DUMMY_HASH
+  );
+  if (!valid) {
+    return res.status(403).json({
+      error: 'Current password is incorrect.',
+      code: 'CURRENT_PASSWORD_INVALID',
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+  const { count } = await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+  await redis.del(`refresh:${user.id}`);
+  res.clearCookie('refresh_token', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+  res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+
+  return res.json({
+    success: true,
+    devicesLoggedOut: count,
+    message: 'Password updated. All sessions have been signed out.',
   });
 });
 
@@ -398,12 +516,31 @@ router.post('/refresh', async (req: Request, res: Response) => {
     },
   });
 
-  // Token not found (already rotated or invalid) -> Flag reuse attack
+  // Token not found (already rotated or invalid) → possible reuse attack
   if (!storedToken) {
-    console.warn({
-      event: 'REFRESH_TOKEN_REUSE_SUSPECTED',
-      token: incomingToken.substring(0, 8) + '...',
-      timestamp: new Date().toISOString(),
+    const reusedFamilyId = await redis
+      .get(`revoked:${incomingToken}`)
+      .catch(() => null);
+    if (reusedFamilyId) {
+      // Confirmed replay of a rotated token: revoke EVERY token still alive
+      // in its rotation family so neither attacker nor victim can keep
+      // rotating. (familyId is only ever set at creation + inherited.)
+      const { count } = await prisma.refreshToken.deleteMany({
+        where: { familyId: reusedFamilyId },
+      });
+      await redis.del(`revoked:${incomingToken}`);
+      captureSecurityEvent('TOKEN_REUSE_DETECTED', {
+        familyId: reusedFamilyId,
+        revokedTokenCount: count,
+        ip: req.ip,
+      });
+      return res.status(401).json({ error: 'TOKEN_REUSE_DETECTED' });
+    }
+
+    captureSecurityEvent('TOKEN_REUSE_DETECTED', {
+      reason: 'rotated token replayed but family map already expired',
+      tokenPrefix: incomingToken.substring(0, 8) + '...',
+      ip: req.ip,
     });
     return res.status(401).json({ error: 'TOKEN_REUSE_DETECTED' });
   }
@@ -420,10 +557,17 @@ router.post('/refresh', async (req: Request, res: Response) => {
     return res.status(403).json({ error: 'ACCOUNT_BANNED' });
   }
 
-  // Atomic rotation inside transaction
+  // Record the rotated-out token → family mapping BEFORE deleting it, so a
+  // later replay of this exact token is attributable to its rotation family
+  // (TTL = 7d token lifetime + 1d grace).
+  await redis.setEx(`revoked:${incomingToken}`, 8 * 24 * 3600, storedToken.familyId);
+
+  // Atomic rotation inside transaction — familyId INHERITED so the whole
+  // lineage shares one family (previously each rotation minted a fresh
+  // familyId, making reuse revocation impossible).
   const [newRefreshToken] = await prisma.$transaction(async (tx) => {
     await tx.refreshToken.delete({ where: { id: storedToken.id } });
-    const newToken = await generateRefreshToken(storedToken.userId);
+    const newToken = await generateRefreshToken(storedToken.userId, storedToken.familyId);
     return [newToken];
   });
 
@@ -435,7 +579,6 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
   await redis.setEx(`refresh:${storedToken.user.id}`, 7 * 24 * 3600, newRefreshToken);
   res.cookie('refresh_token', newRefreshToken, REFRESH_COOKIE_OPTIONS);
-  res.cookie('refreshToken', newRefreshToken, REFRESH_COOKIE_OPTIONS);
 
   return res.json({ accessToken: newAccessToken });
 });
@@ -444,7 +587,15 @@ router.post('/refresh', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   const token = req.cookies?.refresh_token || req.cookies?.refreshToken;
   if (token) {
+    const stored = await prisma.refreshToken.findUnique({
+      where: { token },
+      select: { userId: true },
+    });
     await prisma.refreshToken.deleteMany({ where: { token } });
+    if (stored) {
+      // Drop the Redis marker too — otherwise a stale key outlives the session
+      await redis.del(`refresh:${stored.userId}`);
+    }
   }
   res.clearCookie('refresh_token', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
   res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });

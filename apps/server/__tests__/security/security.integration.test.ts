@@ -71,7 +71,12 @@ describe('Part 8: Security Audit & Hardening Integration Tests', () => {
       const token = jwt.sign(
         { userId: user.id, username: user.username, role: user.role },
         secret,
-        { algorithm: 'HS256', expiresIn: '15m' }
+        {
+          algorithm: 'HS256',
+          expiresIn: '15m',
+          issuer: 'havenworld-api',
+          audience: 'havenworld-client',
+        }
       );
 
       const res = await request(app)
@@ -125,7 +130,12 @@ describe('Part 8: Security Audit & Hardening Integration Tests', () => {
       const forgedAdminJwt = jwt.sign(
         { userId: user.id, username: user.username, role: 'ADMIN' },
         secret,
-        { algorithm: 'HS256', expiresIn: '15m' }
+        {
+          algorithm: 'HS256',
+          expiresIn: '15m',
+          issuer: 'havenworld-api',
+          audience: 'havenworld-client',
+        }
       );
 
       const res = await request(app)
@@ -144,7 +154,12 @@ describe('Part 8: Security Audit & Hardening Integration Tests', () => {
       const adminJwt = jwt.sign(
         { userId: admin.id, username: admin.username, role: 'ADMIN' },
         secret,
-        { algorithm: 'HS256', expiresIn: '15m' }
+        {
+          algorithm: 'HS256',
+          expiresIn: '15m',
+          issuer: 'havenworld-api',
+          audience: 'havenworld-client',
+        }
       );
 
       const res = await request(app)

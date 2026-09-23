@@ -2,8 +2,21 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../prisma';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET || 'dev_secret_fallback_for_tests';
-const ACCESS_TOKEN_EXPIRY = '15m';
+// Single source of truth for access-token signing AND verification.
+// Precedence: JWT_ACCESS_SECRET first, then JWT_SECRET. (The signer previously
+// used `JWT_SECRET || JWT_ACCESS_SECRET` while the verifiers used the opposite
+// order — a latent auth bypass masked only by the two secrets currently being
+// equal.) All verification goes through verifyAccessToken below so issuer /
+// audience pinning can never be skipped again.
+const JWT_SECRET =
+  process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'dev_secret_fallback_for_tests';
+
+// Aligned expiry naming: JWT_ACCESS_EXPIRES is canonical (apps/server/.env);
+// JWT_EXPIRY kept as fallback for .env.test. Previously three different names
+// were read across dead code paths with `as any` casts.
+const ACCESS_TOKEN_EXPIRY = (process.env.JWT_ACCESS_EXPIRES ??
+  process.env.JWT_EXPIRY ??
+  '15m') as jwt.SignOptions['expiresIn'];
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export function generateAccessToken(userId: string, username: string, role = 'PLAYER'): string {
@@ -28,7 +41,12 @@ export function verifyAccessToken(token: string): { userId: string; username: st
   }) as { userId: string; username: string; role?: string };
 }
 
-export async function generateRefreshToken(userId: string): Promise<string> {
+/**
+ * Creates a DB-backed refresh token. Pass the CURRENT familyId when rotating
+ * so every token in one login's lineage shares a family — reuse detection can
+ * then revoke the whole family at once.
+ */
+export async function generateRefreshToken(userId: string, familyId?: string): Promise<string> {
   const token = crypto.randomBytes(48).toString('base64url');
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
 
@@ -37,7 +55,7 @@ export async function generateRefreshToken(userId: string): Promise<string> {
       token,
       userId,
       expiresAt,
-      familyId: crypto.randomUUID(),
+      familyId: familyId ?? crypto.randomUUID(),
     },
   });
 

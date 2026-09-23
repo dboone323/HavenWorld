@@ -39,6 +39,35 @@ export function mountLoginUI(): void {
     formLogin.classList.toggle('hidden', m !== 'login');
     formReg.classList.toggle('hidden', m !== 'register');
     errEl.textContent = '';
+    document.getElementById('btn-resend-verification')?.remove();
+  }
+
+  /** Shown when login fails with EMAIL_NOT_VERIFIED: gives users a way out of
+   *  the lockout without hunting for a lost email (audit finding #3). */
+  function showResendOption(email: string): void {
+    if (document.getElementById('btn-resend-verification')) return;
+    const btn = document.createElement('button');
+    btn.id = 'btn-resend-verification';
+    btn.type = 'button';
+    btn.textContent = 'Resend verification email';
+    btn.style.cssText =
+      'display:block; margin-top:8px; background:none; border:none; color:#4ecdc4; cursor:pointer; text-decoration:underline; font-size:0.9rem;';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        await authService.resendVerification(email);
+        errEl.style.color = '#4ecdc4';
+        showError('If that address has an unverified account, a new email is on its way.');
+      } catch {
+        errEl.style.color = '#f87171';
+        showError('Could not send the email. Please try again later.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Resend verification email';
+      }
+    });
+    errEl.insertAdjacentElement('afterend', btn);
   }
 
   // ── Login form ────────────────────────────────────────────────────────────
@@ -57,7 +86,11 @@ export function mountLoginUI(): void {
       await authService.login(email, password);
       transitionToLobby();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Login failed.');
+      const msg = err instanceof Error ? err.message : 'Login failed.';
+      showError(msg);
+      if (/verify your email/i.test(msg)) {
+        showResendOption(email);
+      }
     } finally {
       setLoading(false);
     }

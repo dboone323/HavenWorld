@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import { connectRedis, redis } from './redis';
 import { prisma } from './prisma';
-import { initSentry } from './monitoring/sentry';
+import { initSentry, captureException } from './monitoring/sentry';
 import {
   applySecurityMiddleware,
   verifyStartupSecurityAssertions,
@@ -146,7 +146,9 @@ async function start() {
     // ── Scheduled Cron Jobs ───────────────────────────────────────────────────
     // Weekly fishing leaderboard reset: Monday 00:00 UTC (Part 6 §1)
     cron.schedule('0 0 * * 1', () => {
-      FishingService.resetWeeklyLeaderboard();
+      FishingService.resetWeeklyLeaderboard().catch((err) =>
+        console.error('[Cron] Weekly leaderboard reset failed:', err)
+      );
     });
 
     // Hourly pet happiness & hunger decay
@@ -156,7 +158,9 @@ async function start() {
 
     // Flash sale check: every 30 minutes
     cron.schedule('*/30 * * * *', () => {
-      ShopService.processFlashSales();
+      ShopService.processFlashSales().catch((err) =>
+        console.error('[Cron] Flash sale sweep failed:', err)
+      );
     });
 
     // Workshop crafting queue completion announcements: every 5 minutes
@@ -186,14 +190,35 @@ async function start() {
 }
 
 // ── Graceful shutdown ────────────────────────────────────────────────────────
-process.on('SIGTERM', async () => {
-  console.log('[Server] SIGTERM received — shutting down gracefully');
-  httpServer.close(async () => {
-    await prisma.$disconnect();
+async function shutdown(signal: string): Promise<void> {
+  console.log(`[Server] ${signal} received — shutting down gracefully`);
+
+  // Never let a deploy/kill hang forever waiting on stuck sockets.
+  const forceExit = setTimeout(() => {
+    console.error('[Server] Shutdown timed out after 10s — forcing exit');
+    process.exit(1);
+  }, 10_000);
+
+  // io.close() disconnects all sockets and closes the underlying HTTP server.
+  io.close(async () => {
+    try {
+      await redis.quit();
+    } catch (err) {
+      console.error('[Shutdown] Redis quit failed:', err);
+    }
+    try {
+      await prisma.$disconnect();
+    } catch (err) {
+      console.error('[Shutdown] Prisma disconnect failed:', err);
+    }
+    clearTimeout(forceExit);
     console.log('[Server] Shutdown complete');
     process.exit(0);
   });
-});
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 // Jest imports this module and builds its own HTTP server around `app`, so it must not bind
 // a port in test mode. Playwright's webServer (and .github/workflows/e2e.yml) still need a real
@@ -202,6 +227,19 @@ const shouldAutoStart =
   process.env.NODE_ENV !== 'test' || process.env.SERVER_AUTOSTART === 'true';
 
 if (shouldAutoStart) {
+  // Crash containment for real server processes only (Jest owns its own
+  // process lifecycle and must not have these hijacked). uncaughtException is
+  // fatal: in-memory state (socket rooms, trade timers, fishing sessions) can
+  // no longer be trusted — report, then exit for a supervisor to restart.
+  process.on('unhandledRejection', (reason) => {
+    console.error('[FATAL] Unhandled promise rejection:', reason);
+    captureException(reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception — exiting:', err);
+    captureException(err);
+    setTimeout(() => process.exit(1), 1000);
+  });
   start();
 }
 

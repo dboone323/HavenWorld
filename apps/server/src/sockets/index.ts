@@ -1,6 +1,6 @@
 import { Server, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
+import { verifyAccessToken } from '../auth/tokens';
 import { redis } from '../redis';
 import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
@@ -47,24 +47,16 @@ function socketOriginMiddleware(socket: Socket, next: (err?: Error) => void): vo
 }
 
 // ── Socket authentication middleware ──────────────────────────────────────────
-// Every socket connection must provide a valid JWT access token with HS256 pinning.
+// Every socket connection must provide a valid JWT access token, verified by
+// the same verifyAccessToken used by requireAuth (HS256 + iss/aud pinning +
+// unified secret precedence).
 async function socketAuthMiddleware(socket: Socket, next: (err?: Error) => void): Promise<void> {
   const token = socket.handshake.auth?.token;
   if (!token || typeof token !== 'string') {
     return next(new Error('AUTH_REQUIRED'));
   }
-  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
-  if (!secret) {
-    return next(new Error('AUTH_CONFIG_ERROR'));
-  }
   try {
-    const payload = jwt.verify(token, secret, {
-      algorithms: ['HS256'],
-    }) as {
-      userId: string;
-      username: string;
-      role: string;
-    };
+    const payload = verifyAccessToken(token);
 
     // Check if user is banned
     const dbUser = await prisma.user.findUnique({
