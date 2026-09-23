@@ -28,6 +28,7 @@ export default mergeConfig(
           'src/services/**',
           'src/audio/**',
           'src/ui/ChatOverlay.ts',
+          'src/ui/GuestbookPanel.ts',
           'src/utils/**',
           'src/gallery/**',
           'src/clubs/**',

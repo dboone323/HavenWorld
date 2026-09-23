@@ -153,7 +153,9 @@ async function start() {
 
     // Hourly pet happiness & hunger decay
     cron.schedule('0 * * * *', () => {
-      PetManager.decayAllPets();
+      PetManager.decayAllPets().catch((err) =>
+        console.error('[Cron] Pet decay sweep failed:', err)
+      );
     });
 
     // Flash sale check: every 30 minutes
