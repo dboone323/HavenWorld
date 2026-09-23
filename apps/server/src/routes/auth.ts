@@ -127,6 +127,21 @@ router.post('/register', async (req: Request, res: Response) => {
   const passwordHash = await bcrypt.hash(password, 12);
   const emailVerifyToken = crypto.randomBytes(32).toString('hex');
 
+  // Email verification is only enforced when a provider can actually deliver it.
+  // The send below is already guarded by RESEND_API_KEY/EMAIL_FROM; without that
+  // guard on the gate itself, every account created on a server without Resend
+  // stays emailVerified=false forever and /login answers 403 EMAIL_NOT_VERIFIED.
+  // Alpha runs without an email provider, so such accounts are verified on
+  // creation. Configuring RESEND_API_KEY + EMAIL_FROM restores the original
+  // "verify before you can log in" flow automatically.
+  const emailDeliveryConfigured = Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+  const autoVerify = !emailDeliveryConfigured;
+  if (autoVerify) {
+    console.warn(
+      '[Auth] RESEND_API_KEY/EMAIL_FROM not set - email verification is disabled; new accounts are auto-verified.'
+    );
+  }
+
   // 6. Create user, avatar, personal room in a transaction
   const user = await prisma.$transaction(async (tx) => {
     const newUser = await tx.user.create({
@@ -134,7 +149,8 @@ router.post('/register', async (req: Request, res: Response) => {
         username,
         email: email.toLowerCase(),
         passwordHash,
-        emailVerifyToken,
+        emailVerifyToken: autoVerify ? null : emailVerifyToken,
+        emailVerified: autoVerify,
       },
     });
 
@@ -211,7 +227,10 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 
   return res.status(201).json({
-    message: 'Account created! Check your email to verify before logging in.',
+    message: autoVerify
+      ? 'Account created! Email verification is disabled on this server, so you can log in right away.'
+      : 'Account created! Check your email to verify before logging in.',
+    emailVerificationRequired: !autoVerify,
   });
 });
 
