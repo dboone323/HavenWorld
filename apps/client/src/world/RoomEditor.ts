@@ -1,6 +1,6 @@
 import * as BABYLON from '@babylonjs/core';
 import { GridMaterial } from '@babylonjs/materials';
-import type { FurnitureManager, PlacedFurniture } from './FurnitureManager';
+import { FurnitureManager, type PlacedFurniture } from './FurnitureManager';
 import { SERVER_URL } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from '../ui/ToastNotification';
@@ -41,12 +41,20 @@ export class RoomEditor {
 
   // Tracks changes in this edit session
   private pendingChanges: Map<string, FurniturePlacement> = new Map();
+  private onModeChange?: (inEditMode: boolean) => void;
 
-  constructor(scene: BABYLON.Scene, furnitureManager: FurnitureManager, roomId: string, floorY = 0) {
+  constructor(
+    scene: BABYLON.Scene,
+    furnitureManager: FurnitureManager,
+    roomId: string,
+    floorY = 0,
+    onModeChange?: (inEditMode: boolean) => void
+  ) {
     this.scene = scene;
     this.furnitureManager = furnitureManager;
     this.roomId = roomId;
     this.floorY = floorY;
+    this.onModeChange = onModeChange;
   }
 
   // ─── Enter / Exit Edit Mode ───────────────────────────────────────────────
@@ -57,6 +65,7 @@ export class RoomEditor {
     this.showGrid();
     this.attachPointerObserver();
     this.buildInventoryPanel();
+    this.onModeChange?.(true);
 
     this.keydownListener = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -79,6 +88,7 @@ export class RoomEditor {
     this.removeContextMenu();
     this.removeSelectedToolbar();
     this.selectedFurniture = null;
+    this.onModeChange?.(false);
 
     if (this.keydownListener) {
       window.removeEventListener('keydown', this.keydownListener);
@@ -145,8 +155,27 @@ export class RoomEditor {
         mesh.material = ghostMat;
         mesh.isPickable = false;
       });
-    } catch (err) {
-      console.error('[RoomEditor] Error creating ghost mesh:', err);
+    } catch {
+      console.warn(`[RoomEditor] 3D GLB model not found for ${itemId}. Using procedural ghost preview.`);
+      const dims = FurnitureManager.getProceduralDimensions(itemId);
+      const ghostBox = BABYLON.MeshBuilder.CreateBox('ghost_placement', dims, this.scene);
+      const ghostMat = new BABYLON.StandardMaterial('ghost_mat_fallback', this.scene);
+      ghostMat.diffuseColor = new BABYLON.Color3(0.3, 0.5, 1.0);
+      ghostMat.alpha = 0.55;
+      ghostMat.backFaceCulling = false;
+      ghostBox.material = ghostMat;
+      ghostBox.isPickable = false;
+      ghostBox.rotation.y = (this.currentRotation * Math.PI) / 180;
+      this.ghostMesh = ghostBox;
+    }
+
+    if (this.ghostMesh) {
+      const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY);
+      if (pick?.hit && pick.pickedPoint) {
+        this.ghostMesh.position = this.snapToGrid(pick.pickedPoint);
+      } else {
+        this.ghostMesh.position = new BABYLON.Vector3(0, this.floorY + 0.4, 0);
+      }
     }
   }
 
@@ -699,9 +728,28 @@ export class RoomEditor {
             font-size: 10pt;
             transition: border-color 150ms;
           `;
-          btn.addEventListener('mouseenter', () => (btn.style.borderColor = '#4ecdc4'));
-          btn.addEventListener('mouseleave', () => (btn.style.borderColor = '#2a2a4a'));
-          btn.addEventListener('click', () => this.startPlacement(item.itemId, item.assetUrl));
+          btn.addEventListener('mouseenter', () => {
+            if (!btn.classList.contains('active-item')) btn.style.borderColor = '#4ecdc4';
+          });
+          btn.addEventListener('mouseleave', () => {
+            if (!btn.classList.contains('active-item')) btn.style.borderColor = '#2a2a4a';
+          });
+          btn.addEventListener('click', () => {
+            list.querySelectorAll('.editor-inventory-item-btn').forEach((b) => {
+              (b as HTMLElement).style.borderColor = '#2a2a4a';
+              (b as HTMLElement).style.background = '#0f0f23';
+              b.classList.remove('active-item');
+            });
+            btn.classList.add('active-item');
+            btn.style.borderColor = '#4ecdc4';
+            btn.style.background = 'rgba(78, 205, 196, 0.2)';
+            showToast({
+              icon: '🛋️',
+              title: `Placing ${item.name}`,
+              subtitle: 'Click anywhere on the room floor to place. Press [R] to rotate.',
+            });
+            this.startPlacement(item.itemId, item.assetUrl);
+          });
           list.appendChild(btn);
         });
       } catch (err) {

@@ -28,6 +28,12 @@ export class InputController {
     this._pointerObserver = this._scene.onPointerObservable.add((pointerInfo) => {
       if (!this._enabled) return;
 
+      // Never move avatar while in Room Decorator / Edit mode
+      const editor = (window as unknown as Record<string, unknown>).__havenRoomEditor as
+        | { inEditMode?: boolean }
+        | undefined;
+      if (editor?.inEditMode) return;
+
       // React to pointer up or tap release
       if (pointerInfo.type === PointerEventTypes.POINTERUP || pointerInfo.type === PointerEventTypes.POINTERTAP) {
         const evt = pointerInfo.event as PointerEvent;

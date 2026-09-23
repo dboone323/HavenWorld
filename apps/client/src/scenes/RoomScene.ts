@@ -228,23 +228,14 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   const btnDecorate = document.getElementById('btn-decorate');
   let roomEditor: RoomEditor | null = null;
+  let inputController: InputController | null = null;
 
   const toggleDecorate = () => {
     if (!roomEditor) return;
     if (roomEditor.inEditMode) {
       roomEditor.exitEditMode();
-      if (btnDecorate) {
-        btnDecorate.innerHTML = '<span class="dock-icon">🛋️</span>';
-        btnDecorate.setAttribute('data-tooltip', 'Decorate Loft');
-        btnDecorate.classList.remove('btn--teal');
-      }
     } else {
       roomEditor.enterEditMode();
-      if (btnDecorate) {
-        btnDecorate.innerHTML = '<span class="dock-icon">💾</span>';
-        btnDecorate.setAttribute('data-tooltip', 'Finish Decorating');
-        btnDecorate.classList.add('btn--teal');
-      }
     }
   };
 
@@ -253,7 +244,20 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     btnDecorate.innerHTML = '<span class="dock-icon">🛋️</span>';
     btnDecorate.setAttribute('data-tooltip', 'Decorate Loft');
     btnDecorate.classList.remove('btn--teal');
-    roomEditor = new RoomEditor(scene, furnitureManager, roomId, 0);
+    roomEditor = new RoomEditor(scene, furnitureManager, roomId, 0, (inEditMode) => {
+      inputController?.setEnabled(!inEditMode);
+      if (btnDecorate) {
+        if (inEditMode) {
+          btnDecorate.innerHTML = '<span class="dock-icon">💾</span>';
+          btnDecorate.setAttribute('data-tooltip', 'Finish Decorating');
+          btnDecorate.classList.add('btn--teal');
+        } else {
+          btnDecorate.innerHTML = '<span class="dock-icon">🛋️</span>';
+          btnDecorate.setAttribute('data-tooltip', 'Decorate Loft');
+          btnDecorate.classList.remove('btn--teal');
+        }
+      }
+    });
     (window as unknown as Record<string, unknown>).__havenRoomEditor = roomEditor;
     btnDecorate.addEventListener('click', toggleDecorate);
   } else if (btnDecorate) {
@@ -371,7 +375,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   scene.registerBeforeRender(footstepCallback);
 
   // ── Input & Chat Controllers ──────────────────────────────────────────────
-  const inputController = new InputController(scene, avatarController, camera);
+  inputController = new InputController(scene, avatarController, camera);
   const chatOverlay = new ChatOverlay(null, (msg: ChatMessage) => {
     audioEngine.playChatMessage();
     const pid = msg.playerId || msg.senderId;

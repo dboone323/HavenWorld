@@ -67,4 +67,70 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
     await roomPage.btnCloseEditor.click();
     await expect(roomPage.roomEditorInventory).not.toBeVisible();
   });
+
+  test('Placing item from decorator HUD does not make the avatar walk', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+    const roomPage = new RoomPage(page);
+
+    await loginPage.goto();
+    await loginPage.login(ownerUser.email, ownerUser.password);
+    await roomPage.waitForRoomReady();
+
+    // 1. Record avatar position before decorating
+    const posBefore = await roomPage.getAvatarState();
+    expect(posBefore).not.toBeNull();
+    expect(posBefore!.isMoving).toBe(false);
+
+    // 2. Open decorator mode
+    await roomPage.btnDecorate.click();
+    await expect(roomPage.roomEditorInventory).toBeVisible({ timeout: 5_000 });
+
+    // 3. Click floor while in edit mode (without item selected)
+    await roomPage.clickCanvas(480, 360);
+    await page.waitForTimeout(400);
+
+    // Avatar must remain unmoved
+    const posDuringDecorate = await roomPage.getAvatarState();
+    expect(posDuringDecorate!.x).toBe(posBefore!.x);
+    expect(posDuringDecorate!.z).toBe(posBefore!.z);
+    expect(posDuringDecorate!.isMoving).toBe(false);
+
+    // 4. Start placing an item from ghost
+    await page.evaluate(() => {
+      const editor = (window as any).__havenRoomEditor;
+      if (editor) {
+        editor.startPlacement('furniture-chair-oak-01');
+      }
+    });
+
+    // Click canvas to place the furniture
+    await roomPage.clickCanvas(480, 360);
+    await page.waitForTimeout(400);
+
+    // Avatar must STILL remain in place (never walk!)
+    const posAfterPlacement = await roomPage.getAvatarState();
+    expect(posAfterPlacement!.x).toBe(posBefore!.x);
+    expect(posAfterPlacement!.z).toBe(posBefore!.z);
+    expect(posAfterPlacement!.isMoving).toBe(false);
+
+    // 5. Exit decorator mode
+    await roomPage.btnCloseEditor.click();
+    await expect(roomPage.roomEditorInventory).not.toBeVisible();
+
+    // 6. Regular canvas click outside decorator mode should now move the avatar normally
+    await roomPage.clickCanvas(480, 360);
+    await page.waitForFunction(
+      (startX) => {
+        const fn = (window as any).__havenGetAvatarPosition;
+        const state = typeof fn === 'function' ? fn() : null;
+        return state && (state.isMoving === true || Math.abs(state.x - startX) > 0.05);
+      },
+      posBefore!.x,
+      { timeout: 5_000 }
+    );
+    await roomPage.waitForAvatarArrival();
+    const finalPos = await roomPage.getAvatarState();
+    expect(finalPos!.isMoving).toBe(false);
+    expect(Math.hypot(finalPos!.x - posBefore!.x, finalPos!.z - posBefore!.z)).toBeGreaterThan(0.2);
+  });
 });
