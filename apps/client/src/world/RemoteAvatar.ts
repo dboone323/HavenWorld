@@ -69,8 +69,11 @@ export class RemoteAvatar {
     head.position.y = 1.95;
 
     const mat = new StandardMaterial(`remote_mat_${this.userId}`, this._scene);
-    if (avatarData?.skinColor) {
-      mat.diffuseColor = Color3.FromHexString(avatarData.skinColor);
+    // Canonical field is skinTone (the server sends it from the Avatar DB row);
+    // skinColor is only a legacy fallback for older payloads.
+    const skinHex = avatarData?.skinTone || avatarData?.skinColor;
+    if (skinHex) {
+      mat.diffuseColor = Color3.FromHexString(skinHex);
     } else {
       // Deterministic pastel color per user
       const hue = this._getHueFromId(this.userId);
@@ -189,7 +192,7 @@ export class RemoteAvatar {
   }
 
   public applyCustomization(data: AvatarData): void {
-    const skinHex = (data.skinTone as string) || (data.skinColor as string);
+    const skinHex = data.skinTone || data.skinColor;
     if (skinHex && this._meshes.length > 0) {
       const mat = this._meshes[0].material as StandardMaterial;
       if (mat) {
