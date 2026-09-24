@@ -168,18 +168,17 @@ router.post('/register', async (req: Request, res: Response) => {
   const passwordHash = await bcrypt.hash(password, 12);
   const emailVerifyToken = crypto.randomBytes(32).toString('hex');
 
-  // Email verification is only enforced when a provider can actually deliver it.
-  // The send below is already guarded by RESEND_API_KEY/EMAIL_FROM; without that
-  // guard on the gate itself, every account created on a server without Resend
-  // stays emailVerified=false forever and /login answers 403 EMAIL_NOT_VERIFIED.
-  // Alpha runs without an email provider, so such accounts are verified on
-  // creation. Configuring RESEND_API_KEY + EMAIL_FROM restores the original
-  // "verify before you can log in" flow automatically.
+  // Alpha accounts must be immediately usable: an invite-gated test account
+  // cannot be expected to complete an email round-trip before entering the
+  // world. Outside alpha, enforce verification only when delivery is configured.
+  const alphaInviteOnly = process.env.ALPHA_INVITE_ONLY === 'true';
   const emailDeliveryConfigured = Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
-  const autoVerify = !emailDeliveryConfigured;
+  const autoVerify = alphaInviteOnly || !emailDeliveryConfigured;
   if (autoVerify) {
     console.warn(
-      '[Auth] RESEND_API_KEY/EMAIL_FROM not set - email verification is disabled; new accounts are auto-verified.'
+      alphaInviteOnly
+        ? '[Auth] Alpha invite-only mode is active; new accounts are auto-verified.'
+        : '[Auth] RESEND_API_KEY/EMAIL_FROM not set - email verification is disabled; new accounts are auto-verified.'
     );
   }
 

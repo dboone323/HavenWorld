@@ -31,7 +31,9 @@ describe('Auth Integration — Full HTTP Flow', () => {
 
     const dbUser = await prisma.user.findUnique({ where: { email: 'alice@test.com' } });
     expect(dbUser).not.toBeNull();
-    expect(dbUser?.emailVerified).toBe(false);
+    expect(dbUser?.emailVerified).toBe(true);
+    expect(res.body.emailVerificationRequired).toBe(false);
+    expect(res.body).toHaveProperty('accessToken');
   });
 
   it('should return 400 or 403 when registering with an already-used invite code', async () => {
