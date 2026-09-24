@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/generate_assets.mjs && node scripts/generate_icons.mjs && node scripts/copy-havok.cjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/stamp-service-worker.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:client": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",

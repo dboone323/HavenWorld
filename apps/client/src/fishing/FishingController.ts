@@ -13,6 +13,8 @@ const FISHING_HUD_Z_INDEX = 12000;
 
 /** If the server never answers our cast within this long, fail loudly. */
 const BITE_TIMEOUT_MS = 15_000;
+/** Keep slider traffic below the socket rate limiter while preserving responsiveness. */
+const REEL_EMIT_INTERVAL_MS = 100;
 
 export class FishingController {
   private scene: BABYLON.Scene;
@@ -28,6 +30,9 @@ export class FishingController {
   private uiAbort: AbortController | null = null;
   /** Fires when the server never responds to a cast. */
   private biteTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastReelEmitAt = 0;
+  private pendingReelValue: number | null = null;
+  private reelEmitTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(scene: BABYLON.Scene) {
     this.scene = scene;
@@ -103,8 +108,7 @@ export class FishingController {
     this.reelSlider?.addEventListener(
       'input',
       () => {
-        const val = parseFloat(this.reelSlider!.value) / 100;
-        socketService.emit(SOCKET_EVENTS.REEL_POSITION, { value: val });
+        this.queueReelPosition(parseFloat(this.reelSlider!.value) / 100);
       },
       { signal }
     );
@@ -114,7 +118,41 @@ export class FishingController {
       ?.addEventListener('click', () => this.cancelFishing(), { signal });
   }
 
+  private queueReelPosition(value: number): void {
+    if (!Number.isFinite(value)) return;
+    this.pendingReelValue = Math.min(1, Math.max(0, value));
+
+    const elapsed = Date.now() - this.lastReelEmitAt;
+    if (elapsed >= REEL_EMIT_INTERVAL_MS) {
+      this.flushReelPosition();
+      return;
+    }
+
+    if (this.reelEmitTimer) return;
+    this.reelEmitTimer = setTimeout(() => {
+      this.reelEmitTimer = null;
+      this.flushReelPosition();
+    }, REEL_EMIT_INTERVAL_MS - elapsed);
+  }
+
+  private flushReelPosition(): void {
+    if (this.pendingReelValue === null) return;
+    const value = this.pendingReelValue;
+    this.pendingReelValue = null;
+    this.lastReelEmitAt = Date.now();
+    socketService.emit(SOCKET_EVENTS.REEL_POSITION, { value });
+  }
+
+  private clearReelTimer(): void {
+    if (this.reelEmitTimer) {
+      clearTimeout(this.reelEmitTimer);
+      this.reelEmitTimer = null;
+    }
+    this.pendingReelValue = null;
+  }
+
   private destroyUI(): void {
+    this.clearReelTimer();
     this.uiAbort?.abort();
     this.uiAbort = null;
     this.panel?.remove();

@@ -1,5 +1,17 @@
 import { test, expect } from '@playwright/test';
 
+const PROD_URL = process.env.E2E_LIVE_URL ?? 'https://havenworld-game.pages.dev';
+const LIVE_EMAIL = process.env.E2E_LIVE_EMAIL;
+const LIVE_PASSWORD = process.env.E2E_LIVE_PASSWORD;
+
+function requireLiveCredentials(): { email: string; password: string } {
+  test.skip(
+    !LIVE_EMAIL || !LIVE_PASSWORD,
+    'Set E2E_LIVE_EMAIL and E2E_LIVE_PASSWORD to run the production audit'
+  );
+  return { email: LIVE_EMAIL!, password: LIVE_PASSWORD! };
+}
+
 test.describe('Live Production Thorough Functional & UI Audit', () => {
   test('Complete interactive walkthrough of HavenWorld live production', async ({ page }) => {
     test.setTimeout(120000);
@@ -16,8 +28,8 @@ test.describe('Live Production Thorough Functional & UI Audit', () => {
       console.error(`[PAGE UNCAUGHT ERROR] ${err.message}`);
     });
 
-    console.log('1. Navigating to live production: https://havenworld-game.pages.dev');
-    await page.goto('https://havenworld-game.pages.dev', { waitUntil: 'networkidle' });
+    console.log('1. Navigating to live production:', PROD_URL);
+    await page.goto(PROD_URL, { waitUntil: 'networkidle' });
 
     // Verify login panel visible
     await expect(page.locator('#login-panel')).toBeVisible({ timeout: 15000 });
@@ -26,10 +38,11 @@ test.describe('Live Production Thorough Functional & UI Audit', () => {
     // Take screenshot of login panel
     await page.screenshot({ path: 'test-results/audit-1-login.png' });
 
-    // Fill credentials
-    console.log('2. Submitting login credentials for testalpha@havenworld.dev...');
-    await page.fill('#login-email', 'testalpha@havenworld.dev');
-    await page.fill('#login-password', 'HavenAlpha2026!');
+    // Fill credentials supplied through the environment (never committed).
+    const credentials = requireLiveCredentials();
+    console.log(`2. Submitting production login credentials for ${credentials.email}...`);
+    await page.fill('#login-email', credentials.email);
+    await page.fill('#login-password', credentials.password);
     await page.click('#login-submit');
 
     // Wait for room scene to load

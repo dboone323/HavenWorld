@@ -1,6 +1,16 @@
 import { test, expect } from '@playwright/test';
 
-const PROD_URL = 'https://havenworld-game.pages.dev';
+const PROD_URL = process.env.E2E_LIVE_URL ?? 'https://havenworld-game.pages.dev';
+const LIVE_EMAIL = process.env.E2E_LIVE_EMAIL;
+const LIVE_PASSWORD = process.env.E2E_LIVE_PASSWORD;
+
+function requireLiveCredentials(): { email: string; password: string } {
+  test.skip(
+    !LIVE_EMAIL || !LIVE_PASSWORD,
+    'Set E2E_LIVE_EMAIL and E2E_LIVE_PASSWORD to run the production workflow'
+  );
+  return { email: LIVE_EMAIL!, password: LIVE_PASSWORD! };
+}
 
 test.describe('Deep Real E2E Workflow Tests - Resolution, Click-to-Move, Decorator & Furniture', () => {
   test.use({
@@ -32,8 +42,9 @@ test.describe('Deep Real E2E Workflow Tests - Resolution, Click-to-Move, Decorat
     const loginPanel = page.locator('#login-panel');
     await expect(loginPanel).toBeVisible({ timeout: 15_000 });
 
-    await page.locator('#login-email').fill('testalpha@havenworld.dev');
-    await page.locator('#login-password').fill('HavenAlpha2026!');
+    const credentials = requireLiveCredentials();
+    await page.locator('#login-email').fill(credentials.email);
+    await page.locator('#login-password').fill(credentials.password);
     await page.locator('#login-submit').click();
 
     // Verify login panel disappears and game-container is active

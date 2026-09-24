@@ -1,7 +1,17 @@
 import { test, expect } from '@playwright/test';
 
-const PROD_URL = 'https://havenworld-game.pages.dev';
-const BACKEND_URL = 'https://147-224-184-148.nip.io';
+const PROD_URL = process.env.E2E_LIVE_URL ?? 'https://havenworld-game.pages.dev';
+const BACKEND_URL = process.env.E2E_LIVE_API_URL ?? 'https://147-224-184-148.nip.io';
+const LIVE_EMAIL = process.env.E2E_LIVE_EMAIL;
+const LIVE_PASSWORD = process.env.E2E_LIVE_PASSWORD;
+
+function requireLiveCredentials(): { email: string; password: string } {
+  test.skip(
+    !LIVE_EMAIL || !LIVE_PASSWORD,
+    'Set E2E_LIVE_EMAIL and E2E_LIVE_PASSWORD to run production login tests'
+  );
+  return { email: LIVE_EMAIL!, password: LIVE_PASSWORD! };
+}
 
 test.describe('Live Production E2E Tests - HavenWorld Web Client', () => {
   test.beforeEach(async ({ page }) => {
@@ -47,9 +57,10 @@ test.describe('Live Production E2E Tests - HavenWorld Web Client', () => {
       }
     });
 
-    // 3. Fill in live credentials
-    await page.locator('#login-email').fill('testalpha@havenworld.dev');
-    await page.locator('#login-password').fill('HavenAlpha2026!');
+    // 3. Fill in live credentials supplied through the environment (never committed).
+    const credentials = requireLiveCredentials();
+    await page.locator('#login-email').fill(credentials.email);
+    await page.locator('#login-password').fill(credentials.password);
 
     // 4. Submit form
     console.log('Submitting login form...');
@@ -60,7 +71,7 @@ test.describe('Live Production E2E Tests - HavenWorld Web Client', () => {
     expect(loginRequestUrl).toContain(BACKEND_URL);
     expect(loginRequestUrl).not.toContain('pages.dev');
     expect(loginResponseBody).toHaveProperty('accessToken');
-    expect(loginResponseBody.user.username).toBe('TestTester');
+    expect(loginResponseBody.user.username).toBeTruthy();
 
     console.log(`✓ Login succeeded! Access token received for user: ${loginResponseBody.user.username}`);
 
@@ -91,7 +102,8 @@ test.describe('Live Production E2E Tests - HavenWorld Web Client', () => {
       }
     });
 
-    await page.locator('#login-email').fill('testalpha@havenworld.dev');
+    const credentials = requireLiveCredentials();
+    await page.locator('#login-email').fill(credentials.email);
     await page.locator('#login-password').fill('CompletelyWrongPassword123!');
     await page.locator('#login-submit').click();
 

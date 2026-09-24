@@ -58,11 +58,15 @@ export class InstallPrompt {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
 
-      // Activate a new worker immediately on the next visit after a deploy.
+      // The installing worker is the one that must receive SKIP_WAITING. Looking
+      // at registration.waiting from inside its own statechange callback is racy
+      // and can leave an installed PWA controlled by the previous deploy.
       registration.addEventListener('updatefound', () => {
-        registration.installing?.addEventListener('statechange', () => {
-          if (registration.installing?.state === 'installed' && navigator.serviceWorker.controller) {
-            registration.waiting?.postMessage('SKIP_WAITING');
+        const installingWorker = registration.installing;
+        if (!installingWorker) return;
+        installingWorker.addEventListener('statechange', () => {
+          if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            installingWorker.postMessage('SKIP_WAITING');
           }
         });
       });
