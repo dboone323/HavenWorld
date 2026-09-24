@@ -73,6 +73,7 @@ export class AvatarController {
       this.rootMesh = result.meshes[0];
       this.rootMesh.name = `avatar_local_${this.user.id}`;
       this.rootMesh.position = spawnPosition.clone();
+      this.rootMesh.rotationQuaternion = null; // Enable Euler rotation.y control
 
       // Collect morph target managers from all sub-meshes
       for (const mesh of result.meshes) {
@@ -106,6 +107,7 @@ export class AvatarController {
       this.scene
     );
     body.position = spawnPosition.clone();
+    body.rotationQuaternion = null;
 
     const head = BABYLON.MeshBuilder.CreateSphere(
       'avatar_head',
@@ -124,24 +126,55 @@ export class AvatarController {
     this.rootMesh = body;
   }
 
-  moveTo(target: BABYLON.Vector3): void {
+  private onArrivalCallback: (() => void) | null = null;
+
+  public lookAt(targetPoint: BABYLON.Vector3): void {
+    if (!this.rootMesh) return;
+    const dirX = targetPoint.x - this.rootMesh.position.x;
+    const dirZ = targetPoint.z - this.rootMesh.position.z;
+    if (Math.hypot(dirX, dirZ) > 0.001) {
+      this.rootMesh.rotationQuaternion = null;
+      this.rootMesh.rotation.y = Math.atan2(dirX, dirZ);
+    }
+  }
+
+  public faceDirection(dir: BABYLON.Vector3): void {
+    if (!this.rootMesh) return;
+    if (Math.hypot(dir.x, dir.z) > 0.001) {
+      this.rootMesh.rotationQuaternion = null;
+      this.rootMesh.rotation.y = Math.atan2(dir.x, dir.z);
+    }
+  }
+
+  moveTo(target: BABYLON.Vector3, onArrival?: () => void): void {
     if (this.currentAnimName === 'sit' && this.rootMesh) {
       this.rootMesh.position.y = 0;
+      this.currentAnimName = 'idle';
     }
     this.targetPosition = new BABYLON.Vector3(target.x, 0, target.z);
+    this.onArrivalCallback = onArrival || null;
     this.isMoving = true;
-    if (this.rootMesh) {
-      const dir = this.targetPosition.subtract(this.rootMesh.position);
-      dir.y = 0;
-      if (dir.lengthSquared() > 0.0001) {
-        this.rootMesh.rotation.y = Math.atan2(dir.x, dir.z);
-      }
-    }
+    this.lookAt(this.targetPosition);
     this.crossFadeTo('walk');
+  }
+
+  public sitOn(seatMesh: BABYLON.AbstractMesh): void {
+    if (!this.rootMesh) return;
+    seatMesh.computeWorldMatrix(true);
+    const seatPos = seatMesh.getAbsolutePosition();
+    this.playSocialAnim('sit');
+    this.rootMesh.position.x = seatPos.x;
+    this.rootMesh.position.z = seatPos.z;
+    this.rootMesh.position.y = (seatPos.y || 0) + 0.12;
+    this.rootMesh.rotationQuaternion = null;
+    if (seatMesh.rotation) {
+      this.rootMesh.rotation.y = seatMesh.rotation.y;
+    }
   }
 
   playSocialAnim(name: 'sit' | 'wave' | 'dance'): void {
     this.targetPosition = null;
+    this.onArrivalCallback = null;
     this.isMoving = false;
     this.currentAnimName = name;
     if (name === 'sit' && this.rootMesh) {
@@ -488,11 +521,18 @@ export class AvatarController {
         z: this.rootMesh.position.z,
         rotY: this.rootMesh.rotation.y,
       });
+
+      if (this.onArrivalCallback) {
+        const cb = this.onArrivalCallback;
+        this.onArrivalCallback = null;
+        cb();
+      }
       return;
     }
 
     // Rotate toward target
     const angle = Math.atan2(dir.x, dir.z);
+    this.rootMesh.rotationQuaternion = null;
     this.rootMesh.rotation.y = angle;
 
     // Move toward target

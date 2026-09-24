@@ -96,16 +96,23 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
     expect(posDuringDecorate!.isMoving).toBe(false);
 
     // 4. Start placing an item from ghost
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const editor = (window as any).__havenRoomEditor;
       if (editor) {
-        editor.startPlacement('furniture-chair-oak-01');
+        await editor.startPlacement('furniture-chair-oak-01');
       }
     });
 
     // Click canvas to place the furniture
     await roomPage.clickCanvas(480, 360);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(600);
+
+    // Verify item was placed into the furniture manager
+    const placedCount = await page.evaluate(() => {
+      const editor = (window as any).__havenRoomEditor;
+      return editor?.furnitureManager?.allPlaced?.size ?? 0;
+    });
+    expect(placedCount).toBeGreaterThan(0);
 
     // Avatar must STILL remain in place (never walk!)
     const posAfterPlacement = await roomPage.getAvatarState();

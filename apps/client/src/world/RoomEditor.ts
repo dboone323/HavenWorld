@@ -1,7 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import { GridMaterial } from '@babylonjs/materials';
 import { FurnitureManager, type PlacedFurniture } from './FurnitureManager';
-import { SERVER_URL } from '../config';
+import { SERVER_URL, assetUrl } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from '../ui/ToastNotification';
 
@@ -22,7 +22,7 @@ export interface FurniturePlacement {
 
 export class RoomEditor {
   private scene: BABYLON.Scene;
-  private furnitureManager: FurnitureManager;
+  public furnitureManager: FurnitureManager;
   private roomId: string;
   private floorY = 0;
   private isEditing = false;
@@ -38,6 +38,9 @@ export class RoomEditor {
 
   private currentRotation = 0; // 0, 90, 180, 270 degrees
   private keydownListener: ((e: KeyboardEvent) => void) | null = null;
+
+  private isPlacing = false;
+  private lastPointerActionTime = 0;
 
   // Tracks changes in this edit session
   private pendingChanges: Map<string, FurniturePlacement> = new Map();
@@ -110,7 +113,8 @@ export class RoomEditor {
       this.scene
     );
     this.gridMesh.position.y = this.floorY + 0.002; // slightly above floor
-    this.gridMesh.isPickable = false;
+    this.gridMesh.isPickable = true;
+    this.gridMesh.metadata = { walkable: true, isEditorGrid: true };
 
     const gridMat = new GridMaterial('editor_grid_mat', this.scene);
     gridMat.majorUnitFrequency = 5;
@@ -130,12 +134,15 @@ export class RoomEditor {
   }
 
   // ─── Ghost Mesh (Placement Preview) ───────────────────────────────────────
-  async startPlacement(itemId: string, assetUrl?: string): Promise<void> {
+  async startPlacement(itemId: string, assetUrlProp?: string): Promise<void> {
     this.clearGhostMesh();
     this.ghostItemId = itemId;
-    this.ghostAssetUrl = assetUrl || `/assets/furniture/${itemId}.glb`;
+    this.ghostAssetUrl = assetUrlProp || `/assets/furniture/${itemId}.glb`;
 
-    const pathParts = this.ghostAssetUrl.split('/');
+    const fullAssetUrl = this.ghostAssetUrl.startsWith('/')
+      ? assetUrl(this.ghostAssetUrl)
+      : assetUrl(`/assets/furniture/${itemId}.glb`);
+    const pathParts = fullAssetUrl.split('/');
     const fileName = pathParts.pop()!;
     const folder = pathParts.join('/') + '/';
 
@@ -219,10 +226,18 @@ export class RoomEditor {
           this.onPointerMove();
           break;
         case BABYLON.PointerEventTypes.POINTERDOWN:
+        case BABYLON.PointerEventTypes.POINTERTAP: {
           const evt = pointerInfo.event as PointerEvent;
-          if (evt.button === 0) this.onPointerDown();
-          if (evt.button === 2) this.onRightClick(evt);
+          const isPrimary = evt.button === 0 || evt.button === undefined;
+          const isRight = evt.button === 2;
+          const now = Date.now();
+          if (now - this.lastPointerActionTime < 120) return;
+          this.lastPointerActionTime = now;
+
+          if (isPrimary) this.onPointerDown();
+          if (isRight) this.onRightClick(evt);
           break;
+        }
       }
     });
   }
@@ -279,6 +294,7 @@ export class RoomEditor {
   private onPointerDown(): void {
     this.removeContextMenu();
     if (this.ghostMesh && this.ghostItemId && this.ghostAssetUrl) {
+      this.onPointerMove();
       this.placeFurnitureFromGhost();
       return;
     }
@@ -338,45 +354,54 @@ export class RoomEditor {
 
   // ─── Furniture Placement ──────────────────────────────────────────────────
   private async placeFurnitureFromGhost(): Promise<void> {
-    if (!this.ghostMesh || !this.ghostItemId || !this.ghostAssetUrl) return;
-    const pos = this.ghostMesh.position.clone();
-    const rotRad = this.ghostMesh.rotation.y;
-    const tempId = `new_${crypto.randomUUID()}`;
+    if (this.isPlacing || !this.ghostMesh || !this.ghostItemId || !this.ghostAssetUrl) return;
+    this.isPlacing = true;
+    try {
+      const pos = this.ghostMesh.position.clone();
+      const rotRad = this.ghostMesh.rotation.y;
+      const uuidStr =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const tempId = `new_${uuidStr}`;
 
-    const placement: FurniturePlacement = {
-      id: tempId,
-      itemId: this.ghostItemId,
-      assetUrl: this.ghostAssetUrl,
-      x: pos.x,
-      y: pos.y,
-      z: pos.z,
-      rotY: rotRad,
-      scaleX: 1,
-      scaleY: 1,
-      scaleZ: 1,
-      isNew: true,
-      isRemoved: false,
-    };
+      const placement: FurniturePlacement = {
+        id: tempId,
+        itemId: this.ghostItemId,
+        assetUrl: this.ghostAssetUrl,
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        rotY: rotRad,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        isNew: true,
+        isRemoved: false,
+      };
 
-    this.pendingChanges.set(tempId, placement);
+      this.pendingChanges.set(tempId, placement);
 
-    const placedItem = await this.furnitureManager.placeItem({
-      id: tempId,
-      itemId: placement.itemId,
-      assetUrl: placement.assetUrl!,
-      placedById: 'local',
-      x: placement.x,
-      y: placement.y,
-      z: placement.z,
-      rotY: placement.rotY,
-      scaleX: placement.scaleX,
-      scaleY: placement.scaleY,
-      scaleZ: placement.scaleZ,
-    });
+      const placedItem = await this.furnitureManager.placeItem({
+        id: tempId,
+        itemId: placement.itemId,
+        assetUrl: placement.assetUrl!,
+        placedById: 'local',
+        x: placement.x,
+        y: placement.y,
+        z: placement.z,
+        rotY: placement.rotY,
+        scaleX: placement.scaleX,
+        scaleY: placement.scaleY,
+        scaleZ: placement.scaleZ,
+      });
 
-    this.clearGhostMesh();
-    if (placedItem) {
-      this.showSelectedToolbar(placedItem);
+      this.clearGhostMesh();
+      if (placedItem) {
+        this.showSelectedToolbar(placedItem);
+      }
+    } finally {
+      this.isPlacing = false;
     }
   }
 

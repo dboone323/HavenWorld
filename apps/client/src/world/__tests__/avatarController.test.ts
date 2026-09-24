@@ -226,4 +226,44 @@ describe('AvatarController (Babylon.js NullEngine)', () => {
     expect(scene.getMeshByName('avatar_test-user-1_hair')?.isEnabled()).toBe(false);
     expect(scene.getMeshByName('avatar_test-user-1_pants')?.isEnabled()).toBe(false);
   });
+
+  it('(l) lookAt(point) immediately orients avatar in XZ plane toward the target', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+    // Click toward +X (10, 0, 0)
+    controller.lookAt(new Vector3(10, 0, 0));
+    expect(controller.rootMesh?.rotation.y).toBeCloseTo(Math.PI / 2, 2);
+
+    // Click toward -Z (0, 0, -10)
+    controller.lookAt(new Vector3(0, 0, -10));
+    expect(Math.abs(controller.rootMesh?.rotation.y ?? 0)).toBeCloseTo(Math.PI, 2);
+  });
+
+  it('(m) moveTo(target, onArrival) invokes onArrival callback only after arriving at threshold', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+    let arrived = false;
+    controller.moveTo(new Vector3(0.1, 0, 0), () => {
+      arrived = true;
+    });
+
+    expect(arrived).toBe(false);
+    // Distance is 0.1, which is within the 0.15 ARRIVAL_THRESHOLD
+    controller.updateMovement();
+    expect(arrived).toBe(true);
+    expect(controller.isMoving).toBe(false);
+  });
+
+  it('(n) sitOn(seatMesh) snaps to seat position, aligns rotation, and triggers sit animation', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+    const seat = MeshBuilder.CreateBox('sofa_seat', { width: 1, height: 0.5, depth: 1 }, scene);
+    seat.position.set(4, 0.2, 5);
+    seat.rotation.y = Math.PI / 4;
+
+    controller.sitOn(seat);
+
+    expect(controller.position.x).toBeCloseTo(4);
+    expect(controller.position.z).toBeCloseTo(5);
+    expect(controller.position.y).toBeCloseTo(0.2 + 0.12);
+    expect(controller.rootMesh?.rotation.y).toBeCloseTo(Math.PI / 4);
+    expect(controller.currentAnimName).toBe('sit');
+  });
 });

@@ -192,4 +192,43 @@ describe('FurnitureManager (Babylon.js NullEngine)', () => {
     expect(result?.id).toBe('f-pick');
     expect(result?.itemId).toBe('chair-01');
   });
+
+  it('(h) Hierarchical template with disabled root instantiates enabled, pickable child meshes', async () => {
+    // Simulate imported GLB hierarchy: root TransformNode/Mesh with children
+    const rootNode = new Mesh('__root__', scene);
+    const childGeometry = MeshBuilder.CreateBox('cushion', { size: 1 }, scene);
+    childGeometry.parent = rootNode;
+    rootNode.setEnabled(false); // GLB template hidden
+
+    manager.registerTemplate('sofa-complex', rootNode);
+
+    const placed = await manager.placeItem({
+      id: 'f-sofa-1',
+      itemId: 'sofa-complex',
+      x: 1,
+      y: 0,
+      z: 1,
+      rotY: 0,
+      placedById: currentUserId,
+    });
+
+    expect(placed).not.toBeNull();
+    expect(placed!.mesh.isEnabled()).toBe(true);
+
+    const children = placed!.mesh.getChildMeshes();
+    expect(children.length).toBeGreaterThan(0);
+    for (const child of children) {
+      expect(child.isEnabled()).toBe(true);
+      expect(child.isPickable).toBe(true);
+    }
+
+    // Raycast hit on child mesh must resolve to the placed furniture
+    const pickInfo = new PickingInfo();
+    pickInfo.hit = true;
+    pickInfo.pickedMesh = children[0];
+    const picked = manager.pickFurniture(pickInfo);
+    expect(picked).not.toBeNull();
+    expect(picked?.id).toBe('f-sofa-1');
+  });
 });
+

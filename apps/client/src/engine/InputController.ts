@@ -46,6 +46,9 @@ export class InputController {
         }
         if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) return;
 
+        // Always turn to face the clicked direction immediately
+        this._avatar.lookAt(pick.pickedPoint);
+
         const mesh = pick.pickedMesh;
         const isSeat =
           mesh.name.startsWith('sofa') ||
@@ -57,10 +60,10 @@ export class InputController {
 
         if (isSeat) {
           const seatPos = mesh.getAbsolutePosition();
-          this._avatar.moveTo(seatPos);
-          setTimeout(() => {
-            this._avatar.playSocialAnim('sit');
-          }, 350);
+          // Walk to the seat and sit on it upon arrival
+          this._avatar.moveTo(seatPos, () => {
+            this._avatar.sitOn(mesh);
+          });
           return;
         }
 

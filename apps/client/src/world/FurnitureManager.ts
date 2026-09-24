@@ -55,19 +55,47 @@ export class FurnitureManager {
     }
   }
 
+  private instantiateTemplate(template: BABYLON.AbstractMesh, id: string, itemId: string): BABYLON.AbstractMesh {
+    const instanceName = `${itemId}_${id}`;
+    let instance: BABYLON.AbstractMesh;
+    if (typeof (template as any).instantiateHierarchy === 'function') {
+      instance = (template as any).instantiateHierarchy(null, undefined, (source: BABYLON.TransformNode, clone: BABYLON.TransformNode) => {
+        clone.name = `${source.name}_${id}`;
+        clone.setEnabled(true);
+        if (clone instanceof BABYLON.AbstractMesh) {
+          clone.isVisible = true;
+          clone.isPickable = true;
+          clone.metadata = { furniture: true, itemId, id };
+        }
+      }) as BABYLON.AbstractMesh;
+    } else {
+      instance = template.clone(instanceName, null, false) as BABYLON.AbstractMesh;
+    }
+
+    instance.name = instanceName;
+    instance.setEnabled(true);
+    instance.isVisible = true;
+    instance.isPickable = true;
+    instance.metadata = { furniture: true, itemId, id };
+
+    instance.getChildMeshes().forEach((child) => {
+      child.setEnabled(true);
+      child.isVisible = true;
+      child.isPickable = true;
+      child.metadata = { furniture: true, itemId, id };
+    });
+
+    return instance;
+  }
+
   // ─── Place a Single Item ──────────────────────────────────────────────────
   async placeItem(data: FurniturePlacementData): Promise<PlacedFurniture | null> {
     try {
       let instance: BABYLON.AbstractMesh;
 
       if (this.templateCache.has(data.itemId)) {
-        // Re-use cached template via instancing (O(1) GPU geometry submission)
         const template = this.templateCache.get(data.itemId)!;
-        if ((template as BABYLON.Mesh).createInstance) {
-          instance = (template as BABYLON.Mesh).createInstance(`${data.itemId}_${data.id}`);
-        } else {
-          instance = template.clone(`${data.itemId}_${data.id}`, null) as BABYLON.AbstractMesh;
-        }
+        instance = this.instantiateTemplate(template, data.id, data.itemId);
       } else {
         // First load: import GLB and cache root/child mesh as template
         const assetPath = data.assetUrl?.startsWith('/')
@@ -83,15 +111,7 @@ export class FurnitureManager {
           root.setEnabled(false); // hide template
           root.name = `template_${data.itemId}`;
           this.templateCache.set(data.itemId, root);
-
-          const meshToInstantiate =
-            (root as BABYLON.Mesh).createInstance ? (root as BABYLON.Mesh) : (result.meshes[1] as BABYLON.Mesh);
-
-          if (meshToInstantiate && meshToInstantiate.createInstance) {
-            instance = meshToInstantiate.createInstance(`${data.itemId}_${data.id}`);
-          } else {
-            instance = root.clone(`${data.itemId}_${data.id}`, null) as BABYLON.AbstractMesh;
-          }
+          instance = this.instantiateTemplate(root, data.id, data.itemId);
         } catch {
           // Procedural fallback when GLB model is not packaged
           const dims = FurnitureManager.getProceduralDimensions(data.itemId);
@@ -100,7 +120,7 @@ export class FurnitureManager {
           mat.diffuseColor = FurnitureManager.getProceduralColor(data.itemId);
           mat.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
           box.material = mat;
-          box.metadata = { furniture: true, itemId: data.itemId };
+          box.metadata = { furniture: true, itemId: data.itemId, id: data.id };
           instance = box;
         }
       }
@@ -112,6 +132,7 @@ export class FurnitureManager {
       instance.isPickable = true;
       instance.getChildMeshes().forEach((child) => {
         child.setEnabled(true);
+        child.isVisible = true;
         child.isPickable = true;
       });
 
