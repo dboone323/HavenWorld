@@ -12,6 +12,18 @@ export class HavenEngine {
 
   private constructor(canvas: HTMLCanvasElement) {
     this._canvas = canvas;
+
+    // WebGL is a hard requirement: fail fast with a clear message instead of
+    // throwing an opaque Babylon error later. The boot code in main.ts catches
+    // this and renders the WebGL error screen (ui/WebGLError.ts).
+    if (!Engine.IsSupported) {
+      throw new Error(
+        '[HavenEngine] WebGL is not supported by this browser. ' +
+          'HavenWorld needs WebGL to render the 3D world — try a recent version of ' +
+          'Chrome, Edge, Firefox, or Safari with hardware acceleration enabled.'
+      );
+    }
+
     this._engine = new Engine(canvas, true, {
       preserveDrawingBuffer: true,
       stencil: true,
@@ -26,6 +38,23 @@ export class HavenEngine {
     this._engine.runRenderLoop(() => {
       if (this._activeScene && this._activeScene.activeCamera) {
         this._activeScene.render();
+      }
+    });
+
+    // WebGL context loss (GPU reset, tab eviction, driver hiccup) used to
+    // freeze the canvas with no feedback. Surface it to the UI: main.ts shows
+    // a "graphics paused" overlay on loss and hides it on restore. Babylon
+    // recreates GL resources automatically unless doNotHandleContextLost is set.
+    this._engine.onContextLostObservable.add(() => {
+      console.warn('[HavenEngine] WebGL context lost — rendering paused.');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('haven:webgl-context-lost'));
+      }
+    });
+    this._engine.onContextRestoredObservable.add(() => {
+      console.info('[HavenEngine] WebGL context restored — rendering resumed.');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('haven:webgl-context-restored'));
       }
     });
 

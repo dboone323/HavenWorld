@@ -28,7 +28,7 @@ import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
-import { API_URL } from '../config';
+import { API_URL, assetUrl } from '../config';
 import { DailyLoginModal } from '../ui/DailyLoginModal';
 import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
 import { showToast } from '../ui/ToastNotification';
@@ -147,8 +147,16 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     if (roomMeshes.length === 0) {
       roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
     }
-  } catch {
-    console.warn(`[RoomScene] Room model not found for ${roomId}. Using procedural prefab.`);
+  } catch (err) {
+    // Log what failed and what was tried: a bare "model not found" used to
+    // make missing GLBs indistinguishable from load bugs. RoomLoader already
+    // logs the resolved URL on the happy path; log it here too on failure.
+    console.warn(
+      `[RoomScene] Room GLB load failed for "${roomId}" ` +
+        `(tried ${assetUrl(`/assets/rooms/${roomId}.glb`)}): ` +
+        `${err instanceof Error ? err.message : String(err)}. ` +
+        'Falling back to procedural prefab.'
+    );
     roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
   }
 

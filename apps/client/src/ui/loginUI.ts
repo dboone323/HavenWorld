@@ -121,9 +121,24 @@ export function mountLoginUI(): void {
 
     setLoading(true);
     try {
-      await authService.register(username, email, password, inviteCode);
-      showError('Account created! Please check your email to verify before logging in.');
+      const result = await authService.register(username, email, password, inviteCode);
+      if (result && result.emailVerificationRequired === false) {
+        // Server auto-verified the account (no email provider configured) and
+        // already established a session — take the player straight into the
+        // world instead of leaving them on the register form. (The register
+        // response carries no user payload, so fetch it before transitioning.)
+        errEl.style.color = '#4ecdc4';
+        showError(result.message || 'Account created! Welcome to HavenWorld.');
+        await authService.me();
+        transitionToLobby();
+      } else {
+        // Verification is required: the server sends a real email. Show its
+        // message verbatim rather than a hardcoded guess about the flow.
+        errEl.style.color = '';
+        showError(result?.message || 'Account created! Please check your email to verify before logging in.');
+      }
     } catch (err) {
+      errEl.style.color = '';
       showError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
       setLoading(false);

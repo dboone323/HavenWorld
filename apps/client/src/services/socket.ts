@@ -46,15 +46,45 @@ function removeHandler(event: SocketEventType, raw: (data: unknown) => void): vo
   _socket?.off(event, raw);
 }
 
+// ─── Connection status (surfaced to the UI) ─────────────────────────────────
+
+export type SocketConnectionStatus =
+  | 'connected'
+  | 'connecting'
+  | 'reconnecting'
+  | 'reconnect_failed'
+  | 'disconnected';
+
+export interface SocketStatusDetail {
+  status: SocketConnectionStatus;
+  /** Current reconnect attempt (0 when not reconnecting). */
+  attempt: number;
+}
+
+const MAX_RECONNECT_ATTEMPTS = 10;
+
+let _status: SocketStatusDetail = { status: 'disconnected', attempt: 0 };
+
+/** Broadcast the current connection state so the UI can react (banner, etc.). */
+function emitStatus(status: SocketConnectionStatus, attempt = 0): void {
+  _status = { status, attempt };
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<SocketStatusDetail>('socket:status', { detail: _status }));
+  }
+}
+
 // ─── Socket Service ──────────────────────────────────────────────────────────
 
 export const socketService = {
   get socket(): Socket | null { return _socket; },
   get connected(): boolean    { return _socket?.connected ?? false; },
+  /** Last broadcast connection status (for UI that mounts after events). */
+  get status(): SocketStatusDetail { return { ..._status }; },
 
   /**
    * Create (or return existing) Socket.io connection.
-   * Attaches access token as auth handshake.
+   * Attaches the access token to every handshake via the function form of
+   * `auth`, so a refreshed token is always sent — including on reconnects.
    */
   connect(): Socket {
     if (_socket?.connected) return _socket;
@@ -69,26 +99,64 @@ export const socketService = {
       path:          '/socket.io',
       transports:    ['websocket', 'polling'],
       reconnection:  true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
       reconnectionDelay:    1000,
       reconnectionDelayMax: 15_000,
-      auth: {
-        token: authService.token ?? '',
+      // Function form: evaluated on EVERY handshake (initial + each
+      // reconnect), so a refreshed access token is always the one sent.
+      // See updateAuth() and the 'auth:token-refreshed' listener below.
+      auth: (cb: (data: object) => void) => {
+        cb({ token: authService.token ?? '' });
       },
     });
 
+    emitStatus('connecting');
+
     _socket.on('connect', () => {
       console.info('[Socket] Connected:', _socket?.id);
+      emitStatus('connected');
       // Flush events queued during the handshake (AUTH_JOIN first).
       flushPendingEmits();
     });
 
     _socket.on('disconnect', (reason) => {
       console.warn('[Socket] Disconnected:', reason);
+      // The manager retries automatically (reconnect_attempt below drives the
+      // banner). Only mark plain 'disconnected' when no retry is in flight.
+      if (_status.status !== 'reconnecting' && _status.status !== 'reconnect_failed') {
+        emitStatus('disconnected');
+      }
     });
 
     _socket.on('connect_error', (err) => {
       console.error('[Socket] Connection error:', err.message);
+      if (_status.status !== 'reconnecting' && _status.status !== 'reconnect_failed') {
+        emitStatus('connecting');
+      }
+    });
+
+    // Manager-level reconnect lifecycle. `_socket.io` is the socket.io
+    // Manager; guarded with ?. so the unit-test mock (no Manager) keeps
+    // working and these lines are simply skipped there.
+    _socket.io?.on('reconnect_attempt', (attempt: number) => {
+      console.warn(`[Socket] Reconnect attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}`);
+      emitStatus('reconnecting', attempt);
+      // Best-effort: refresh the access token in the background so the next
+      // handshake carries a live token. refresh() is single-flight, and the
+      // function-form `auth` above picks the new token up automatically.
+      void authService.refresh().then((ok) => {
+        if (ok) socketService.updateAuth();
+      });
+    });
+
+    _socket.io?.on('reconnect', () => {
+      console.info('[Socket] Reconnected');
+      emitStatus('connected');
+    });
+
+    _socket.io?.on('reconnect_failed', () => {
+      console.error('[Socket] Reconnect attempts exhausted');
+      emitStatus('reconnect_failed', MAX_RECONNECT_ATTEMPTS);
     });
 
     // Re-attach listeners registered while no socket existed.
@@ -105,6 +173,22 @@ export const socketService = {
       _socket.disconnect();
       _socket = null;
     }
+    emitStatus('disconnected');
+  },
+
+  /**
+   * Manual reconnect (e.g. from the connection banner after attempts are
+   * exhausted). Re-enables the manager's retry loop and kicks a fresh
+   * handshake immediately.
+   */
+  reconnectNow(): void {
+    if (!_socket) {
+      this.connect();
+      return;
+    }
+    console.info('[Socket] Manual reconnect requested');
+    _socket.io?.reconnection(true);
+    _socket.connect();
   },
 
   /** Typed emit helper — queues while the handshake is in flight. */
@@ -143,16 +227,26 @@ export const socketService = {
     _socket?.off(event);
   },
 
-  /** Re-attach token after a refresh (call from authService refresh callback) */
+  /**
+   * Re-attach the current access token. With the function-form `auth` above,
+   * every handshake already reads the latest token, so this is belt-and-braces
+   * for any path that still inspects `socket.auth` directly.
+   */
   updateAuth(): void {
     if (_socket) {
-      (_socket.auth as Record<string, string>).token = authService.token ?? '';
+      _socket.auth = (cb: (data: object) => void) => {
+        cb({ token: authService.token ?? '' });
+      };
     }
   },
 };
 
 // Wire auth logout to socket disconnect
 window.addEventListener('auth:logout', () => socketService.disconnect());
+
+// Keep the socket's handshake token in sync when authService rotates it
+// (dispatched from auth.ts after a successful token refresh).
+window.addEventListener('auth:token-refreshed', () => socketService.updateAuth());
 
 // Re-export event constants for convenience
 export { SOCKET_EVENTS };

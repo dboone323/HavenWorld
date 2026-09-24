@@ -179,4 +179,36 @@ describe('socketService (services/socket.ts)', () => {
     expect(mockSocket.emit).toHaveBeenCalledWith(SOCKET_EVENTS.CHAT_SEND, { content: 'hi' });
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  it('(g) connect() broadcasts socket:status lifecycle events (connecting → connected)', async () => {
+    const service = await loadService();
+    const seen: string[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail.status);
+    window.addEventListener('socket:status', listener);
+    try {
+      service.connect();
+      completeHandshake();
+      expect(seen).toEqual(['connecting', 'connected']);
+      expect(service.status).toEqual({ status: 'connected', attempt: 0 });
+    } finally {
+      window.removeEventListener('socket:status', listener);
+    }
+  });
+
+  it('(h) updateAuth() installs function-form auth so handshakes read the live token', async () => {
+    const service = await loadService();
+    service.connect();
+    service.updateAuth();
+    expect(typeof mockSocket.auth).toBe('function');
+    const cb = vi.fn();
+    (mockSocket.auth as unknown as (cb: (data: object) => void) => void)(cb);
+    expect(cb).toHaveBeenCalledWith({ token: expect.any(String) });
+  });
+
+  it('(i) reconnectNow() creates a socket when none exists (manual retry after exhaustion)', async () => {
+    const service = await loadService();
+    expect(service.socket).toBeNull();
+    service.reconnectNow();
+    expect(service.socket).not.toBeNull();
+  });
 });

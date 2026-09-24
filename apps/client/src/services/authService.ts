@@ -216,6 +216,10 @@ export class AuthService {
           localStorage.setItem('haven_token', data.accessToken);
         }
         if (data.user) this._user = data.user;
+        // Let services/socket.ts re-attach the new token to the handshake.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:token-refreshed'));
+        }
         return true;
       }
       return false;

@@ -3,6 +3,7 @@ import '@babylonjs/loaders';
 import type { FurniturePlacementData } from '@havenworld/shared';
 import { SERVER_URL, assetUrl } from '../config';
 import { authService } from '../services/auth';
+import { showToast } from '../ui/ToastNotification';
 
 export interface PlacedFurniture {
   id: string;
@@ -17,6 +18,9 @@ export class FurnitureManager {
   private placed: Map<string, PlacedFurniture> = new Map();
   // GLB template cache: itemId -> root mesh template
   private templateCache: Map<string, BABYLON.AbstractMesh> = new Map();
+  // itemIds we already showed a "placeholder" toast for — a room full of
+  // missing GLBs should warn once per item, not spam one toast per copy.
+  private _fallbackToasted: Set<string> = new Set();
 
   constructor(scene: BABYLON.Scene, currentUserId: string) {
     this.scene = scene;
@@ -112,8 +116,25 @@ export class FurnitureManager {
           root.name = `template_${data.itemId}`;
           this.templateCache.set(data.itemId, root);
           instance = this.instantiateTemplate(root, data.id, data.itemId);
-        } catch {
-          // Procedural fallback when GLB model is not packaged
+        } catch (err) {
+          // Procedural fallback when the GLB model is not packaged. Say so
+          // out loud: a silent box used to be indistinguishable from a real
+          // item, which hid missing-asset bugs from players and from us.
+          console.warn(
+            `[FurnitureManager] GLB load failed for "${data.itemId}" ` +
+              `(tried ${assetPath}): ` +
+              `${err instanceof Error ? err.message : String(err)}. ` +
+              'Using procedural placeholder.'
+          );
+          if (!this._fallbackToasted.has(data.itemId)) {
+            this._fallbackToasted.add(data.itemId);
+            showToast({
+              icon: '🪑',
+              title: 'Furniture model unavailable',
+              subtitle: `"${data.itemId}" couldn't load — showing a placeholder instead.`,
+              durationMs: 5000,
+            });
+          }
           const dims = FurnitureManager.getProceduralDimensions(data.itemId);
           const box = BABYLON.MeshBuilder.CreateBox(`${data.itemId}_${data.id}`, dims, this.scene);
           const mat = new BABYLON.StandardMaterial(`mat_${data.itemId}_${data.id}`, this.scene);

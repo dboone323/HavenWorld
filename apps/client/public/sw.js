@@ -12,18 +12,36 @@
  * no extra build dependency.
  */
 
-const CACHE_VERSION = 'havenworld-v1';
+// Bump CACHE_VERSION when the caching strategy changes: the activate
+// handler below deletes every cache from older versions, so a stuck old
+// shell can never shadow a new deploy.
+const CACHE_VERSION = 'havenworld-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
+
+// Bound the asset cache: entries are content-hashed/immutable in practice,
+// but an unbounded cache grows forever across deploys on long-lived installs.
+const MAX_ASSET_ENTRIES = 250;
 
 const SHELL_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
-      .then(() => self.skipWaiting())
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE);
+      // Cache shell assets individually: one 404/offline asset used to fail
+      // the whole addAll() and block install (and therefore activation).
+      await Promise.all(
+        SHELL_ASSETS.map(async (asset) => {
+          try {
+            await cache.add(asset);
+          } catch (err) {
+            console.warn('[SW] shell asset failed to cache, continuing:', asset, err);
+          }
+        })
+      );
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -46,6 +64,20 @@ const isCacheableAsset = (url) =>
   url.pathname.startsWith('/assets/') ||
   url.pathname.startsWith('/icons/') ||
   /\.(?:js|css|woff2?|png|jpe?g|svg|webp|glb|gltf|wasm|json)$/i.test(url.pathname);
+
+/** Evict the oldest entries when a cache grows past its budget. */
+const trimCache = async (cacheName, maxEntries) => {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    const excess = keys.length - maxEntries;
+    if (excess > 0) {
+      await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
+    }
+  } catch (err) {
+    console.warn('[SW] cache trim failed:', err);
+  }
+};
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -78,7 +110,11 @@ self.addEventListener('fetch', (event) => {
       return fetch(request).then((response) => {
         if (response.ok && response.type === 'basic') {
           const copy = response.clone();
-          caches.open(ASSET_CACHE).then((cache) => cache.put(request, copy));
+          caches
+            .open(ASSET_CACHE)
+            .then((cache) =>
+              cache.put(request, copy).then(() => trimCache(ASSET_CACHE, MAX_ASSET_ENTRIES))
+            );
         }
         return response;
       });

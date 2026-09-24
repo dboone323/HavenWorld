@@ -14,6 +14,12 @@ import { authService } from './services/auth';
 import { socketService } from './services/socket';
 import { DailyLoginModal } from './ui/DailyLoginModal';
 import { initPwa } from './ui/InstallPrompt';
+import { ConnectionBanner } from './ui/ConnectionBanner';
+import {
+  showWebGLUnsupported,
+  showContextLostOverlay,
+  hideContextLostOverlay,
+} from './ui/WebGLError';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { SERVER_URL } from './config';
 import './style.css';
@@ -33,6 +39,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   // PWA: register the service worker and offer the install prompt (Part 9A §2)
   initPwa();
 
+  // Connection banner: surfaces socket reconnect attempts / failures.
+  // Must exist before any socket activity (it listens for `socket:status`).
+  new ConnectionBanner();
+
+  // WebGL context loss: show the "graphics paused" overlay until the context
+  // is restored (dispatched from HavenEngine via the Engine observables).
+  window.addEventListener('haven:webgl-context-lost', showContextLostOverlay);
+  window.addEventListener('haven:webgl-context-restored', hideContextLostOverlay);
+
   // Get Canvas and initialize Babylon Engine
   const canvas = document.getElementById('haven-canvas') as HTMLCanvasElement | null;
   if (!canvas) {
@@ -40,7 +55,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  const haven = await HavenEngine.getInstance(canvas);
+  let haven: HavenEngine;
+  try {
+    haven = await HavenEngine.getInstance(canvas);
+  } catch (err) {
+    // WebGL unsupported (or engine init failed): explain it instead of a
+    // frozen canvas. HavenEngine throws a clear message for missing WebGL.
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error('[HavenWorld] Failed to initialize the 3D engine:', reason);
+    showWebGLUnsupported(reason);
+    return;
+  }
   const sm = SceneManager.getInstance();
 
   (window as any).__havenEngine = haven;
