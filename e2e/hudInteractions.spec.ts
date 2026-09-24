@@ -33,7 +33,17 @@ test.describe('Tier 4: HUD Dock Buttons & Modal Interactions E2E', () => {
     // Verify room navigation dock is mounted
     await expect(roomPage.roomNav).toBeVisible();
 
-    // 2. Haven Emporium Shop Modal
+    // 4. Daily quests must load from the API, not remain stuck in an idle/loading/error state.
+    const questHud = page.locator('#quest-hud');
+    await expect(questHud).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#quest-hud-header')).toContainText('Daily Quests');
+    await expect(page.locator('#quest-list')).not.toContainText('Loading quests', { timeout: 10_000 });
+    await page.locator('#quest-hud-header').click();
+    await expect(page.locator('#quest-list')).toHaveText(/[0-9]+\s*\/\s*[0-9]+|No quests today/, {
+      timeout: 10_000,
+    });
+
+    // 5. Haven Emporium Shop Modal
     await roomPage.btnShop.click();
     await expect(roomPage.shopOverlay).toBeVisible({ timeout: 5_000 });
     // Switch between Featured and Standard Catalog tabs
@@ -58,6 +68,10 @@ test.describe('Tier 4: HUD Dock Buttons & Modal Interactions E2E', () => {
     await roomPage.btnWorkshop.click();
     await expect(roomPage.workshopOverlay).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('#workshop-materials-bar')).toBeVisible();
+    await expect(page.locator('#workshop-recipes-list')).not.toContainText('Loading recipes', {
+      timeout: 10_000,
+    });
+    await expect(page.locator('.btn-craft-recipe').first()).toBeVisible();
     // Close workshop
     await roomPage.workshopCloseBtn.click();
     await expect(roomPage.workshopOverlay).not.toBeVisible();
@@ -87,6 +101,17 @@ test.describe('Tier 4: HUD Dock Buttons & Modal Interactions E2E', () => {
     await roomPage.btnGallery.click();
     await expect(roomPage.galleryOverlay).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('#btn-snap-photo')).toBeVisible();
+    await page.locator('#btn-snap-photo').click();
+    await expect(page.locator('#snap-caption-form')).toBeVisible();
+    const galleryCaption = `E2E gallery ${Date.now()}`;
+    await page.locator('#snap-caption-input').fill(galleryCaption);
+    const publishResponse = page.waitForResponse(
+      (res) => res.url().includes('/api/gallery') && res.request().method() === 'POST',
+      { timeout: 15_000 }
+    );
+    await page.locator('#snap-caption-form button:has-text("Publish")').click();
+    expect((await publishResponse).status()).toBe(201);
+    await expect(page.locator('#gallery-photo-grid')).toContainText(galleryCaption);
     // Close gallery
     await roomPage.galleryCloseBtn.click();
     await expect(roomPage.galleryOverlay).not.toBeVisible();

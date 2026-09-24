@@ -448,12 +448,12 @@ account (or a fresh invite-code account).
 
 | # | Criterion | Current |
 | --- | --- | --- |
-| 1 | L0–L3 green (typecheck + 186 tests) | ✅ met today |
-| 2 | `beta-gate-check.sh` reports GO | ✅ met today (16/0/2) |
-| 3 | Local E2E `fullFlow` + `multiplayer` pass | ✅ verified 2026-09-23 (full chromium project green) |
-| 4 | Manual checklist §7 A–I passes with no blockers | ⛔ not yet run |
+| 1 | L0–L3 green (typecheck + 289 automated unit/integration tests) | ✅ met 2026-09-24 |
+| 2 | `beta-gate-check.sh` reports GO | ✅ met 2026-09-24 (16/0/2) |
+| 3 | Local Chromium E2E including strengthened feature traceability passes | ✅ 26 passed / 1 skipped / 0 failed (2026-09-24) |
+| 4 | Manual checklist §7 A–I passes with no blockers | ⛔ not yet completed end-to-end |
 | 5 | No P1/P2 defects open from the manual pass | ⛔ |
-| 6 | Invite codes minted and the wall re-armed (`ALPHA_INVITE_ONLY=true`) | ⛔ gate still open |
+| 6 | Invite codes minted and the wall re-armed (`ALPHA_INVITE_ONLY=true`) | ✅ production re-armed 2026-09-24 |
 | 7 | Password reset path exists (email provider or admin reset) | ⛔ gap §9.1 |
 
 Recommended order: seed a couple of alpha accounts → run §6.2 local E2E → run §7 → fix what it
@@ -468,9 +468,8 @@ finds → mint invites → flip the gate.
 2. ~~§3 L1 / L2 landmines~~ — **resolved 2026-09-23** (§3): `push-schema` is local-only, Playwright
    passes `apps/server/.env.test` explicitly, and `testRoutes` + a startup guard require a `*_test`
    database.
-3. **Demo credentials committed** in `e2e/live-comprehensive-audit.spec.ts:32` and
-   `live-deep-workflow.spec.ts`. The referenced account does not exist; treat the password as burned
-   and move both to env vars.
+3. ~~Demo credentials committed in live specs~~ — **fixed 2026-09-24**: all three `live-*`
+   specs require `E2E_LIVE_EMAIL` and `E2E_LIVE_PASSWORD`; the burned account/password is gone.
 4. ~~Root `.env.test` is empty~~ — **fixed**: it now carries the browser-side `VITE_*` URLs aligned on
    port 3000, `playwright.config.ts` parses `apps/server/.env.test` for the API child, and the config
    fail-fasts on a non-`_test` `DATABASE_URL`.

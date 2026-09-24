@@ -1,5 +1,10 @@
 # HavenWorld — macOS-Side Implementation Plan
 
+> **Historical environment record.** The verification counts, commit, SQLite server, temporary
+> Cloudflare URL, and test paths below describe the macOS prototype phase. The current production
+> client is Babylon.js + Vite, the current API is Express + Prisma + Supabase PostgreSQL, and
+> current test status is maintained in `docs/10_TEST_PLAN.md`.
+
 ## Scope Definition
 macOS-side work only. Linux/server side (Supabase cloud deployment, Oracle Cloud VM)
 handled separately. Covers local development environment, build pipeline, and native

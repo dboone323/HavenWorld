@@ -1,5 +1,12 @@
 # HavenWorld — Master Engineering Roadmap & Tracking Plan
 
+> **Historical mixed-architecture plan — not a current release certificate.** This file was
+> assembled across multiple generations of HavenWorld and still references legacy Canvas 2D,
+> `src/client`, SQLite, Phaser, and tests that no longer exist. Its `103/103` dashboard means
+> that server/domain implementations received automated coverage, not that every feature is
+> reachable in the current Babylon.js client. For current client truth, use
+> `docs/11_CLIENT_FEATURE_TRACEABILITY.md` and `docs/10_TEST_PLAN.md`.
+
 > **Document Version**: 1.0.0  
 > **Last Updated**: 2026-09-17  
 > **Repository**: [HavenWorld](file:///Users/danielstevens/Developer/HavenWorld)  

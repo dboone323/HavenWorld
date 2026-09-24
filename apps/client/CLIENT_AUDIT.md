@@ -1,5 +1,10 @@
 # Client-Side Audit: Babylon.js scene, WebSocket resilience, PWA manifest
 
+> **Historical audit baseline.** Findings below describe the client before the resilience work in
+> commit `e5859e4` and the PWA update fix in `6a4210b`. Treat “NO fallback” and similar statements
+> as superseded unless the section explicitly says “still current.” Current verification lives in
+> `docs/10_TEST_PLAN.md` and `docs/11_CLIENT_FEATURE_TRACEABILITY.md`.
+
 Scope: `apps/client/src/` (Vite + TypeScript + Babylon.js + Alpine.js SPA), plus `apps/client/public/`, `apps/client/index.html`, and `e2e/` + `playwright.config.ts`.
 
 Legend: paths are relative to the repo root unless prefixed `apps/client/`.

@@ -51,6 +51,19 @@ test.describe('Tier 4: Multiplayer Synchronization E2E', () => {
     await expect(room1.canvas).toBeVisible();
     await expect(room2.canvas).toBeVisible();
 
+    // A remote avatar is represented by actual Babylon meshes, not just socket state.
+    // This is the observable regression guard for the ghost/remote-avatar lifecycle.
+    await expect
+      .poll(
+        () =>
+          page1.evaluate(() => {
+            const scene = (window as any).__havenActiveScene;
+            return Boolean(scene?.meshes?.some((mesh: any) => mesh.name.startsWith('remote_body_')));
+          }),
+        { timeout: 10_000 }
+      )
+      .toBe(true);
+
     // (c) Player 1 moves -> triggers movement event
     await room1.clickCanvas(250, 250);
 
@@ -59,8 +72,19 @@ test.describe('Tier 4: Multiplayer Synchronization E2E', () => {
     await room1.sendChatMessage(msg);
     await room2.waitForChatMessage(msg);
 
-    // (e) Player 2 disconnects -> leaves room
+    // (e) Player 2 disconnects -> leaves room and its Babylon meshes are disposed
     await context2.close();
+
+    await expect
+      .poll(
+        () =>
+          page1.evaluate(() => {
+            const scene = (window as any).__havenActiveScene;
+            return Boolean(scene?.meshes?.some((mesh: any) => mesh.name.startsWith('remote_body_')));
+          }),
+        { timeout: 10_000 }
+      )
+      .toBe(false);
 
     // Player 1 remains in room
     await expect(room1.canvas).toBeVisible();

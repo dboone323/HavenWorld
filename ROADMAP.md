@@ -1,5 +1,10 @@
 # HavenWorld Roadmap
 
+> **Status note (2026-09-24):** the checkboxes below predate the current Babylon.js/Prisma
+> client and are not an accurate release tracker. Several items are implemented and tested now,
+> while others remain only partially reachable in the client. See
+> `docs/11_CLIENT_FEATURE_TRACEABILITY.md` and `docs/10_TEST_PLAN.md`.
+
 ## Phase 0 — Foundation (Current)
 - [x] Local dev environment (Mac)
 - [x] Oracle Cloud VM provisioned (Linux)

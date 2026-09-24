@@ -83,6 +83,12 @@ export class LoginPage {
   }
 
   async login(email: string, password: string): Promise<void> {
+    // Alpha registration auto-verifies when no email provider is configured and
+    // enters the world immediately. In that mode the login tab is intentionally
+    // hidden; treat an already-visible game as a successful login. The explicit
+    // path remains for normal accounts and local tests that need sign-in.
+    if (!(await this.loginPanel.isVisible())) return;
+
     await this.switchToLogin();
     await this.loginEmailInput.fill(email);
     await this.loginPasswordInput.fill(password);

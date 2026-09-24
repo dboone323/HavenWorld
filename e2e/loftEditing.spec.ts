@@ -41,9 +41,30 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
     await expect(roomPage.loftSettingsClose).toBeVisible({ timeout: 5_000 });
     // Verify privacy modes are present
     await expect(page.locator('input[name="privacy-mode"]')).toHaveCount(4);
-    // Close loft settings
-    await roomPage.loftSettingsClose.click();
+
+    // Apply a non-default mood and prove the Babylon ambient light changes.
+    const ambientBefore = await page.evaluate(() => {
+      const scene = (window as any).__havenActiveScene;
+      const light = scene?.getLightByName?.('ambientLight');
+      return light?.diffuse?.asArray?.() ?? null;
+    });
+    await page.locator('#mood-select').selectOption('night');
+    await page.locator('#save-mood').click();
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            const scene = (window as any).__havenActiveScene;
+            const light = scene?.getLightByName?.('ambientLight');
+            return light?.diffuse?.asArray?.() ?? null;
+          }),
+        { timeout: 10_000 }
+      )
+      .not.toEqual(ambientBefore);
+
+    // Applying a mood intentionally closes the settings panel and shows a toast.
     await expect(roomPage.loftSettingsClose).not.toBeVisible();
+    await expect(page.locator('.toast').last()).toContainText('Mood updated');
 
     // 5. Decorator Mode & 4-Way Rotation
     // Click dock decorate button to enter edit mode
@@ -69,11 +90,19 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
   });
 
   test('Placing item from decorator HUD does not make the avatar walk', async ({ page }) => {
+    const decoratorTs = Date.now().toString().slice(-6);
+    const decoratorUser = {
+      username: `dec_${decoratorTs}`,
+      email: `dec_${decoratorTs}@havenworld.test`,
+      password: 'Password123!',
+    };
     const loginPage = new LoginPage(page);
     const roomPage = new RoomPage(page);
 
     await loginPage.goto();
-    await loginPage.login(ownerUser.email, ownerUser.password);
+    await loginPage.register(decoratorUser);
+    await loginPage.verifyEmailViaTestRoute(decoratorUser.email);
+    await loginPage.login(decoratorUser.email, decoratorUser.password);
     await roomPage.waitForRoomReady();
 
     // 1. Record avatar position before decorating
