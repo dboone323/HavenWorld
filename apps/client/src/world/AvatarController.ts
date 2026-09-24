@@ -23,6 +23,8 @@ export class AvatarController {
   public targetPosition: BABYLON.Vector3 | null = null;
   public currentAnimName = 'idle';
 
+  public isPlaceholder = false;
+
   private scene: BABYLON.Scene;
   private user: UserProfile;
   private skeleton: BABYLON.Skeleton | null = null;
@@ -67,6 +69,7 @@ export class AvatarController {
         throw new Error('[AvatarController] GLB loaded but contained no meshes.');
       }
 
+      this.isPlaceholder = false;
       this.rootMesh = result.meshes[0];
       this.rootMesh.name = `avatar_local_${this.user.id}`;
       this.rootMesh.position = spawnPosition.clone();
@@ -84,6 +87,7 @@ export class AvatarController {
 
       this.initAnimations(result.animationGroups);
     } catch {
+      this.isPlaceholder = true;
       this.buildPlaceholder(spawnPosition);
     }
 
@@ -163,6 +167,20 @@ export class AvatarController {
    */
   public applyOutfit(data: AvatarData): void {
     if (!this.rootMesh) return;
+
+    if (!this.isPlaceholder) {
+      // Rigged GLB avatar is active.
+      // Ensure any placeholder wardrobe meshes are disabled so they do not duplicate the 3D body.
+      for (const part of ['hair', 'top', 'pants', 'shoe_l', 'shoe_r']) {
+        const layer = this.scene.getMeshByName(this.layerName(part));
+        if (layer) layer.setEnabled(false);
+      }
+      const hairMesh = this.scene.getMeshByName('avatar_hair');
+      if (hairMesh) {
+        hairMesh.setEnabled(data.hairStyle !== 'none' && data.hairStyle !== 'bald');
+      }
+      return;
+    }
 
     const gender = normalizeGender(data.gender);
     const shoulderScale = gender === 'male' ? 1.12 : gender === 'female' ? 0.96 : 1;
@@ -315,12 +333,17 @@ export class AvatarController {
       }
     }
 
+    const hairStyle = typeof data.hairStyle === 'string' ? data.hairStyle : null;
+    const hairHex = (data.hairColor as string) || (hairStyle ? getItemAccentColor(hairStyle, '#1C1C1C') : undefined);
+    const topHex = (data.topColor as string) || (data.outfitBody ? getItemAccentColor(data.outfitBody, '#4169E1') : undefined);
+    const bottomHex = (data.bottomColor as string) || (data.outfitLegs ? getItemAccentColor(data.outfitLegs, '#2E8B57') : undefined);
+
     const colorMap: Record<string, string | undefined> = {
       mat_skin: skinHex,
-      mat_hair: data.hairColor,
+      mat_hair: hairHex,
       mat_eyes: data.eyeColor,
-      mat_shirt: data.topColor,
-      mat_pants: data.bottomColor,
+      mat_shirt: topHex,
+      mat_pants: bottomHex,
     };
 
     for (const [matName, hexColor] of Object.entries(colorMap)) {

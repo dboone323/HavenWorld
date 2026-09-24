@@ -200,4 +200,30 @@ describe('AvatarController (Babylon.js NullEngine)', () => {
     const femalePants = scene.getMeshByName('avatar_test-user-1_pants') as Mesh;
     expect(femalePants.scaling.x).toBeGreaterThan(femaleTop.scaling.x);
   });
+
+  it('(k) when rigged GLB is active (isPlaceholder: false), applyOutfit disables procedural wardrobe layers to prevent duplicate body/head pieces', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+    // Simulate initial placeholder layers existing
+    controller.applyOutfit({
+      outfitBody: 'shirt-black',
+      outfitLegs: 'pants-blue',
+      hairStyle: 'hair-short',
+    });
+
+    const topLayer = scene.getMeshByName('avatar_test-user-1_top');
+    expect(topLayer?.isEnabled()).toBe(true);
+
+    // Switch to rigged model mode
+    controller.isPlaceholder = false;
+    controller.applyOutfit({
+      outfitBody: 'shirt-black',
+      outfitLegs: 'pants-blue',
+      hairStyle: 'hair-short',
+    });
+
+    // Procedural wardrobe layers must be disabled to avoid duplicate bodies/heads
+    expect(topLayer?.isEnabled()).toBe(false);
+    expect(scene.getMeshByName('avatar_test-user-1_hair')?.isEnabled()).toBe(false);
+    expect(scene.getMeshByName('avatar_test-user-1_pants')?.isEnabled()).toBe(false);
+  });
 });
