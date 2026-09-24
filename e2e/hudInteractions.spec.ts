@@ -98,7 +98,7 @@ test.describe('Tier 4: HUD Dock Buttons & Modal Interactions E2E', () => {
     const doughBtn = page.locator('.btn-ingredient[data-ing="dough"]');
     if (await doughBtn.isVisible()) {
       await doughBtn.click();
-      await expect(page.locator('#pizza-assembly-display')).toContainText('dough');
+      await expect(page.locator('#pizza-assembly-display')).toContainText(/dough/i);
       // Restart crust
       await page.locator('#btn-clear-pizza').click();
       await expect(page.locator('#pizza-assembly-display')).toContainText('Empty Crust');

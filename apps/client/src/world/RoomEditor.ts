@@ -498,7 +498,7 @@ export class RoomEditor {
       },
       {
         label: '🔄 Rotate 90°',
-        action: () => this.rotateFurniture(item.id, Math.PI / 2),
+        action: () => this.cycleRotation(),
       },
       {
         label: '🗑️ Put Away',
@@ -610,7 +610,7 @@ export class RoomEditor {
       cursor: pointer;
     `;
     btnRotate.onclick = () => {
-      this.rotateFurniture(item.id, Math.PI / 2);
+      this.cycleRotation();
     };
 
     const btnRemove = document.createElement('button');

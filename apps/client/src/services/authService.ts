@@ -153,6 +153,9 @@ export class AuthService {
         localStorage.setItem('haven_token', data.accessToken);
       }
       this._user = data.user ?? null;
+      // Session established via register (auto-verified accounts get an
+      // access token) — UI that depends on auth should reload its user data.
+      this.emitLoginEvent();
     }
     return data;
   }
@@ -186,6 +189,9 @@ export class AuthService {
         localStorage.setItem('haven_token', data.accessToken);
       }
       this._user = data.user ?? null;
+      // Session established via login — UI that depends on auth (QuestHUD,
+      // etc.) should reload its user data now.
+      this.emitLoginEvent();
     }
     return this._user!;
   }
@@ -200,6 +206,22 @@ export class AuthService {
       this._refreshPromise = null;
     });
     return this._refreshPromise;
+  }
+
+  /**
+   * Notify the app that an authenticated session is now established — after
+   * login, after register, or after a silent session restore (refresh).
+   * The event detail carries only non-sensitive identity info (never tokens
+   * or credentials), so listeners like QuestHUD know to (re)load user data.
+   */
+  private emitLoginEvent(): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('auth:login', {
+          detail: { userId: this._user?.id ?? null, username: this._user?.username ?? null },
+        })
+      );
+    }
   }
 
   private async _performRefresh(): Promise<boolean> {
@@ -219,6 +241,10 @@ export class AuthService {
         // Let services/socket.ts re-attach the new token to the handshake.
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:token-refreshed'));
+          // A successful refresh (re-)establishes the session — this is the
+          // silent session-restore path on page load. UI that depends on
+          // auth (QuestHUD, etc.) should (re)load its user data now.
+          this.emitLoginEvent();
         }
         return true;
       }

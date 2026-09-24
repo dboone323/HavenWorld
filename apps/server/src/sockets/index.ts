@@ -195,7 +195,7 @@ export function registerSocketHandlers(io: Server): void {
         // Build spawn position and verify room access
         const dbRoom = await prisma.room.findUnique({
           where: { id: roomId },
-          select: { width: true, height: true, name: true, accessMode: true, ownerId: true },
+          select: { width: true, height: true, name: true, accessMode: true, ownerId: true, moodPreset: true },
         });
 
         if (!dbRoom) {
@@ -221,18 +221,23 @@ export function registerSocketHandlers(io: Server): void {
           }
         }
 
-        const spawnX = Math.floor((dbRoom?.width ?? 20) / 2) * 32;
-        const spawnY = Math.floor((dbRoom?.height ?? 15) / 2) * 32;
+        // Spawn at the room center in the 3D client's meter coordinate space,
+        // with a small deterministic offset per occupant so players don't stack.
+        // (The old tile*32 pixel math placed remote avatars hundreds of meters
+        // outside the visible room, so players couldn't see each other.)
+        const occupantIndex = roomManager.getOccupantCount(roomId);
+        const spawnX = (occupantIndex % 4 - 1.5) * 1.2;
+        const spawnZ = Math.floor(occupantIndex / 4) * 1.2;
 
-        MovementValidator.initializePlayer(userId, { x: spawnX, y: spawnY, z: 0 });
+        MovementValidator.initializePlayer(userId, { x: spawnX, y: 0, z: spawnZ });
 
         const player: PlayerState = {
           id: userId,
           username,
           avatar: avatarData,
           x: spawnX,
-          y: spawnY,
-          z: 0,
+          y: 0,
+          z: spawnZ,
           rotY: 0,
           direction: 'down',
           isMoving: false,
@@ -270,6 +275,7 @@ export function registerSocketHandlers(io: Server): void {
           players: Array.from(roomState.players.values()),
           furniture: roomState.furniture,
           chatHistory: roomState.chatHistory,
+          mood: (dbRoom as { moodPreset?: string } | null)?.moodPreset ?? 'day',
         });
 
         // Notify all OTHER players in the room that someone new joined
@@ -538,10 +544,13 @@ export function registerSocketHandlers(io: Server): void {
             if (playerState) {
               Object.assign(playerState.avatar, avatarData);
             }
-            // Broadcast to others
-            socket.to(roomId).emit(SOCKET_EVENTS.AVATAR_CHANGED, {
-              playerId: userId,
-              avatar: avatarData,
+            // Broadcast the standardized avatar:update event ({ userId, avatarData })
+            // to everyone in the room, sender included — the client's listener
+            // applies it to the local avatar for the sender and to the remote
+            // avatar for everyone else.
+            io.to(roomId).emit(SOCKET_EVENTS.AVATAR_UPDATE, {
+              userId,
+              avatarData,
             });
           }
         } catch (err) {
@@ -865,7 +874,7 @@ export function registerSocketHandlers(io: Server): void {
           data: { moodPreset: parsed.data.mood },
         });
 
-        io.to(`room:${parsed.data.roomId}`).emit(SOCKET_EVENTS.ROOM_MOOD_CHANGED, {
+        io.to(parsed.data.roomId).emit(SOCKET_EVENTS.ROOM_MOOD_CHANGED, {
           roomId: parsed.data.roomId,
           mood: parsed.data.mood,
         });

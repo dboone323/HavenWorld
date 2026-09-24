@@ -31,7 +31,7 @@ import { authService } from '../services/auth';
 import { API_URL, assetUrl } from '../config';
 import { DailyLoginModal } from '../ui/DailyLoginModal';
 import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
-import { showToast } from '../ui/ToastNotification';
+import { showToast, clearToasts } from '../ui/ToastNotification';
 import { AvatarContextMenu } from '../ui/AvatarContextMenu';
 import { PetController } from '../pets/PetController';
 import { PetManagementPanel } from '../ui/PetManagementPanel';
@@ -296,20 +296,36 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   // ── Loft Settings Button (owner only) ────────────────────────────────────
   const btnLoftSettings = document.getElementById('btn-loft-settings');
   let loftSettings: LoftSettingsPanel | null = null;
+  // Tracks the room's active mood so the settings panel always opens with the
+  // current value selected. Declared here so the socket handlers below can update it.
+  let currentMood: MoodId = 'day';
+  // Named (not anonymous) so it can be removed on scene disposal — the button is
+  // a persistent HUD element, and re-registering an anonymous listener per scene
+  // stacked one settings modal per room visit.
+  const loftSettingsClickHandler = () => {
+    if (loftSettings) {
+      loftSettings.setCurrentMood(currentMood);
+      loftSettings.show();
+    }
+  };
   if (isOwner && btnLoftSettings) {
     btnLoftSettings.classList.remove('hidden');
     loftSettings = new LoftSettingsPanel({
       roomId,
       ownerId: user.id,
+      currentMood,
       onPrivacyChange: (mode, password) => {
         socketService.emit(SOCKET_EVENTS.SET_ROOM_PRIVACY, { roomId, mode, password });
       },
       onMoodChange: (mood) => {
         socketService.emit(SOCKET_EVENTS.SET_ROOM_MOOD, { roomId, mood });
+        currentMood = mood;
         moodSystem.applyMood(mood);
+        loftSettings?.dismiss();
+        showToast({ icon: '🎨', title: 'Mood updated', subtitle: 'Your new room mood is live.' });
       },
     });
-    btnLoftSettings.addEventListener('click', () => loftSettings?.show());
+    btnLoftSettings.addEventListener('click', loftSettingsClickHandler);
   } else if (btnLoftSettings) {
     btnLoftSettings.classList.add('hidden');
   }
@@ -454,13 +470,18 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   // Initial room state (players list)
   unsubs.push(
-    socketService.on<{ roomId: string; players: PlayerState[] }>(
+    socketService.on<{ roomId: string; players: PlayerState[]; mood?: MoodId }>(
       SOCKET_EVENTS.ROOM_STATE,
       (state) => {
         if (state && Array.isArray(state.players)) {
           for (const p of state.players) {
             addOrUpdateRemoteAvatar(p);
           }
+        }
+        // Apply the room's persisted mood on join
+        if (state?.mood) {
+          currentMood = state.mood;
+          moodSystem.applyMood(state.mood);
         }
       }
     )
@@ -571,6 +592,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       SOCKET_EVENTS.ROOM_MOOD_CHANGED,
       (data) => {
         if (data.roomId === roomId) {
+          currentMood = data.mood;
           moodSystem.applyMood(data.mood);
         }
       }
@@ -641,6 +663,14 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
   // ── Disposal & Cleanup ────────────────────────────────────────────────────
   scene.onDisposeObservable.add(() => {
     window.removeEventListener('keydown', onKeyDown);
+    // Drop stale toasts so notifications from the previous room don't linger
+    clearToasts();
+    if (btnLoftSettings) {
+      btnLoftSettings.removeEventListener('click', loftSettingsClickHandler);
+      btnLoftSettings.classList.add('hidden');
+    }
+    loftSettings?.dismiss();
+    loftSettings = null;
     if (btnDecorate) {
       btnDecorate.removeEventListener('click', toggleDecorate);
       btnDecorate.classList.add('hidden');

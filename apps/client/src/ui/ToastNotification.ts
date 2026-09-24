@@ -107,3 +107,12 @@ function dismissToast(toast: HTMLElement): void {
   toast.style.transform = 'translateX(20px)';
   setTimeout(() => toast.remove(), 300);
 }
+
+/**
+ * Remove every visible toast immediately. Called on scene disposal/transition
+ * so stale notifications from the previous room don't linger into the next.
+ */
+export function clearToasts(): void {
+  if (!container) return;
+  container.innerHTML = '';
+}

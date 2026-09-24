@@ -14,6 +14,7 @@ import {
 import { AvatarController } from '../world/AvatarController';
 import { authService } from '../services/auth';
 import { socketService } from '../services/socket';
+import { showToast } from './ToastNotification';
 import { SERVER_URL } from '../config';
 
 // Skin tone presets (12 swatches)
@@ -281,10 +282,23 @@ export class AvatarCustomizer {
         await this.persistToServer();
         this.savedData = { ...this.currentData };
         this.onSaveCallback(this.currentData);
+        // Apply immediately to the live in-world avatar instead of relying
+        // solely on the socket echo (which other players still receive).
+        const liveAvatar = (
+          window as unknown as Record<string, unknown>
+        ).__havenAvatarController as
+          | { applyCustomization: (d: AvatarData) => void }
+          | undefined;
+        liveAvatar?.applyCustomization(this.currentData);
         this.close();
+        showToast({ icon: '👗', title: 'Look saved!', subtitle: 'Your new style is live.' });
       } catch (err) {
         console.error('[AvatarCustomizer] Save failed:', err);
-        alert('Failed to save avatar customization.');
+        showToast({
+          icon: '⚠️',
+          title: 'Save failed',
+          subtitle: 'Could not save your customization. Try again.',
+        });
       }
     });
 
@@ -636,7 +650,8 @@ export class AvatarCustomizer {
 
     // Outfit + gender are authoritative server-side: the socket handler re-checks
     // that every equipped item is in the player's inventory, persists it, and
-    // broadcasts `avatar:changed` to everyone in the room.
+    // broadcasts the standardized `avatar:update` ({ userId, avatarData }) event
+    // to everyone in the room.
     socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
       ...this.currentData,
       gender: normalizeGender(this.currentData.gender),

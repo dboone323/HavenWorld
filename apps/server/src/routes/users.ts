@@ -245,7 +245,8 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
 
   const io = getIO();
   if (io) {
-    const currentRoom = roomManager.getPlayerRoom(userId) || (req.body as any).roomId;
+    // getPlayerRoom() is keyed by socket id — look the player up by user id.
+    const currentRoom = roomManager.getPlayer(userId)?.roomId;
     if (currentRoom) {
       io.to(currentRoom).emit(SOCKET_EVENTS.AVATAR_UPDATE, {
         userId,

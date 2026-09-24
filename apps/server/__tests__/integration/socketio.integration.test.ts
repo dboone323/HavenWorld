@@ -104,7 +104,9 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
 
     // Extract player1's actual spawn position from ROOM_STATE
     const player1State = state1.players.find((p: any) => p.id === user1.id);
-    const moveTarget = { x: player1State.x + 2, y: player1State.y + 1 };
+    // Keep the packet below the 1.5-unit server threshold so this test verifies
+    // broadcast behavior rather than the separate speed-hack validator.
+    const moveTarget = { x: player1State.x + 1, y: player1State.y + 1 };
 
     socket1.emit(SOCKET_EVENTS.PLAYER_MOVE, {
       roomId: room.id,
@@ -243,7 +245,7 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
     // Player 1 moves slightly from spawn position
     socket1.emit(SOCKET_EVENTS.PLAYER_MOVE, {
       roomId: room.id,
-      x: player1State.x + 2,
+      x: player1State.x + 1,
       y: player1State.y + 1,
       z: 0,
       rotY: 0,
@@ -256,7 +258,7 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
     // Player 2 moves slightly from spawn position
     socket2.emit(SOCKET_EVENTS.PLAYER_MOVE, {
       roomId: room.id,
-      x: player2State.x + 2,
+      x: player2State.x + 1,
       y: player2State.y + 1,
       z: 0,
       rotY: 0,

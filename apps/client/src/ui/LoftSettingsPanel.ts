@@ -173,6 +173,11 @@ export class LoftSettingsPanel {
     this.panel = null;
   }
 
+  /** Update the pre-selected mood (e.g. after someone else changed it). */
+  setCurrentMood(mood: MoodId): void {
+    this.opts.currentMood = mood;
+  }
+
   private static privacyLabel(mode: PrivacyMode): string {
     return {
       PUBLIC: '🌍 Public — anyone can enter',
