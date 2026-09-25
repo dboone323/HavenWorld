@@ -20,10 +20,10 @@ echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — starting"
 cd "$APP_DIR"
 
 echo "[deploy] git pull origin main"
-git pull origin main
+git pull origin main </dev/null
 
 echo "[deploy] pnpm install"
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile </dev/null
 
 echo "[deploy] build shared package"
 pnpm --filter '@havenworld/shared' build

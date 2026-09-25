@@ -169,7 +169,7 @@ deploy-server-quick: ## SSH deploy without running local tests first
 .PHONY: _ssh-deploy-server
 _ssh-deploy-server:
 	@printf "$(BOLD)==> Deploying server to Oracle Cloud...$(RESET)\n"
-	ssh $(ORACLE_HOST) 'sudo -u havenworld -H bash -s' < scripts/remote-deploy.sh
+	ssh $(ORACLE_HOST) 'sudo -u havenworld -H bash $(APP_DIR)/scripts/remote-deploy.sh </dev/null'
 	@printf "$(GREEN)==> Server deploy complete.$(RESET)\n"
 
 # ── Deploy — Client ──────────────────────────────────────────────────────────
