@@ -90,8 +90,8 @@ Active tracking for immediate implementation to address furniture responsiveness
 | :---: | :--- | :--- | :---: | :--- |
 | **Part 1** | **Core Engine & Network Infrastructure** | Viewport, camera, movement, speed authority, sockets | **AUDITED & REFINED** | Mobile aspect framing, clean 3D validator, boundary clamps |
 | **Part 2** | **Avatar System & Wardrobe** | 2D chibi billboard, multi-angle sprites, wardrobe catalog | **AUDITED & REFINED** | Underwear base, 18-frame atlas, 403 save fix, safe item grant |
-| **Part 3** | **Loft Geometry & Furniture Decorator** | 3D room, placement ghost, surfaces, collision | *Queued Next* | Furniture grid snap, rotation controls, save reliability |
-| **Part 4** | **Economy, Shop & Trading System** | Coins, shop catalogs, 8-slot comparative trading | *Pending* | Coin transaction safety, inventory sync, modal feedback |
+| **Part 3** | **Loft Geometry & Furniture Decorator** | 3D room, placement ghost, surfaces, collision | **AUDITED & REFINED** | Top toolbar, instant ghost, tactile audio, surface sync |
+| **Part 4** | **Economy, Shop & Trading System** | Coins, shop catalogs, 8-slot comparative trading | *Queued Next* | Coin transaction safety, inventory sync, modal feedback |
 | **Part 5** | **Social Systems & In-World Chat** | 3D speech bubbles, context menus, moderation | *Pending* | Typing indicators, emote sync, whisper routing |
 | **Part 6** | **Mini-Games & Secondary Activities** | Pizza chef, fishing dock, arcade | *Pending* | Loop polish, tactile reward audio, payout balancing |
 | **Part 7** | **Progression, Quests & Identity** | Daily quests, level xp, passport badges | *Pending* | Claim animations, profile inspection, achievement sync |
@@ -180,6 +180,59 @@ Active tracking for immediate implementation to address furniture responsiveness
     - Automated test coverage: 100% green across both server (25 suites, 186 tests) and client (20 suites, 134 tests).
   - 🗑️ **What Was Pruned**:
     - Removed obsolete sprite-sheet slicing code from legacy Canvas 2D engine in `src/client/avatar/`.
+
+---
+
+### Part 3 Deep Audit: Loft Geometry & Furniture Decorator
+
+#### 3. Subsystem Audit Breakdown
+
+- **3.1 Isometric Loft Architecture & Geometry (`apps/client/src/scenes/RoomScene.ts`, `PlaceholderRoom.ts`)**:
+  - ✅ **What Works**:
+    - Isometric Orthographic Camera: Beta = `atan(sqrt(2))` (~0.955 rad), Alpha = `-PI/4` (-0.785 rad). Static camera in lofts anchored at `(0, 1.0, 0)` eliminates nausea and room judder during avatar movement.
+    - Cutaway isometric walls: back walls elevated, front walls omitted for clear, unobstructed room viewing.
+    - 14m x 14m loft floor with coordinate boundary clamping `[-6.4m, +6.4m]` preventing furniture or avatars from falling off edges.
+    - Seamless dark viewport gradient: `#0a0e14 -> #121820` blends into transparent scene `clearColor(0.06, 0.08, 0.11, 0.0)`.
+    - Atmosphere and mood lighting via `MoodSystem.ts`: presets for `morning`, `afternoon`, `evening`, and `night`.
+  - ❌ **What Does Not Work Yet**:
+    - Multi-floor elevation / vertical lofts: only a single planar floor (`floorY = 0`) is supported; loft mezzanines and staircases are not yet navigable in 3D.
+  - 🔄 **Needs More Refining**:
+    - Outdoor window parallax: windows currently have static emissive glow; should render a subtle parallax backdrop sky.
+
+- **3.2 Furniture Streaming & Instance Caching (`apps/client/src/world/FurnitureManager.ts`)**:
+  - ✅ **What Works**:
+    - Furniture GLB streaming from `/assets/furniture/{itemId}.glb`.
+    - Hierarchical template caching: `templateCache` stores imported root models and instantiates copies via `instantiateHierarchy`, sharing geometry buffers across duplicate chairs, tables, and lamps.
+    - Procedural fallback rendering: if a GLB model is missing or delayed, `FurnitureManager.getProceduralDimensions` renders an authentic colored 3D box with metadata instead of failing silently.
+    - Interactive Props:
+      - Lamps toggle emissive light states on click with `playClick()` audio.
+      - Chairs and sofas seat the avatar with sitting sprite frame.
+      - Non-seat furniture (tables, bookshelves, TVs, plants, rugs) trigger walk-to-object and display inspection badges with item name and rarity.
+  - ❌ **What Does Not Work Yet**:
+    - Vertical stacking: furniture cannot be placed on top of other furniture (e.g., placing a lamp or laptop on top of a table).
+    - Multi-tile dynamic obstacle footprint: furniture does not dynamically carve navmesh obstacles, allowing avatars to walk linearly through room furniture.
+
+- **3.3 Room Editor & Decorator Controls (`apps/client/src/world/RoomEditor.ts`, `SurfaceManager.ts`)**:
+  - ✅ **What Works**:
+    - 0.5m isometric grid overlay (`editor_grid`) with snap toggle (`snapEnabled`).
+    - Repositioned Selection Toolbar: `#furniture-selected-toolbar` fixed at `top: 75px; left: 50%`, preventing overlap with bottom HUD docks.
+    - Procedural Instant Placement Ghost: clicking an inventory item button immediately spawns a bounding box ghost at the cursor, eliminating delay while GLBs stream in.
+    - Selected Item Outline: pulsing cyan highlight via Babylon `HighlightLayer`.
+    - Rotation: 90-degree increments via `R` key, UI buttons, and context menu with tactile audio chime (`playClick()`) and compass direction display (`0° South`, `90° West`, etc.).
+    - Surfaces Tab: live preview of floor materials (Honey Oak, Marble Tile, Teal Plush) and wallpapers with glowing active border (`#4ecdc4`), syncing to server via `PUT /api/rooms/:id/surfaces`.
+    - Layout save confirmation and error handling: commits all pending additions, movements, and removals with `playSuccess()` chime on completion and `playError()` on failure.
+  - 🔄 **Needs More Refining**:
+    - Click-and-drag furniture moving: currently moving furniture requires selecting it and clicking move; direct dragging on the canvas in edit mode would be more tactile.
+    - Fine-grained step undo/redo buffer (`Ctrl+Z` / `Ctrl+Y`).
+
+- **3.4 Backend Layout Persistence & Ownership (`apps/server/src/routes/rooms.ts`)**:
+  - ✅ **What Works**:
+    - `POST /api/rooms/:id/furniture/layout` performs atomic layout replace within a single Prisma transaction.
+    - Validates decorator permissions (`canDecorateRoom`) and decorator inventory ownership for all placed furniture items.
+    - Real automated test coverage: `roomEditor.test.ts` and `furnitureManager.test.ts` pass with 100% green tests.
+  - 🗑️ **What Was Pruned**:
+    - Pruned legacy 2D isometric tilemap math (`gridX * tileWidth / 2 - gridY * tileHeight / 2`) from Canvas 2D engine in `src/client/rooms/`.
+    - Pruned obsolete canvas floor tinting filters in favor of native Babylon.js PBR materials in `SurfaceManager.ts`.
 
 ---
 

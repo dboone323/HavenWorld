@@ -242,6 +242,7 @@ export class RoomEditor {
       this.rotateFurniture(this.selectedFurniture.id, Math.PI / 2);
     }
     this.updateRotationLabel();
+    audioEngine.playClick();
   }
 
   private updateRotationLabel(): void {
