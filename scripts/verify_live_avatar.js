@@ -63,6 +63,62 @@ async function verify() {
   await page.screenshot({ path: wardrobeShot });
   console.log('Saved wardrobe customizer screenshot to:', wardrobeShot);
 
+  // 4. Test multi-angle switching (Back, Sit, Front) in wardrobe preview
+  console.log('Testing wardrobe angle buttons...');
+  const btnBack = page.getByRole('button', { name: 'Back', exact: true });
+  if (await btnBack.isVisible()) {
+    await btnBack.click();
+    await page.waitForTimeout(1000);
+    const backShot = path.join(ARTIFACT_DIR, 'live-production-wardrobe-back.png');
+    await page.screenshot({ path: backShot });
+    console.log('Saved wardrobe back view to:', backShot);
+  }
+
+  const btnSit = page.getByRole('button', { name: 'Sit', exact: true });
+  if (await btnSit.isVisible()) {
+    await btnSit.click();
+    await page.waitForTimeout(1000);
+    const sitShot = path.join(ARTIFACT_DIR, 'live-production-wardrobe-sit.png');
+    await page.screenshot({ path: sitShot });
+    console.log('Saved wardrobe sit view to:', sitShot);
+  }
+
+  // 5. Test Strip to Underwear button
+  console.log('Testing "Strip to Underwear" button...');
+  const btnReset = page.getByRole('button', { name: 'Strip to Underwear', exact: true });
+  if (await btnReset.isVisible()) {
+    await btnReset.click();
+    await page.waitForTimeout(1000);
+    const underwearShot = path.join(ARTIFACT_DIR, 'live-production-wardrobe-underwear.png');
+    await page.screenshot({ path: underwearShot });
+    console.log('Saved wardrobe underwear state to:', underwearShot);
+
+    // Also switch back to front view to see underwear front clearly
+    const btnFront = page.getByRole('button', { name: 'Front', exact: true });
+    if (await btnFront.isVisible()) {
+      await btnFront.click();
+      await page.waitForTimeout(1000);
+      const underwearFrontShot = path.join(ARTIFACT_DIR, 'live-production-wardrobe-underwear-front.png');
+      await page.screenshot({ path: underwearFrontShot });
+      console.log('Saved wardrobe underwear front view to:', underwearFrontShot);
+    }
+  }
+
+  // Close wardrobe
+  const btnCancel = page.locator('button:has-text("Cancel")');
+  if (await btnCancel.isVisible()) {
+    await btnCancel.click();
+    await page.waitForTimeout(1000);
+  }
+
+  // 6. Test sitting on furniture (the couch is at approx x=840, y=340)
+  console.log('Clicking furniture couch to sit...');
+  await page.mouse.click(840, 335);
+  await page.waitForTimeout(2000);
+  const couchShot = path.join(ARTIFACT_DIR, 'live-production-chibi-sitting.png');
+  await page.screenshot({ path: couchShot });
+  console.log('Saved couch sitting screenshot to:', couchShot);
+
   await browser.close();
   console.log('Live production verification complete!');
 }
