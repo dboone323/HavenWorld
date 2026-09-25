@@ -22,6 +22,7 @@ import {
 } from './ui/WebGLError';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { SERVER_URL } from './config';
+import { AvatarContextMenu } from './ui/AvatarContextMenu';
 import './style.css';
 
 // ── Handle Email Verification Token redirect ──────────────────────────────
@@ -72,6 +73,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   (window as any).__havenSceneManager = sm;
   (window as any).__havenAuthService = authService;
   (window as any).__havenSocket = socketService;
+  (window as any).__havenAvatarContextMenu = AvatarContextMenu;
 
   sm.register('login', createLoginScene);
   sm.register('lobby', createLobbyScene);

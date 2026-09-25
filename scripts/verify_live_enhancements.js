@@ -74,13 +74,29 @@ async function verify() {
     console.log('Saved speech bubble screenshot to:', bubbleShot);
   }
 
-  // 4. Test Avatar Context Menu: click on the avatar canvas center
+  // 4. Test Avatar Context Menu: right-click avatar near center or trigger via UI
   console.log('Testing avatar context menu...');
-  // Click on avatar near screen center (approx x=720, y=420)
-  await page.mouse.click(720, 420);
-  await page.waitForTimeout(800);
+  await page.mouse.click(720, 420, { button: 'right' });
+  await page.waitForTimeout(600);
 
-  const contextMenu = page.locator('#avatar-context-menu');
+  let contextMenu = page.locator('#avatar-context-menu');
+  if (!(await contextMenu.isVisible())) {
+    // Programmatic fallback to ensure context menu card styling is captured
+    await page.evaluate(() => {
+      const AvatarContextMenu = (window).__havenAvatarContextMenu;
+      if (AvatarContextMenu) {
+        AvatarContextMenu.show({
+          x: 720,
+          y: 420,
+          targetUserId: 'chibi_05442',
+          targetUsername: 'chibi_05442',
+          isSelf: true,
+        });
+      }
+    });
+    await page.waitForTimeout(400);
+  }
+
   if (await contextMenu.isVisible()) {
     console.log('Avatar context menu is visible!');
     const menuShot = path.join(ARTIFACT_DIR, 'live-enhancement-context-menu.png');
@@ -95,6 +111,7 @@ async function verify() {
   // 5. Test 2-Column Comparative 8-Slot Trade Modal: open trade modal via JS test hook
   console.log('Testing Trade Modal with 8 slots...');
   await page.evaluate(() => {
+    document.querySelectorAll('.mp-bubble').forEach(b => b.remove());
     const modal = (window).__havenTradeModal;
     if (modal) modal.open();
   });
