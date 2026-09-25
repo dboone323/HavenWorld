@@ -70,6 +70,18 @@ async function main() {
   // ── 2. Default Free Items ───────────────────────────────────────────────────
   console.log('[Seed] Creating default free items...');
   const defaultItems = [
+    // MiPlanet Authentic Wearables
+    { id: 'pink-llama-sweater', name: 'Pink Llama Sweater', category: ItemCategory.CLOTHING_BODY, spriteKey: 'pink-llama-sweater', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'olive-shorts', name: 'Olive Shorts', category: ItemCategory.CLOTHING_LEGS, spriteKey: 'olive-shorts', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'denim-jeans', name: 'Denim Jeans', category: ItemCategory.CLOTHING_LEGS, spriteKey: 'denim-jeans', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'basic-blue-eyes', name: 'Basic Blue Eyes', category: ItemCategory.EYES, spriteKey: 'basic-blue-eyes', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'basic-brown-eyes', name: 'Basic Brown Eyes', category: ItemCategory.EYES, spriteKey: 'basic-brown-eyes', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'trapper-hat', name: 'Trapper Hat', category: ItemCategory.CLOTHING_HEAD, spriteKey: 'trapper-hat', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'skull-balaclava', name: 'Skull Balaclava', category: ItemCategory.CLOTHING_FACE, spriteKey: 'skull-balaclava', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'purple-sneakers', name: 'Purple Sneakers', category: ItemCategory.CLOTHING_FEET, spriteKey: 'purple-sneakers', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'wavy-hair', name: 'Wavy Hair', category: ItemCategory.HAIR, spriteKey: 'wavy-hair', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'white-wings', name: 'White Wings', category: ItemCategory.CLOTHING_BACK, spriteKey: 'white-wings', rarity: ItemRarity.COMMON, isDefault: true },
+    { id: 'black-wings', name: 'Black Wings', category: ItemCategory.CLOTHING_BACK, spriteKey: 'black-wings', rarity: ItemRarity.COMMON, isDefault: true },
     // Hair
     { id: 'hair-short-01', name: 'Short Hair', category: ItemCategory.HAIR, spriteKey: 'hair/hair-short-01', rarity: ItemRarity.COMMON },
     { id: 'hair-short-02', name: 'Short Alt Hair', category: ItemCategory.HAIR, spriteKey: 'hair/hair-short-02', rarity: ItemRarity.COMMON },

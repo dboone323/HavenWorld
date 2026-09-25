@@ -114,6 +114,17 @@ export async function seedMinimalData(): Promise<void> {
 
   // Seed starter items
   const defaultFreeItems: Array<{ id: string; name: string; category: any; spriteKey: string }> = [
+    { id: 'pink-llama-sweater', name: 'Pink Llama Sweater', category: 'CLOTHING_BODY', spriteKey: 'pink-llama-sweater' },
+    { id: 'olive-shorts', name: 'Olive Shorts', category: 'CLOTHING_LEGS', spriteKey: 'olive-shorts' },
+    { id: 'denim-jeans', name: 'Denim Jeans', category: 'CLOTHING_LEGS', spriteKey: 'denim-jeans' },
+    { id: 'basic-blue-eyes', name: 'Basic Blue Eyes', category: 'EYES', spriteKey: 'basic-blue-eyes' },
+    { id: 'basic-brown-eyes', name: 'Basic Brown Eyes', category: 'EYES', spriteKey: 'basic-brown-eyes' },
+    { id: 'trapper-hat', name: 'Trapper Hat', category: 'CLOTHING_HEAD', spriteKey: 'trapper-hat' },
+    { id: 'skull-balaclava', name: 'Skull Balaclava', category: 'CLOTHING_FACE', spriteKey: 'skull-balaclava' },
+    { id: 'purple-sneakers', name: 'Purple Sneakers', category: 'CLOTHING_FEET', spriteKey: 'purple-sneakers' },
+    { id: 'wavy-hair', name: 'Wavy Hair', category: 'HAIR', spriteKey: 'wavy-hair' },
+    { id: 'white-wings', name: 'White Wings', category: 'CLOTHING_BACK', spriteKey: 'white-wings' },
+    { id: 'black-wings', name: 'Black Wings', category: 'CLOTHING_BACK', spriteKey: 'black-wings' },
     { id: 'hair-short-01', name: 'Short Hair 01', category: 'HAIR', spriteKey: 'hair-short-01' },
     { id: 'hair-short-02', name: 'Short Hair 02', category: 'HAIR', spriteKey: 'hair-short-02' },
     { id: 'hair-long-01', name: 'Long Hair 01', category: 'HAIR', spriteKey: 'hair-long-01' },

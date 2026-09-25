@@ -183,9 +183,44 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user!.userId;
   const d = parsed.data;
 
-  // Wardrobe slots may only reference items the player actually owns.
+  // Wardrobe slots may only reference items the player owns or base starter wardrobe items.
+  const STARTER_WARDROBE_ITEM_IDS = new Set([
+    'pink-llama-sweater',
+    'olive-shorts',
+    'denim-jeans',
+    'basic-blue-eyes',
+    'basic-brown-eyes',
+    'trapper-hat',
+    'skull-balaclava',
+    'black-wings',
+    'white-wings',
+    'purple-sneakers',
+    'wavy-hair',
+    'bald',
+    'underwear-top',
+    'underwear-bottom',
+    'barefoot',
+    'hair-short-01',
+    'hair-short-02',
+    'hair-long-01',
+    'eyes-default',
+    'eyes-round',
+    'shirt-white',
+    'shirt-black',
+    'shirt-blue',
+    'pants-blue',
+    'pants-black',
+    'shoes-white',
+    'shoes-black',
+  ]);
+  const EXCLUDED_SLOT_VALUES = new Set(['none', 'underwear', 'barefoot', 'bald', 'null', 'undefined']);
+
   const requestedOutfitIds = OUTFIT_SLOTS.map((slot) => d[slot]).filter(
-    (value): value is string => typeof value === 'string' && value.length > 0
+    (value): value is string =>
+      typeof value === 'string' &&
+      value.length > 0 &&
+      !EXCLUDED_SLOT_VALUES.has(value) &&
+      !STARTER_WARDROBE_ITEM_IDS.has(value)
   );
   if (new Set(requestedOutfitIds).size > 0) {
     const ownedCount = await prisma.inventory.count({

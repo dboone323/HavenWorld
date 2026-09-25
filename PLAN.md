@@ -89,8 +89,8 @@ Active tracking for immediate implementation to address furniture responsiveness
 | Part | Subsystem | Focus Area | Status | Key Deliverable |
 | :---: | :--- | :--- | :---: | :--- |
 | **Part 1** | **Core Engine & Network Infrastructure** | Viewport, camera, movement, speed authority, sockets | **AUDITED & REFINED** | Mobile aspect framing, clean 3D validator, boundary clamps |
-| **Part 2** | **Avatar System & Wardrobe** | 2D chibi billboard, multi-angle sprites, wardrobe catalog | *Queued Next* | Layer sorting, item preview, clothing persistence |
-| **Part 3** | **Loft Geometry & Furniture Decorator** | 3D room, placement ghost, surfaces, collision | *Pending* | Furniture grid snap, rotation controls, save reliability |
+| **Part 2** | **Avatar System & Wardrobe** | 2D chibi billboard, multi-angle sprites, wardrobe catalog | **AUDITED & REFINED** | Underwear base, 18-frame atlas, 403 save fix, safe item grant |
+| **Part 3** | **Loft Geometry & Furniture Decorator** | 3D room, placement ghost, surfaces, collision | *Queued Next* | Furniture grid snap, rotation controls, save reliability |
 | **Part 4** | **Economy, Shop & Trading System** | Coins, shop catalogs, 8-slot comparative trading | *Pending* | Coin transaction safety, inventory sync, modal feedback |
 | **Part 5** | **Social Systems & In-World Chat** | 3D speech bubbles, context menus, moderation | *Pending* | Typing indicators, emote sync, whisper routing |
 | **Part 6** | **Mini-Games & Secondary Activities** | Pizza chef, fishing dock, arcade | *Pending* | Loop polish, tactile reward audio, payout balancing |
@@ -140,6 +140,46 @@ Active tracking for immediate implementation to address furniture responsiveness
   - 🗑️ **Pruned**: Removed legacy 2D pixel scale branches from `MovementValidator.ts`.
   - 🗑️ **Shelved**: Shelved speculative multi-node Redis cluster sharding in favor of rock-solid single-instance room routing in `RoomManager.ts` until concurrency demands it.
   - 🗑️ **Shelved**: Shelved legacy 2D A* grid matrix in `src/client/shared/pathfinding.js` (Canvas2D relic); future pathfinding should be 3D NavMesh / Babylon grid based.
+
+---
+
+### Part 2 Deep Audit: Avatar System, 2D Chibi Billboard & Wardrobe Customizer
+
+#### 2. Subsystem Audit Breakdown
+
+- **2.1 Pure 2D Chibi In-World Billboard Rendering (`apps/client/src/world/ChibiBillboard.ts`, `AvatarController.ts`)**:
+  - ✅ **What Works**:
+    - The player's avatar is rendered solely as a 2D Chibi billboard plane in the 3D room.
+    - Authentic 18-frame sprite grid extracted directly from MiPlanet (`https://miplanet-online.onrender.com`).
+    - Base character is rendered in clean white briefs / underwear, completely preventing clothes overlapping or clipping when layering garments.
+    - Multi-angle sprites: Front (idle, walk left 1-3, walk right 1-3), Back (idle, walk left 1-3, walk right 1-3), Sitting (front sit left/right, back sit left/right).
+    - Proportions calibrated to authentic dimensions (`width: 1.78m, height: 3.05m`, aspect ratio 133:227).
+    - Sitting postures: sitting on chairs/sofas automatically triggers the sitting sprite frame without floating or jumping.
+  - ❌ **What Does Not Work Yet**:
+    - Diagonal 8-way angles: currently 4-directional (Down/Front, Up/Back, Left, Right via horizontal flip); true 8-way diagonal walk sprites (North-East, South-West, etc.) are not yet in the sprite sheet.
+  - 🔄 **What Needs More Refining**:
+    - Walk animation framerate: runs at 100ms per frame. Needs a subtle ease-in interpolation when starting to walk from an idle stance.
+  - 🗑️ **What Was Pruned**:
+    - Procedural 3D humanoid and capsule meshes hidden (`visibility = 0`), preserved strictly as invisible physics collision and raycast picking hitboxes.
+
+- **2.2 MiPlanet Wardrobe Catalog & Customizer UI (`apps/client/src/ui/AvatarCustomizer.ts`)**:
+  - ✅ **What Works**:
+    - Modal styled to match MiPlanet's `.catalog-layout` with a 2-column structure: left catalog grid with category rail (All, Tops, Pants, Eyes, Headwear, Face Wear, Backwear, Shoes, Hair) and right-side 170x290 live layered preview stage (`#wardrobe-avatar`).
+    - Equipping an item displays a teal border and checkmark badge.
+    - Angle switchers (Front, Back, Sit) allow full 360-degree inspection of layered clothing on the avatar preview stage.
+    - "Strip to Underwear" action instantly un-equips all clothing layers, returning the character to clean base underwear.
+    - Audio cues connected for wardrobe interactions (`playClick()`, `playSuccess()`, `playError()`).
+  - 🔄 **Needs More Refining**:
+    - Passport profile card (`PassportModal.ts`): currently shows username initials instead of the rendered 2D chibi preview. Should embed a miniature canvas render of the chibi head/bust.
+
+- **2.3 Backend Outfit Persistence & Permissions (`apps/server/src/routes/users.ts`, `apps/server/src/services/InventoryService.ts`)**:
+  - ✅ **What Works**:
+    - Wardrobe outfit updates persisted via `PUT /api/users/me/avatar`.
+    - Fixed 403 Forbidden validation error: `users.ts` now permits starter catalog items (`pink-llama-sweater`, `olive-shorts`, `denim-jeans`, `basic-blue-eyes`, `basic-brown-eyes`, `trapper-hat`, `skull-balaclava`, `purple-sneakers`, `wavy-hair`, `white-wings`, `black-wings`) and unequipped slot values (`'none'`, `'underwear'`, `'barefoot'`, `'bald'`) without requiring prior marketplace purchase.
+    - `InventoryService.grantDefaultItems` safely queries existing database items before inserting, eliminating foreign key constraint failures during registration and test teardowns.
+    - Automated test coverage: 100% green across both server (25 suites, 186 tests) and client (20 suites, 134 tests).
+  - 🗑️ **What Was Pruned**:
+    - Removed obsolete sprite-sheet slicing code from legacy Canvas 2D engine in `src/client/avatar/`.
 
 ---
 

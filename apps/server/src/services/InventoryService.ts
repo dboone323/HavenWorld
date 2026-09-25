@@ -8,6 +8,19 @@ export interface TransferCoinsOptions {
 }
 
 export const DEFAULT_FREE_ITEM_IDS = [
+  // MiPlanet Authentic Wearables
+  'pink-llama-sweater',
+  'olive-shorts',
+  'denim-jeans',
+  'basic-blue-eyes',
+  'basic-brown-eyes',
+  'trapper-hat',
+  'skull-balaclava',
+  'purple-sneakers',
+  'wavy-hair',
+  'white-wings',
+  'black-wings',
+  // Legacy Starters
   'hair-short-01',
   'hair-short-02',
   'hair-long-01',
@@ -38,8 +51,14 @@ export class InventoryService {
    * Grants default starter items to a newly registered user
    */
   async grantDefaultItems(userId: string): Promise<void> {
+    const validItems = await this.client.item.findMany({
+      where: { id: { in: DEFAULT_FREE_ITEM_IDS } },
+      select: { id: true },
+    });
+    if (validItems.length === 0) return;
+
     await this.client.inventory.createMany({
-      data: DEFAULT_FREE_ITEM_IDS.map((itemId) => ({ userId, itemId })),
+      data: validItems.map((item) => ({ userId, itemId: item.id })),
       skipDuplicates: true,
     });
   }
