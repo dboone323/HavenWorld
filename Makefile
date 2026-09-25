@@ -209,7 +209,7 @@ ssh: ## Open SSH session to Oracle Cloud
 
 .PHONY: logs
 logs: ## Tail live PM2 logs on Oracle (Ctrl-C to exit)
-	ssh $(ORACLE_HOST) 'pm2 logs havenworld-server --lines 50'
+	ssh $(ORACLE_HOST) 'sudo -u havenworld -H env PATH=/home/havenworld/.local/bin:/usr/local/bin:/usr/bin:/bin pm2 logs havenworld-server --lines 50'
 
 .PHONY: logs-err
 logs-err: ## Tail PM2 error log on Oracle
@@ -217,11 +217,11 @@ logs-err: ## Tail PM2 error log on Oracle
 
 .PHONY: pm2-status
 pm2-status: ## Show PM2 app list on Oracle
-	ssh $(ORACLE_HOST) 'pm2 list'
+	ssh $(ORACLE_HOST) 'sudo -u havenworld -H env PATH=/home/havenworld/.local/bin:/usr/local/bin:/usr/bin:/bin pm2 list'
 
 .PHONY: pm2-restart
 pm2-restart: ## Graceful PM2 reload (zero-downtime) on Oracle
-	ssh $(ORACLE_HOST) 'pm2 reload havenworld-server'
+	ssh $(ORACLE_HOST) 'sudo -u havenworld -H env PATH=/home/havenworld/.local/bin:/usr/local/bin:/usr/bin:/bin pm2 reload havenworld-server'
 
 .PHONY: backup
 backup: ## Trigger encrypted DB backup on Oracle

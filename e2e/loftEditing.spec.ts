@@ -99,6 +99,9 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
     const loginPage = new LoginPage(page);
     const roomPage = new RoomPage(page);
 
+    // Closing the decorator after placing an item prompts to discard pending changes.
+    page.on('dialog', (dialog) => void dialog.accept());
+
     await loginPage.goto();
     await loginPage.register(decoratorUser);
     await loginPage.verifyEmailViaTestRoute(decoratorUser.email);

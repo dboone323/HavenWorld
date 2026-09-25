@@ -164,11 +164,19 @@ export class RoomPage {
   async navigateToPark(): Promise<void> {
     await this.btnPark.click();
     await this.waitForRoomReady();
+    await this.page.waitForFunction(
+      () => (window as any).__havenRoomId === 'room-park' && (window as any).__havenRoomReady === true,
+      { timeout: 20_000 }
+    );
   }
 
   async navigateToLoft(): Promise<void> {
     await this.btnMyLoft.click();
     await this.waitForRoomReady();
+    await this.page.waitForFunction(
+      () => String((window as any).__havenRoomId ?? '') !== 'room-park' && (window as any).__havenRoomReady === true,
+      { timeout: 20_000 }
+    );
   }
 
   async signOut(): Promise<void> {

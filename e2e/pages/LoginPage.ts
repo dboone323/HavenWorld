@@ -80,6 +80,19 @@ export class LoginPage {
         `POST /api/auth/register failed: ${response.status()} ${await response.text()}`
       ).toBe(201);
     }
+
+    // Alpha mode auto-verifies and enters the world straight from registration.
+    // Wait for that transition so callers can safely call login() (which becomes a
+    // no-op in this mode) or verifyEmailViaTestRoute() without racing the UI.
+    let body: { emailVerificationRequired?: boolean } = {};
+    try {
+      body = await response.json();
+    } catch {
+      // Non-JSON responses are treated as requiring the explicit path.
+    }
+    if (body.emailVerificationRequired === false) {
+      await expect(this.page.getByTestId('game-container')).toBeVisible({ timeout: 20_000 });
+    }
   }
 
   async login(email: string, password: string): Promise<void> {
