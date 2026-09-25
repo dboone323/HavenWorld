@@ -45,10 +45,10 @@ export class ChibiBillboard {
 
     this.dynamicTexture = new BABYLON.DynamicTexture(
       `${name}_tex`,
-      { width: 96, height: 128 },
+      { width: 192, height: 256 },
       scene,
       false,
-      BABYLON.Constants.TEXTURE_NEAREST_SAMPLINGMODE
+      BABYLON.Constants.TEXTURE_BILINEAR_SAMPLINGMODE
     );
     this.dynamicTexture.hasAlpha = true;
 
@@ -93,8 +93,12 @@ export class ChibiBillboard {
     try {
       const ctx = this.dynamicTexture.getContext() as CanvasRenderingContext2D;
       if (!ctx) return;
-      ctx.clearRect(0, 0, 96, 128);
-      ctx.imageSmoothingEnabled = false;
+      const texSize = this.dynamicTexture.getSize();
+      const w = texSize.width;
+      const h = texSize.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Draw layers in z-order: shadow, body, eyes, bottom, top, shoes, hair, hat, accessory
       const layers: Array<'shadow' | 'body' | 'eyes' | 'bottom' | 'top' | 'shoes' | 'hair' | 'hat' | 'accessory'> = [
@@ -119,7 +123,7 @@ export class ChibiBillboard {
         const key = atlas.resolveFrameKey(layer, this.currentAction, this.currentDirection, this.currentFrame);
         const f = atlas.getFrame(key);
         if (f) {
-          ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, 96, 128);
+          ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, w, h);
         }
       }
 
