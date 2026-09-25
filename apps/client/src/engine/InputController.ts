@@ -50,23 +50,36 @@ export class InputController {
         this._avatar.lookAt(pick.pickedPoint);
 
         const mesh = pick.pickedMesh;
-        if (mesh.metadata?.isRemoteAvatar) {
-          // Clicked on a remote avatar — context menu handles this
+        if (mesh.metadata?.isRemoteAvatar || mesh.metadata?.isLocalAvatar) {
+          // Handled by context menu
           return;
         }
+
+        // Check if clicking placed furniture or seat mesh
+        const furnitureManager = (typeof window !== 'undefined' && (window as any).__havenFurnitureManager) || null;
+        const placed = furnitureManager?.pickFurniture(pick);
+        const itemId = (placed?.itemId || '').toLowerCase();
+        const meshName = (mesh.name || '').toLowerCase();
+
         const isSeat =
-          mesh.name.startsWith('sofa') ||
-          mesh.name.includes('chair') ||
-          mesh.name.includes('bench') ||
-          mesh.name.includes('stool') ||
-          mesh.name.includes('bed') ||
+          itemId.includes('chair') ||
+          itemId.includes('sofa') ||
+          itemId.includes('couch') ||
+          itemId.includes('bench') ||
+          itemId.includes('stool') ||
+          itemId.includes('bed') ||
+          meshName.includes('chair') ||
+          meshName.includes('sofa') ||
+          meshName.includes('bench') ||
+          meshName.includes('stool') ||
+          meshName.includes('bed') ||
           mesh.metadata?.interactable === 'sit';
 
         if (isSeat) {
-          const seatPos = mesh.getAbsolutePosition();
-          // Walk to the seat and sit on it upon arrival
+          const seatTarget = placed?.mesh || mesh;
+          const seatPos = seatTarget.getAbsolutePosition();
           this._avatar.moveTo(seatPos, () => {
-            this._avatar.sitOn(mesh);
+            this._avatar.sitOn(seatTarget);
           });
           return;
         }

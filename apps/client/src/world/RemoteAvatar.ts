@@ -11,6 +11,7 @@ import {
 import { AdvancedDynamicTexture, TextBlock, Rectangle } from '@babylonjs/gui';
 import type { AvatarData } from '@havenworld/shared';
 import type { UserProfile } from './AvatarController';
+import { ChibiBillboard, type ChibiDirection } from './ChibiBillboard';
 
 export class RemoteAvatar {
   public rootMesh: TransformNode;
@@ -19,6 +20,11 @@ export class RemoteAvatar {
 
   private _scene: Scene;
   private _meshes: AbstractMesh[] = [];
+  private _chibiBillboard: ChibiBillboard | null = null;
+  private _chibiDirection: ChibiDirection = 'down';
+  private _chibiAnimTimer: number = 0;
+  private _chibiWalkFrame: number = 0;
+  private _isSitting: boolean = false;
   private _nameTagMesh: AbstractMesh | null = null;
   private _speechBubbleMesh: AbstractMesh | null = null;
   private _speechBubbleTexture: AdvancedDynamicTexture | null = null;
@@ -46,6 +52,17 @@ export class RemoteAvatar {
     this._targetPos = new Vector3(startX, startY, startZ);
 
     this._buildPlaceholder(user.avatarData);
+
+    try {
+      this._chibiBillboard = new ChibiBillboard(`remote_chibi_${user.id}`, this._scene, this.rootMesh);
+      if (user.avatarData) {
+        this._chibiBillboard.setAvatarData(user.avatarData);
+      }
+      this._chibiBillboard.setAction('idle', 'down', 0);
+    } catch {
+      // Graceful fallback in headless tests
+    }
+
     this._buildNameTag();
     this._buildSpeechBubble();
     this._registerRenderLoop();
@@ -84,6 +101,14 @@ export class RemoteAvatar {
     head.material = mat;
     body.metadata = { isRemoteAvatar: true, userId: this.userId, username: this.username };
     head.metadata = { isRemoteAvatar: true, userId: this.userId, username: this.username };
+
+    // In browser with canvas, the 2D chibi billboard provides visual rendering.
+    // Body and head meshes act as invisible picking / interaction volumes.
+    if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+      body.visibility = 0;
+      head.visibility = 0;
+    }
+
     this._meshes = [body, head];
   }
 
@@ -156,6 +181,34 @@ export class RemoteAvatar {
 
   private _registerRenderLoop(): void {
     const callback = () => {
+      const dt = this._scene.getEngine().getDeltaTime();
+      const currentPos = this.rootMesh.position;
+      const dx = this._targetPos.x - currentPos.x;
+      const dz = this._targetPos.z - currentPos.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (!this._isSitting) {
+        if (dist > 0.05) {
+          // Moving
+          if (Math.abs(dx) > Math.abs(dz)) {
+            this._chibiDirection = dx > 0 ? 'right' : 'left';
+          } else {
+            this._chibiDirection = dz > 0 ? 'up' : 'down';
+          }
+          this._chibiAnimTimer += dt;
+          if (this._chibiAnimTimer >= 100) {
+            this._chibiAnimTimer = 0;
+            this._chibiWalkFrame = (this._chibiWalkFrame + 1) % 8;
+            this._chibiBillboard?.setAction('walk', this._chibiDirection, this._chibiWalkFrame);
+          }
+        } else {
+          // Idle
+          this._chibiAnimTimer = 0;
+          this._chibiWalkFrame = 0;
+          this._chibiBillboard?.setAction('idle', this._chibiDirection, 0);
+        }
+      }
+
       // Smooth position lerp
       this.rootMesh.position = Vector3.Lerp(this.rootMesh.position, this._targetPos, 0.2);
       // Smooth rotation lerp
@@ -174,12 +227,18 @@ export class RemoteAvatar {
   }
 
   public setSitting(isSitting: boolean, x?: number, y?: number, z?: number, rotY?: number): void {
+    this._isSitting = isSitting;
     if (x !== undefined && y !== undefined && z !== undefined) {
       this.updatePosition(x, y, z, rotY);
     }
     // Adjust avatar posture height when sitting vs standing
     if (this._meshes.length > 0) {
       this._meshes[0].position.y = isSitting ? 0.45 : 0.85;
+    }
+    if (isSitting) {
+      this._chibiBillboard?.setAction('sit', 'down', 0);
+    } else {
+      this._chibiBillboard?.setAction('idle', this._chibiDirection, 0);
     }
   }
 
@@ -202,6 +261,7 @@ export class RemoteAvatar {
   }
 
   public applyCustomization(data: AvatarData): void {
+    this._chibiBillboard?.setAvatarData(data);
     const skinHex = data.skinTone || data.skinColor;
     if (skinHex && this._meshes.length > 0) {
       const mat = this._meshes[0].material as StandardMaterial;
@@ -218,6 +278,8 @@ export class RemoteAvatar {
     if (this._renderObserver) {
       this._scene.unregisterBeforeRender(this._renderObserver);
     }
+    this._chibiBillboard?.dispose();
+    this._chibiBillboard = null;
     this._meshes.forEach((m) => m.dispose());
     this._nameTagMesh?.dispose();
     this._speechBubbleMesh?.dispose();

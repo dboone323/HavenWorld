@@ -40,6 +40,8 @@ import { WorkshopPanel } from '../ui/WorkshopPanel';
 import { ClubPanel } from '../clubs/ClubPanel';
 import { GalleryPanel } from '../gallery/GalleryPanel';
 import { DirectMessagePanel } from '../ui/DirectMessagePanel';
+import { TradeModal } from '../ui/TradeModal';
+import { applyRoomSurfaces } from '../world/SurfaceManager';
 
 export async function createRoomScene(
   haven: HavenEngine,
@@ -48,6 +50,10 @@ export async function createRoomScene(
   const scene = new Scene(haven.engine);
   scene.clearColor = new Color4(0.11, 0.13, 0.17, 1.0);
   const unsubs: Array<() => void> = [];
+
+  // Instantiate TradeModal and register to window for trade socket events
+  const tradeModal = new TradeModal();
+  (window as unknown as Record<string, unknown>).__havenTradeModal = tradeModal;
 
   const roomId = data?.roomId || authService.user?.personalRoom?.id || 'room-park';
   (window as unknown as Record<string, string>).__havenRoomId = roomId;
@@ -171,6 +177,34 @@ export async function createRoomScene(
       m.receiveShadows = true;
     }
   }
+
+  // ── Room Custom Surfaces (Floors & Walls) ─────────────────────────────────
+  if (roomId.startsWith('room-') && roomId !== 'room-park') {
+    authService.getToken().then((tokenVal) => {
+      if (!tokenVal) return;
+      fetch(`${API_URL}/rooms/${roomId}`, {
+        headers: { Authorization: `Bearer ${tokenVal}` },
+      })
+        .then((r) => r.json())
+        .then((roomData) => {
+          if (roomData && (roomData.floorTexture || roomData.wallTexture)) {
+            applyRoomSurfaces(scene, roomData.floorTexture, roomData.wallTexture);
+          }
+        })
+        .catch(() => { /* non-critical */ });
+    });
+  }
+
+  unsubs.push(
+    socketService.on<{ roomId: string; floorTexture?: string; wallTexture?: string }>(
+      'room:surfaces_updated' as any,
+      (data) => {
+        if (data?.roomId === roomId) {
+          applyRoomSurfaces(scene, data.floorTexture, data.wallTexture);
+        }
+      }
+    )
+  );
 
   // ── Local Avatar ──────────────────────────────────────────────────────────
   const user = authService.user || {
@@ -527,6 +561,17 @@ export async function createRoomScene(
           y: clientY,
           targetUserId: meta.userId,
           targetUsername: meta.username,
+          isSelf: false,
+        });
+        return true;
+      }
+      if (meta?.isLocalAvatar && meta?.userId && meta?.username) {
+        AvatarContextMenu.show({
+          x: clientX,
+          y: clientY,
+          targetUserId: meta.userId,
+          targetUsername: meta.username,
+          isSelf: true,
         });
         return true;
       }

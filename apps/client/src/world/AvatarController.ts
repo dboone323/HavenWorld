@@ -10,6 +10,8 @@ const AVATAR_GLB_FILE = 'base_avatar.glb';
 const WALK_SPEED = 3.5; // meters per second
 const ARRIVAL_THRESHOLD = 0.15; // stop walking when within 15cm
 
+import { ChibiBillboard, type ChibiDirection } from './ChibiBillboard';
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -24,6 +26,10 @@ export class AvatarController {
   public currentAnimName = 'idle';
 
   public isPlaceholder = false;
+  public chibiBillboard: ChibiBillboard | null = null;
+  private chibiDirection: ChibiDirection = 'down';
+  private chibiAnimTimer: number = 0;
+  private chibiWalkFrame: number = 0;
 
   private scene: BABYLON.Scene;
   private user: UserProfile;
@@ -92,6 +98,16 @@ export class AvatarController {
       this.buildPlaceholder(spawnPosition);
     }
 
+    try {
+      this.chibiBillboard = new ChibiBillboard(`chibi_avatar_local_${this.user.id}`, this.scene, this.rootMesh);
+      if (this.user.avatarData) {
+        this.chibiBillboard.setAvatarData(this.user.avatarData);
+      }
+      this.chibiBillboard.setAction('idle', 'down', 0);
+    } catch {
+      // In non-canvas/headless test environments, ChibiBillboard fails gracefully
+    }
+
     if (this.user.avatarData) {
       this.applyCustomization(this.user.avatarData);
     }
@@ -123,6 +139,16 @@ export class AvatarController {
     body.material = mat;
     head.material = mat;
 
+    // In a browser with canvas support, the 2D Chibi billboard is our primary visual avatar!
+    // We set placeholder capsule/head visibility to 0 so they act as invisible collision/picking hitboxes.
+    if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+      body.visibility = 0;
+      head.visibility = 0;
+    }
+
+    body.metadata = { isLocalAvatar: true, userId: this.user.id, username: this.user.username };
+    head.metadata = { isLocalAvatar: true, userId: this.user.id, username: this.user.username };
+
     this.rootMesh = body;
   }
 
@@ -150,6 +176,7 @@ export class AvatarController {
     if (this.currentAnimName === 'sit' && this.rootMesh) {
       this.rootMesh.position.y = 0;
       this.currentAnimName = 'idle';
+      this.chibiBillboard?.setAction('idle', this.chibiDirection, 0);
       const roomId =
         (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
         this.roomId;
@@ -181,6 +208,7 @@ export class AvatarController {
     if (seatMesh.rotation) {
       this.rootMesh.rotation.y = seatMesh.rotation.y;
     }
+    this.chibiBillboard?.setAction('sit', 'down', 0);
 
     const roomId =
       (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
@@ -201,8 +229,13 @@ export class AvatarController {
     this.onArrivalCallback = null;
     this.isMoving = false;
     this.currentAnimName = name;
-    if (name === 'sit' && this.rootMesh) {
-      this.rootMesh.position.y = -0.32;
+    if (name === 'sit') {
+      if (this.rootMesh) {
+        this.rootMesh.position.y = -0.32;
+      }
+      this.chibiBillboard?.setAction('sit', 'down', 0);
+    } else {
+      this.chibiBillboard?.setAction('idle', this.chibiDirection, 0);
     }
     this.crossFadeTo(name, name !== 'wave'); // wave does not loop
   }
@@ -211,6 +244,7 @@ export class AvatarController {
     this.applyMorphTargets(data);
     this.applyMaterialColors(data);
     this.applyOutfit(data);
+    this.chibiBillboard?.setAvatarData(data);
   }
 
   // ─── Wardrobe Layers ─────────────────────────────────────────────────────
@@ -580,6 +614,9 @@ export class AvatarController {
       this.isMoving = false;
       this.targetPosition = null;
       this.moveEmitTimer = 0;
+      this.chibiAnimTimer = 0;
+      this.chibiWalkFrame = 0;
+      this.chibiBillboard?.setAction('idle', this.chibiDirection, 0);
       this.crossFadeTo('idle');
 
       // Confirm final position to server
@@ -600,6 +637,21 @@ export class AvatarController {
         cb();
       }
       return;
+    }
+
+    // Determine isometric direction for Chibi sprite
+    if (Math.abs(dir.x) > Math.abs(dir.z)) {
+      this.chibiDirection = dir.x > 0 ? 'right' : 'left';
+    } else {
+      this.chibiDirection = dir.z > 0 ? 'up' : 'down';
+    }
+
+    // Step walk frame every ~100ms
+    this.chibiAnimTimer += dt;
+    if (this.chibiAnimTimer >= 100) {
+      this.chibiAnimTimer = 0;
+      this.chibiWalkFrame = (this.chibiWalkFrame + 1) % 8;
+      this.chibiBillboard?.setAction('walk', this.chibiDirection, this.chibiWalkFrame);
     }
 
     // Rotate toward target
@@ -642,6 +694,8 @@ export class AvatarController {
       this.scene.unregisterBeforeRender(this.renderObserver);
       this.renderObserver = null;
     }
+    this.chibiBillboard?.dispose();
+    this.chibiBillboard = null;
     this.nameTagTexture?.dispose();
     this.nameTagMesh?.dispose();
     this.animations.forEach((ag) => ag.dispose());

@@ -4,6 +4,7 @@ import { FurnitureManager, type PlacedFurniture } from './FurnitureManager';
 import { SERVER_URL, assetUrl } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from '../ui/ToastNotification';
+import { applyRoomSurfaces } from './SurfaceManager';
 
 export interface FurniturePlacement {
   id: string; // UUID (temp for new items, DB id for existing)
@@ -836,6 +837,9 @@ export class RoomEditor {
         const type = (btn as HTMLElement).dataset.type;
         const key = (btn as HTMLElement).dataset.key;
         if (!key) return;
+
+        // Apply immediately in Babylon scene for instant feedback
+        applyRoomSurfaces(this.scene, type === 'floor' ? key : undefined, type === 'wall' ? key : undefined);
 
         try {
           const token = authService.token || (await authService.getToken()) || '';

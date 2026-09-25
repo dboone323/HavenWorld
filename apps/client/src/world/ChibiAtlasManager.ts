@@ -1,3 +1,5 @@
+import { assetUrl } from '../config';
+
 export interface AtlasFrame {
   frame: {
     x: number;
@@ -37,7 +39,7 @@ export class ChibiAtlasManager {
 
     this.loadPromise = (async () => {
       try {
-        const jsonRes = await fetch('/assets/sprites/avatar/atlas.json');
+        const jsonRes = await fetch(assetUrl('/assets/sprites/avatar/atlas.json'));
         if (!jsonRes.ok) {
           throw new Error(`Failed to load atlas.json: ${jsonRes.status}`);
         }
@@ -50,7 +52,7 @@ export class ChibiAtlasManager {
             resolve();
           };
           img.onerror = (err) => reject(new Error('Failed to load avatar atlas.png'));
-          img.src = '/assets/sprites/avatar/atlas.png';
+          img.src = assetUrl('/assets/sprites/avatar/atlas.png');
         });
       } catch (err) {
         console.warn('[ChibiAtlasManager] Sprite atlas load fallback:', err);
