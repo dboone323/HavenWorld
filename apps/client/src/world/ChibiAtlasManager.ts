@@ -88,10 +88,15 @@ export class ChibiAtlasManager {
     direction: 'down' | 'up' | 'left' | 'right',
     frameIndex: number = 0
   ): string {
-    // When sitting, map to the stationary frame (or idle frame)
-    const effectiveAction = action === 'sit' ? 'idle' : action;
-    const maxFrames = effectiveAction === 'walk' ? 8 : 2;
+    const maxFrames = action === 'walk' ? 8 : 2;
     const safeIndex = (frameIndex % maxFrames).toString().padStart(2, '0');
+    if (action === 'sit') {
+      const sitKey = `${layer}-sit-${direction}-${safeIndex}`;
+      if (this.atlasData?.frames[sitKey]) {
+        return sitKey;
+      }
+    }
+    const effectiveAction = action === 'sit' ? 'idle' : action;
     return `${layer}-${effectiveAction}-${direction}-${safeIndex}`;
   }
 }

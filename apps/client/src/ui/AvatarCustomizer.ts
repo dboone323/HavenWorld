@@ -1,105 +1,194 @@
-import * as BABYLON from '@babylonjs/core';
-import '@babylonjs/loaders';
 import type { AvatarData } from '@havenworld/shared';
 import {
-  GENDER_PRESETS,
   SOCKET_EVENTS,
   WARDROBE_TABS,
-  applyGenderPreset,
-  getItemAccentColor,
-  groupWardrobeItems,
   normalizeGender,
   type WardrobeItem,
 } from '@havenworld/shared';
-import { AvatarController } from '../world/AvatarController';
 import { authService } from '../services/auth';
 import { socketService } from '../services/socket';
 import { showToast } from './ToastNotification';
-import { SERVER_URL } from '../config';
+import { SERVER_URL, assetUrl } from '../config';
 
-// Skin tone presets (12 swatches)
-const SKIN_TONES = [
-  '#FDDBB4',
-  '#F5CBA7',
-  '#EAB88A',
-  '#D4956A',
-  '#C07A50',
-  '#A0522D',
-  '#8B4513',
-  '#6B3410',
-  '#4A2011',
-  '#FDECDC',
-  '#F2D7C0',
-  '#E8C4A0',
+interface CatalogItem {
+  id: string;
+  name: string;
+  category: string;
+  slot: 'outfitHead' | 'outfitFace' | 'outfitBody' | 'outfitLegs' | 'outfitFeet' | 'outfitBack' | 'eyes' | 'hairStyle';
+  asset: string;
+  frontAsset?: string;
+  backAsset?: string;
+  icon: string;
+}
+
+const MI_PLANET_CATALOG: CatalogItem[] = [
+  // Tops
+  {
+    id: 'pink-llama-sweater',
+    name: 'Pink Llama Sweater',
+    category: 'tops',
+    slot: 'outfitBody',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Pink Llama Sweater.png',
+    icon: '🌸',
+  },
+  {
+    id: 'underwear-top',
+    name: 'No Shirt (Underwear)',
+    category: 'tops',
+    slot: 'outfitBody',
+    asset: '',
+    icon: '🩱',
+  },
+  // Pants
+  {
+    id: 'olive-shorts',
+    name: 'Olive Green Shorts',
+    category: 'bottoms',
+    slot: 'outfitLegs',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Olive Green Shorts.png',
+    icon: '🩳',
+  },
+  {
+    id: 'denim-jeans',
+    name: 'Denim Jeans',
+    category: 'bottoms',
+    slot: 'outfitLegs',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Denim Jeans.png',
+    icon: '👖',
+  },
+  {
+    id: 'underwear-bottom',
+    name: 'White Briefs (Underwear)',
+    category: 'bottoms',
+    slot: 'outfitLegs',
+    asset: '',
+    icon: '🩲',
+  },
+  // Eyes
+  {
+    id: 'basic-blue-eyes',
+    name: 'Basic Blue Eyes',
+    category: 'eyes',
+    slot: 'eyes',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Basic Blue Eyes.png',
+    icon: '👁️',
+  },
+  {
+    id: 'basic-brown-eyes',
+    name: 'Basic Brown Eyes',
+    category: 'eyes',
+    slot: 'eyes',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Basic Brown Eyes.png',
+    icon: '👀',
+  },
+  // Headwear
+  {
+    id: 'trapper-hat',
+    name: 'Trapper Hat',
+    category: 'headwear',
+    slot: 'outfitHead',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Trapper Hat.png',
+    icon: '💂',
+  },
+  // Facewear
+  {
+    id: 'skull-balaclava',
+    name: 'Skull Balaclava',
+    category: 'face',
+    slot: 'outfitFace',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Skull Balaclava.png',
+    icon: '💀',
+  },
+  // Backwear / Wings
+  {
+    id: 'black-wings',
+    name: 'Black Wings',
+    category: 'back',
+    slot: 'outfitBack',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Black Wings Front.png',
+    frontAsset: '/assets/sprites/avatar/wearables/MiPlanet Black Wings Front.png',
+    backAsset: '/assets/sprites/avatar/wearables/MiPlanet Black Wings Back.png',
+    icon: '🪽',
+  },
+  {
+    id: 'white-wings',
+    name: 'White Wings',
+    category: 'back',
+    slot: 'outfitBack',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet White Wings Front.png',
+    frontAsset: '/assets/sprites/avatar/wearables/MiPlanet White Wings Front.png',
+    backAsset: '/assets/sprites/avatar/wearables/MiPlanet White Wings Back.png',
+    icon: '🕊️',
+  },
+  // Shoes
+  {
+    id: 'purple-sneakers',
+    name: 'Purple Sneakers',
+    category: 'shoes',
+    slot: 'outfitFeet',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Purple Sneakers.png',
+    icon: '👟',
+  },
+  {
+    id: 'barefoot',
+    name: 'Barefoot',
+    category: 'shoes',
+    slot: 'outfitFeet',
+    asset: '',
+    icon: '🦶',
+  },
+  // Hair
+  {
+    id: 'wavy-hair',
+    name: 'Wavy Golden Hair',
+    category: 'hair',
+    slot: 'hairStyle',
+    asset: '/assets/sprites/avatar/wearables/MiPlanet Wavy Golden Hair.png',
+    icon: '💇',
+  },
+  {
+    id: 'bald',
+    name: 'Bald / Clean Shaved',
+    category: 'hair',
+    slot: 'hairStyle',
+    asset: '',
+    icon: '🧑‍🦲',
+  },
 ];
 
-// Hair color presets (24 swatches)
-const HAIR_COLORS = [
-  '#1C1C1C',
-  '#3B2314',
-  '#5C3317',
-  '#7B4B2A',
-  '#A0522D',
-  '#C68642',
-  '#D2A679',
-  '#E8C49A',
-  '#F5DEB3',
-  '#FAF0E6',
-  '#B22222',
-  '#8B0000',
-  '#FF4500',
-  '#FF8C00',
-  '#FFD700',
-  '#808000',
-  '#2E8B57',
-  '#006400',
-  '#4169E1',
-  '#00008B',
-  '#8B008B',
-  '#4B0082',
-  '#808080',
-  '#FFFFFF',
-];
-
-// Eye color presets (8 swatches)
-const EYE_COLORS = [
-  '#4A3728',
-  '#2D1B0E',
-  '#5C7A29',
-  '#2E8B57',
-  '#4169E1',
-  '#1E3A8A',
-  '#708090',
-  '#C0C0C0',
+const UI_CATEGORIES = [
+  { id: 'all', label: 'All Items', icon: '✨' },
+  { id: 'tops', label: 'Tops', icon: '👕' },
+  { id: 'bottoms', label: 'Pants', icon: '👖' },
+  { id: 'eyes', label: 'Eyes', icon: '👁️' },
+  { id: 'headwear', label: 'Headwear', icon: '🎩' },
+  { id: 'face', label: 'Face Wear', icon: '👓' },
+  { id: 'back', label: 'Backwear', icon: '🪽' },
+  { id: 'shoes', label: 'Shoes', icon: '👟' },
+  { id: 'hair', label: 'Hair', icon: '💇' },
 ];
 
 export class AvatarCustomizer {
   private overlay: HTMLElement | null = null;
-  private previewController: AvatarController | null = null;
-  private previewEngine: BABYLON.Engine | null = null;
-  private previewScene: BABYLON.Scene | null = null;
   private currentData: AvatarData;
   private savedData: AvatarData;
   private onSaveCallback: (data: AvatarData) => void;
-  /** Owned clothing items, loaded from GET /api/users/me/inventory. */
-  private inventory: WardrobeItem[] = [];
-  private activeTabId: string = WARDROBE_TABS[0].id;
-  private wardrobeTabBar: HTMLElement | null = null;
-  private wardrobeBody: HTMLElement | null = null;
-  private genderButtons: HTMLButtonElement[] = [];
+  private activeCategory: string = 'all';
+  private activeAngle: 'front' | 'back' | 'sit' = 'front';
+  private previewLayers: Record<string, HTMLElement> = {};
 
   constructor(savedData?: AvatarData, onSave?: (data: AvatarData) => void) {
     const userAvatar = authService.user?.avatar || {};
     const initial: AvatarData = {
-      bodyType: 0.5,
-      height: 0.5,
-      build: 0.5,
-      skinTone: '#F5CBA7',
-      hairColor: '#1C1C1C',
-      eyeColor: '#4A3728',
-      topColor: '#4169E1',
-      bottomColor: '#2E8B57',
       gender: 'unspecified',
+      outfitHead: 'trapper-hat',
+      outfitFace: null,
+      outfitBody: 'pink-llama-sweater',
+      outfitLegs: 'olive-shorts',
+      outfitFeet: 'purple-sneakers',
+      outfitBack: null,
+      eyes: 'basic-blue-eyes',
+      hairStyle: 'wavy-hair',
       ...userAvatar,
       ...savedData,
     };
@@ -110,27 +199,20 @@ export class AvatarCustomizer {
   }
 
   open(): void {
-    if (this.overlay) return; // already open
+    if (this.overlay) return;
     const userAvatar = authService.user?.avatar || {};
     this.currentData = { ...this.currentData, ...userAvatar };
     this.savedData = { ...this.currentData };
     this.overlay = this.buildOverlay();
     document.body.appendChild(this.overlay);
-    void this.loadInventory();
+    this.updatePreview();
   }
 
   close(): void {
     this.overlay?.remove();
     this.overlay = null;
-    this.previewController?.dispose();
-    this.previewController = null;
-    this.previewScene?.dispose();
-    this.previewScene = null;
-    this.previewEngine?.dispose();
-    this.previewEngine = null;
   }
 
-  // ─── UI Builder ───────────────────────────────────────────────────────────
   private buildOverlay(): HTMLElement {
     const el = document.createElement('div');
     el.id = 'avatar-customizer';
@@ -138,497 +220,468 @@ export class AvatarCustomizer {
     el.style.cssText = `
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(14, 20, 28, 0.88);
+      backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      font-family: Calibri, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     `;
 
     el.addEventListener('click', (e) => {
-      if (e.target === el) {
-        this.close();
-      }
+      if (e.target === el) this.close();
     });
 
-    const panel = document.createElement('div');
-    panel.style.cssText = `
-      background: #1a1a2e;
-      border: 1px solid #4ecdc4;
-      border-radius: 12px;
-      color: #e0e0e0;
-      width: min(840px, 94vw);
-      max-height: 90vh;
-      display: flex;
+    const modal = document.createElement('div');
+    modal.className = 'catalog-modal visible';
+    modal.style.cssText = `
+      position: relative;
+      width: min(1080px, calc(100vw - 32px));
+      height: min(640px, calc(100vh - 80px));
+      background: #f8f8f7;
+      border: 1px solid rgba(40, 48, 56, 0.24);
+      border-radius: 16px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
       overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 0;
     `;
 
-    panel.appendChild(this.buildPreviewPanel());
-    panel.appendChild(this.buildControlPanel());
-    el.appendChild(panel);
+    modal.appendChild(this.buildCatalogCard());
+    modal.appendChild(this.buildPreviewCard());
+
+    el.appendChild(modal);
     return el;
   }
 
-  private buildPreviewPanel(): HTMLElement {
-    const div = document.createElement('div');
-    div.style.cssText = 'width: 320px; background: #0f0f23; position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-right: 1px solid #2a2a4a;';
+  private buildCatalogCard(): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'catalog-main-card';
+    card.style.cssText = `
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      height: 100%;
+      border-right: 1px solid #d7dadc;
+      overflow: hidden;
+    `;
 
-    const canvas = document.createElement('canvas');
-    canvas.id = 'avatar-preview-canvas';
-    canvas.style.cssText = 'width: 300px; height: 440px; display: block; outline: none; border-radius: 8px;';
-    div.appendChild(canvas);
+    // Category Rail
+    const rail = document.createElement('div');
+    rail.className = 'catalog-category-rail';
+    rail.style.cssText = `
+      background: #f0f2f3;
+      padding: 14px 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      border-right: 1px solid #d7dadc;
+    `;
 
-    const label = document.createElement('p');
-    label.textContent = 'Live 2D Chibi Preview';
-    label.style.cssText = 'text-align: center; color: #4ecdc4; font-size: 9.5pt; font-weight: 600; margin: 8px 0;';
-    div.appendChild(label);
-
-    setTimeout(() => this.initPreviewScene(canvas), 100);
-    return div;
-  }
-
-  private async initPreviewScene(canvas: HTMLCanvasElement): Promise<void> {
-    try {
-      const engine = new BABYLON.Engine(canvas, true);
-      this.previewEngine = engine;
-
-      const scene = new BABYLON.Scene(engine);
-      this.previewScene = scene;
-      scene.clearColor = new BABYLON.Color4(0.06, 0.06, 0.14, 1);
-
-      const cam = new BABYLON.ArcRotateCamera(
-        'previewCam',
-        -Math.PI / 2,
-        Math.PI / 2,
-        2.4,
-        new BABYLON.Vector3(0, 0.9, 0),
-        scene
-      );
-      cam.lowerRadiusLimit = 1.6;
-      cam.upperRadiusLimit = 4;
-      cam.attachControl(canvas, true);
-
-      const hemi = new BABYLON.HemisphericLight('previewHemi', new BABYLON.Vector3(0, 1, 0), scene);
-      hemi.intensity = 0.8;
-
-      const dir = new BABYLON.DirectionalLight('previewDir', new BABYLON.Vector3(-1, -2, -1), scene);
-      dir.position = new BABYLON.Vector3(5, 10, 5);
-      dir.intensity = 0.8;
-
-      this.previewController = new AvatarController(scene, {
-        id: 'preview',
-        username: authService.user?.username || 'You',
-        avatarData: this.currentData,
-      });
-
-      await this.previewController.load(BABYLON.Vector3.Zero());
-      this.previewController.applyCustomization(this.currentData);
-
-      engine.runRenderLoop(() => scene.render());
-      window.addEventListener('resize', () => engine.resize());
-    } catch (err) {
-      console.error('[AvatarCustomizer] Preview init failed:', err);
-    }
-  }
-
-  private buildControlPanel(): HTMLElement {
-    const div = document.createElement('div');
-    div.style.cssText = 'flex: 1; overflow-y: auto; padding: 24px;';
-    div.innerHTML = '<h2 style="margin-top: 0; color: #4ecdc4; font-size: 16pt;">Wardrobe &amp; Customization</h2>';
-
-    // Body Shape
-    div.appendChild(
-      this.buildSection('Body Shape', [
-        this.buildSlider('Body Type', 'bodyType', 'Thin', 'Fat'),
-        this.buildSlider('Height', 'height', 'Short', 'Tall'),
-        this.buildSlider('Build', 'build', 'Slim', 'Muscular'),
-      ])
-    );
-
-    // Gender
-    div.appendChild(this.buildSection('Gender', [this.buildGenderPicker()]));
-
-    // Colors
-    div.appendChild(
-      this.buildSection('Colors', [
-        this.buildSwatchPicker('Skin Tone', 'skinTone', SKIN_TONES, true),
-        this.buildSwatchPicker('Hair Color', 'hairColor', HAIR_COLORS, true),
-        this.buildSwatchPicker('Eye Color', 'eyeColor', EYE_COLORS, false),
-      ])
-    );
-
-    // Wardrobe (owned clothing items across the five slots)
-    div.appendChild(this.buildWardrobeSection());
-
-    // Clothing Colors
-    div.appendChild(
-      this.buildSection('Clothing Colors', [
-        this.buildColorInput('Top Color', 'topColor'),
-        this.buildColorInput('Bottom Color', 'bottomColor'),
-        this.buildNote(
-          'Colours apply to the base outfit. Wear an owned top/pants/shoes to override them.'
-        ),
-      ])
-    );
-
-    // Action Buttons
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'margin-top: 24px; display: flex; gap: 12px;';
-
-    const saveBtn = this.buildButton('Save', '#4ecdc4', '#0d0d1a', async () => {
-      try {
-        await this.persistToServer();
-        this.savedData = { ...this.currentData };
-        this.onSaveCallback(this.currentData);
-        // Apply immediately to the live in-world avatar instead of relying
-        // solely on the socket echo (which other players still receive).
-        const liveAvatar = (
-          window as unknown as Record<string, unknown>
-        ).__havenAvatarController as
-          | { applyCustomization: (d: AvatarData) => void }
-          | undefined;
-        liveAvatar?.applyCustomization(this.currentData);
-        this.close();
-        showToast({ icon: '👗', title: 'Look saved!', subtitle: 'Your new style is live.' });
-      } catch (err) {
-        console.error('[AvatarCustomizer] Save failed:', err);
-        showToast({
-          icon: '⚠️',
-          title: 'Save failed',
-          subtitle: 'Could not save your customization. Try again.',
+    UI_CATEGORIES.forEach((cat) => {
+      const btn = document.createElement('button');
+      btn.className = `catalog-category-button ${this.activeCategory === cat.id ? 'active' : ''}`;
+      btn.dataset.catId = cat.id;
+      btn.style.cssText = `
+        width: 100%;
+        min-height: 52px;
+        padding: 6px 2px;
+        border: 1px solid ${this.activeCategory === cat.id ? '#c7ccd0' : 'transparent'};
+        border-radius: 9px;
+        background: ${this.activeCategory === cat.id ? '#ffffff' : 'transparent'};
+        color: #505960;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        font-size: 18px;
+        transition: all 0.15s ease;
+      `;
+      btn.innerHTML = `<span>${cat.icon}</span><small style="font-size: 8.5pt; font-weight: 700; color: ${this.activeCategory === cat.id ? '#252a2f' : '#667078'};">${cat.label}</small>`;
+      btn.addEventListener('click', () => {
+        this.activeCategory = cat.id;
+        Array.from(rail.children).forEach((b) => {
+          (b as HTMLElement).style.background = 'transparent';
+          (b as HTMLElement).style.borderColor = 'transparent';
         });
-      }
+        btn.style.background = '#ffffff';
+        btn.style.borderColor = '#c7ccd0';
+        this.renderItemGrid();
+      });
+      rail.appendChild(btn);
     });
 
-    const cancelBtn = this.buildButton('Cancel', 'transparent', '#e0e0e0', () => {
+    card.appendChild(rail);
+
+    // Items Column
+    const col = document.createElement('div');
+    col.className = 'catalog-content-column';
+    col.style.cssText = 'display: flex; flex-direction: column; padding: 18px 22px; overflow: hidden;';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'margin-bottom: 14px;';
+    header.innerHTML = `
+      <div style="font-size: 16pt; font-weight: 900; color: #24292e;">Wardrobe &amp; Style</div>
+      <div style="font-size: 9.5pt; color: #707980; margin-top: 3px;">Equip apparel, headwear, eyes, and styles onto your multi-sided avatar.</div>
+    `;
+    col.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.id = 'wardrobe-item-grid';
+    grid.className = 'catalog-item-grid';
+    grid.style.cssText = `
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
+      grid-auto-rows: 105px;
+      gap: 10px;
+      overflow-y: auto;
+      padding-right: 4px;
+    `;
+    col.appendChild(grid);
+
+    card.appendChild(col);
+    setTimeout(() => this.renderItemGrid(), 0);
+    return card;
+  }
+
+  private renderItemGrid(): void {
+    const grid = document.getElementById('wardrobe-item-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const items = MI_PLANET_CATALOG.filter(
+      (it) => this.activeCategory === 'all' || it.category === this.activeCategory
+    );
+
+    items.forEach((item) => {
+      const isEquipped =
+        this.currentData[item.slot] === item.id ||
+        (item.id === 'underwear-top' && (!this.currentData.outfitBody || this.currentData.outfitBody === 'none')) ||
+        (item.id === 'underwear-bottom' && (!this.currentData.outfitLegs || this.currentData.outfitLegs === 'none')) ||
+        (item.id === 'barefoot' && (!this.currentData.outfitFeet || this.currentData.outfitFeet === 'none')) ||
+        (item.id === 'bald' && (!this.currentData.hairStyle || this.currentData.hairStyle === 'none'));
+
+      const card = document.createElement('div');
+      card.className = `clothes-card ${isEquipped ? 'equipped' : ''}`;
+      card.style.cssText = `
+        background: #ffffff;
+        border: 2px solid ${isEquipped ? '#4ecdc4' : '#e2e6e8'};
+        border-radius: 12px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        position: relative;
+        box-shadow: ${isEquipped ? '0 4px 12px rgba(78, 205, 196, 0.25)' : 'none'};
+      `;
+
+      card.innerHTML = `
+        <div style="font-size: 26pt; margin-bottom: 4px;">${item.icon}</div>
+        <div style="font-size: 8.5pt; font-weight: 700; text-align: center; color: #2c3237; line-height: 1.15; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
+        ${isEquipped ? '<div style="position: absolute; top: 6px; right: 6px; background: #4ecdc4; color: #fff; width: 16px; height: 16px; border-radius: 50%; font-size: 9pt; display: flex; align-items: center; justify-content: center; font-weight: 900;">✓</div>' : ''}
+      `;
+
+      card.addEventListener('click', () => {
+        this.toggleItem(item);
+      });
+
+      grid.appendChild(card);
+    });
+  }
+
+  private toggleItem(item: CatalogItem): void {
+    if (item.id === 'underwear-top') {
+      this.currentData.outfitBody = 'none';
+    } else if (item.id === 'underwear-bottom') {
+      this.currentData.outfitLegs = 'none';
+    } else if (item.id === 'barefoot') {
+      this.currentData.outfitFeet = 'none';
+    } else if (item.id === 'bald') {
+      this.currentData.hairStyle = 'none';
+    } else {
+      const current = this.currentData[item.slot];
+      if (current === item.id) {
+        delete (this.currentData as Record<string, unknown>)[item.slot];
+      } else {
+        (this.currentData as Record<string, unknown>)[item.slot] = item.id;
+      }
+    }
+    this.renderItemGrid();
+    this.updatePreview();
+  }
+
+  private buildPreviewCard(): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'catalog-detail-card';
+    card.style.cssText = `
+      background: #fdfdfd;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    `;
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size: 12pt; font-weight: 900; color: #363c41; margin-bottom: 8px;';
+    title.textContent = 'Avatar Preview';
+    card.appendChild(title);
+
+    // Preview Stage
+    const stage = document.createElement('div');
+    stage.className = 'wardrobe-preview-stage';
+    stage.style.cssText = `
+      position: relative;
+      width: 100%;
+      height: 330px;
+      border-radius: 14px;
+      border: 1px solid #d6dade;
+      background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.98) 0, rgba(239,242,243,0.95) 50%, rgba(220,226,229,0.95) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    `;
+
+    // #wardrobe-avatar container (170px x 290px)
+    const avatarBox = document.createElement('div');
+    avatarBox.id = 'wardrobe-avatar';
+    avatarBox.style.cssText = 'position: relative; width: 170px; height: 290px;';
+
+    // Stacked layers
+    const layerNames = ['wings', 'base', 'bottom', 'top', 'shoes', 'eyes', 'mask', 'hair', 'hat'];
+    layerNames.forEach((layer) => {
+      const div = document.createElement('div');
+      div.id = `wardrobe-preview-${layer}`;
+      div.className = 'wardrobe-preview-layer';
+      div.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; background-repeat: no-repeat; pointer-events: none;';
+      avatarBox.appendChild(div);
+      this.previewLayers[layer] = div;
+    });
+
+    stage.appendChild(avatarBox);
+    card.appendChild(stage);
+
+    // Angle Selector Buttons
+    const angleRow = document.createElement('div');
+    angleRow.style.cssText = 'display: flex; gap: 6px; margin: 10px 0 6px; width: 100%;';
+
+    const angles: Array<{ id: 'front' | 'back' | 'sit'; label: string }> = [
+      { id: 'front', label: 'Front' },
+      { id: 'back', label: 'Back' },
+      { id: 'sit', label: 'Sit' },
+    ];
+
+    angles.forEach((a) => {
+      const abtn = document.createElement('button');
+      abtn.textContent = a.label;
+      abtn.style.cssText = `
+        flex: 1;
+        padding: 6px 0;
+        font-size: 8.5pt;
+        font-weight: 700;
+        border: 1px solid ${this.activeAngle === a.id ? '#4ecdc4' : '#ccd1d5'};
+        background: ${this.activeAngle === a.id ? '#4ecdc4' : '#ffffff'};
+        color: ${this.activeAngle === a.id ? '#ffffff' : '#454f57'};
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      `;
+      abtn.addEventListener('click', () => {
+        this.activeAngle = a.id;
+        Array.from(angleRow.children).forEach((ch) => {
+          (ch as HTMLElement).style.background = '#ffffff';
+          (ch as HTMLElement).style.color = '#454f57';
+          (ch as HTMLElement).style.borderColor = '#ccd1d5';
+        });
+        abtn.style.background = '#4ecdc4';
+        abtn.style.color = '#ffffff';
+        abtn.style.borderColor = '#4ecdc4';
+        this.updatePreview();
+      });
+      angleRow.appendChild(abtn);
+    });
+
+    card.appendChild(angleRow);
+
+    // Action buttons row
+    const btnBox = document.createElement('div');
+    btnBox.style.cssText = 'display: flex; flex-direction: column; gap: 6px; width: 100%;';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save Look';
+    saveBtn.style.cssText = 'width: 100%; padding: 10px; background: #4ecdc4; border: 0; border-radius: 8px; color: #0a2523; font-weight: 800; font-size: 10pt; cursor: pointer; transition: background 0.15s ease;';
+    saveBtn.addEventListener('click', () => this.handleSave());
+    btnBox.appendChild(saveBtn);
+
+    const stripBtn = document.createElement('button');
+    stripBtn.textContent = 'Strip to Underwear';
+    stripBtn.style.cssText = 'width: 100%; padding: 7px; background: transparent; border: 1px solid #d0d5d8; border-radius: 8px; color: #606870; font-weight: 700; font-size: 8.5pt; cursor: pointer;';
+    stripBtn.addEventListener('click', () => {
+      this.currentData.outfitBody = 'none';
+      this.currentData.outfitLegs = 'none';
+      this.currentData.outfitHead = null;
+      this.currentData.outfitFace = null;
+      this.currentData.outfitFeet = 'none';
+      this.currentData.outfitBack = null;
+      this.renderItemGrid();
+      this.updatePreview();
+      showToast({ icon: '🩲', title: 'Underwear base', subtitle: 'Removed all layered clothes.' });
+    });
+    btnBox.appendChild(stripBtn);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'width: 100%; padding: 7px; background: transparent; border: 0; color: #889096; font-size: 8.5pt; cursor: pointer;';
+    cancelBtn.addEventListener('click', () => {
       this.currentData = { ...this.savedData };
       this.close();
     });
-    cancelBtn.style.border = '1px solid #444';
+    btnBox.appendChild(cancelBtn);
 
-    btnRow.appendChild(saveBtn);
-    btnRow.appendChild(cancelBtn);
-    div.appendChild(btnRow);
-
-    return div;
+    card.appendChild(btnBox);
+    return card;
   }
 
-  // ─── Control Builders ─────────────────────────────────────────────────────
-  private buildSection(title: string, children: HTMLElement[]): HTMLElement {
-    const sec = document.createElement('div');
-    sec.style.cssText = 'margin-bottom: 20px; border-bottom: 1px solid #2a2a4a; padding-bottom: 16px;';
-    const h = document.createElement('h3');
-    h.textContent = title;
-    h.style.cssText = 'color: #7eb8f7; font-size: 11pt; margin-bottom: 10px;';
-    sec.appendChild(h);
-    children.forEach((c) => sec.appendChild(c));
-    return sec;
-  }
+  private updatePreview(): void {
+    // MiPlanet 1774 x 887 dimensions (6 cols x 3 rows)
+    const sheetW = 1774;
+    const sheetH = 887;
+    const cols = 6;
+    const rows = 3;
 
-  private buildSlider(label: string, key: keyof AvatarData, minLabel: string, maxLabel: string): HTMLElement {
-    const row = document.createElement('div');
-    row.style.cssText = 'margin-bottom: 12px;';
-
-    const lbl = document.createElement('label');
-    lbl.textContent = label;
-    lbl.style.cssText = 'display: block; font-size: 10pt; margin-bottom: 4px; color: #ccc;';
-
-    const controlRow = document.createElement('div');
-    controlRow.style.cssText = 'display: flex; align-items: center; gap: 8px; font-size: 9pt; color: #888;';
-
-    const minSpan = document.createElement('span');
-    minSpan.textContent = minLabel;
-
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = '0';
-    input.max = '100';
-    input.value = String(Math.round(((this.currentData[key] as number) ?? 0.5) * 100));
-    input.style.cssText = 'flex: 1; accent-color: #4ecdc4;';
-
-    input.addEventListener('input', () => {
-      (this.currentData[key] as number) = parseInt(input.value) / 100;
-      this.previewController?.applyCustomization(this.currentData);
-    });
-
-    const maxSpan = document.createElement('span');
-    maxSpan.textContent = maxLabel;
-
-    controlRow.appendChild(minSpan);
-    controlRow.appendChild(input);
-    controlRow.appendChild(maxSpan);
-    row.appendChild(lbl);
-    row.appendChild(controlRow);
-    return row;
-  }
-
-  private buildSwatchPicker(label: string, key: keyof AvatarData, swatches: string[], showCustom: boolean): HTMLElement {
-    const div = document.createElement('div');
-    div.style.cssText = 'margin-bottom: 14px;';
-
-    const lbl = document.createElement('label');
-    lbl.textContent = label;
-    lbl.style.cssText = 'display: block; font-size: 10pt; margin-bottom: 6px; color: #ccc;';
-    div.appendChild(lbl);
-
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; align-items: center;';
-
-    swatches.forEach((color) => {
-      const swatch = document.createElement('button');
-      swatch.style.cssText = `
-        width: 24px;
-        height: 24px;
-        background: ${color};
-        border: 2px solid ${this.currentData[key] === color ? '#ffffff' : 'transparent'};
-        border-radius: 4px;
-        cursor: pointer;
-        padding: 0;
-      `;
-      swatch.title = color;
-
-      swatch.addEventListener('click', () => {
-        (this.currentData[key] as string) = color;
-        grid.querySelectorAll('button').forEach((b) => (b.style.borderColor = 'transparent'));
-        swatch.style.borderColor = '#ffffff';
-        this.previewController?.applyCustomization(this.currentData);
-      });
-      grid.appendChild(swatch);
-    });
-
-    if (showCustom) {
-      const customInput = document.createElement('input');
-      customInput.type = 'color';
-      customInput.value = (this.currentData[key] as string) || '#F5CBA7';
-      customInput.style.cssText = 'width: 26px; height: 26px; padding: 0; border: 1px solid #444; border-radius: 4px; cursor: pointer;';
-      customInput.title = 'Custom Color';
-      customInput.addEventListener('input', () => {
-        (this.currentData[key] as string) = customInput.value;
-        grid.querySelectorAll('button').forEach((b) => (b.style.borderColor = 'transparent'));
-        this.previewController?.applyCustomization(this.currentData);
-      });
-      grid.appendChild(customInput);
+    // Angle cell mapping:
+    let cellRow = 0;
+    let cellCol = 0;
+    if (this.activeAngle === 'front') {
+      cellRow = 0; cellCol = 0; // Front idle
+    } else if (this.activeAngle === 'back') {
+      cellRow = 1; cellCol = 3; // Back idle
+    } else if (this.activeAngle === 'sit') {
+      cellRow = 1; cellCol = 1; // Front sit left
     }
 
-    div.appendChild(grid);
-    return div;
-  }
+    const sourceX0 = Math.round(cellCol * sheetW / cols);
+    const sourceX1 = Math.round((cellCol + 1) * sheetW / cols);
+    const sourceY0 = Math.round(cellRow * sheetH / rows);
+    const sourceY1 = Math.round((cellRow + 1) * sheetH / rows);
+    const sourceCellHeight = sourceY1 - sourceY0;
 
-  private buildColorInput(label: string, key: keyof AvatarData): HTMLElement {
-    const div = document.createElement('div');
-    div.style.cssText = 'margin-bottom: 10px; display: flex; align-items: center; gap: 10px;';
+    const displayW = 170;
+    const displayH = 290;
+    const scale = displayH / sourceCellHeight;
+    const sourceCellCenterX = (sourceX0 + sourceX1) / 2;
+    const bgX = (displayW / 2) - (sourceCellCenterX * scale);
+    const bgY = -(sourceY0 * scale);
 
-    const lbl = document.createElement('label');
-    lbl.textContent = label;
-    lbl.style.cssText = 'font-size: 10pt; flex: 1; color: #ccc;';
+    const bgSize = `${sheetW * scale}px ${sheetH * scale}px`;
+    const bgPos = `${bgX}px ${bgY}px`;
 
-    const input = document.createElement('input');
-    input.type = 'color';
-    input.value = (this.currentData[key] as string) || '#4169E1';
-    input.style.cssText = 'width: 36px; height: 28px; padding: 0; border: 1px solid #444; border-radius: 4px; cursor: pointer;';
-    input.addEventListener('input', () => {
-      (this.currentData[key] as string) = input.value;
-      this.previewController?.applyCustomization(this.currentData);
-    });
+    const setLayerStyle = (el: HTMLElement | undefined, url: string | null) => {
+      if (!el) return;
+      el.style.backgroundSize = bgSize;
+      el.style.backgroundPosition = bgPos;
+      el.style.backgroundImage = url ? `url("${assetUrl(url)}")` : 'none';
+    };
 
-    div.appendChild(lbl);
-    div.appendChild(input);
-    return div;
-  }
+    // 1. Base body in underwear
+    setLayerStyle(
+      this.previewLayers.base,
+      '/assets/sprites/avatar/wearables/MiPlanet Character Base Sprite.png'
+    );
 
-  private buildNote(text: string): HTMLElement {
-    const p = document.createElement('p');
-    p.textContent = text;
-    p.style.cssText = 'color: #888; font-size: 9pt; font-style: italic; margin: 4px 0 0 0;';
-    return p;
-  }
-
-  private buildButton(text: string, bg: string, color: string, onClick: () => void): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.textContent = text;
-    btn.style.cssText = `
-      background: ${bg};
-      color: ${color};
-      border: none;
-      border-radius: 6px;
-      padding: 9px 24px;
-      font-weight: 600;
-      font-size: 10.5pt;
-      cursor: pointer;
-      transition: opacity 150ms;
-    `;
-    btn.addEventListener('click', onClick);
-    return btn;
-  }
-
-  // ─── Wardrobe & Gender ────────────────────────────────────────────────────
-  private buildGenderPicker(): HTMLElement {
-    const row = document.createElement('div');
-    row.style.cssText = 'display: flex; gap: 8px;';
-    this.genderButtons = [];
-
-    for (const gender of ['male', 'female'] as const) {
-      const btn = document.createElement('button');
-      btn.textContent = GENDER_PRESETS[gender].label;
-      btn.dataset.testid = `gender-${gender}`;
-      btn.style.cssText =
-        'flex: 1; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: 600; background: transparent; color: #e0e0e0; border: 1px solid #444;';
-      btn.addEventListener('click', () => {
-        this.currentData = applyGenderPreset(this.currentData, gender);
-        this.applyGenderButtonStyles();
-        this.previewController?.applyCustomization(this.currentData);
-      });
-      this.genderButtons.push(btn);
-      row.appendChild(btn);
-    }
-
-    this.applyGenderButtonStyles();
-    return row;
-  }
-
-  private applyGenderButtonStyles(): void {
-    const active = normalizeGender(this.currentData.gender);
-    for (const btn of this.genderButtons) {
-      const isActive = btn.dataset.testid === `gender-${active}`;
-      btn.style.background = isActive ? '#4ecdc4' : 'transparent';
-      btn.style.color = isActive ? '#0d0d1a' : '#e0e0e0';
-      btn.style.border = `1px solid ${isActive ? '#4ecdc4' : '#444'}`;
-    }
-  }
-
-  private buildWardrobeSection(): HTMLElement {
-    const sec = document.createElement('div');
-    sec.style.cssText =
-      'margin-bottom: 20px; border-bottom: 1px solid #2a2a4a; padding-bottom: 16px;';
-
-    const h = document.createElement('h3');
-    h.textContent = 'Wardrobe';
-    h.style.cssText = 'color: #7eb8f7; font-size: 11pt; margin-bottom: 10px;';
-    sec.appendChild(h);
-
-    const tabBar = document.createElement('div');
-    tabBar.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;';
-
-    for (const tab of WARDROBE_TABS) {
-      const btn = document.createElement('button');
-      btn.dataset.tabId = tab.id;
-      btn.dataset.testid = `wardrobe-tab-${tab.id}`;
-      btn.textContent = `${tab.icon} ${tab.label}`.trim();
-      btn.style.cssText =
-        'padding: 5px 10px; border-radius: 999px; border: 1px solid #2a2a4a; background: transparent; color: #e0e0e0; font-size: 9pt; cursor: pointer;';
-      btn.addEventListener('click', () => {
-        this.activeTabId = tab.id;
-        this.renderWardrobeBody();
-      });
-      tabBar.appendChild(btn);
-    }
-
-    sec.appendChild(tabBar);
-
-    const body = document.createElement('div');
-    sec.appendChild(body);
-
-    this.wardrobeTabBar = tabBar;
-    this.wardrobeBody = body;
-
-    return sec;
-  }
-
-  private async loadInventory(): Promise<void> {
-    try {
-      const token = authService.token || (await authService.getToken()) || '';
-      const res = await fetch(`${SERVER_URL}/api/users/me/inventory`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-      if (!res.ok) return;
-
-      const data = await res.json();
-      this.inventory = Array.isArray(data) ? (data as WardrobeItem[]) : [];
-      this.renderWardrobeBody();
-    } catch (err) {
-      console.warn('[AvatarCustomizer] Could not load inventory:', err);
-    }
-  }
-
-  private renderWardrobeBody(): void {
-    if (!this.wardrobeBody) return;
-
-    if (this.wardrobeTabBar) {
-      for (const btn of Array.from(this.wardrobeTabBar.children) as HTMLElement[]) {
-        const isActive = btn.dataset.tabId === this.activeTabId;
-        btn.style.background = isActive ? '#4ecdc4' : 'transparent';
-        btn.style.color = isActive ? '#0d0d1a' : '#e0e0e0';
-      }
-    }
-
-    const tab = WARDROBE_TABS.find((t) => t.id === this.activeTabId);
-    const items = groupWardrobeItems(this.inventory)[this.activeTabId] ?? [];
-
-    this.wardrobeBody.innerHTML = '';
-
-    if (items.length === 0) {
-      this.wardrobeBody.appendChild(
-        this.buildNote('Nothing owned in this slot yet — visit the Emporium to expand your wardrobe.')
-      );
-      return;
-    }
-
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;';
-
-    for (const item of items) {
-      const equipped = tab?.slot
-        ? (this.currentData[tab.slot] as string | null | undefined) === item.itemId
-        : this.currentData.hairStyle === item.itemId;
-
-      const chip = document.createElement('button');
-      chip.dataset.testid = `wardrobe-item-${item.itemId}`;
-      chip.style.cssText = `display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; cursor: pointer; text-align: left; font-size: 9.5pt; color: #e0e0e0; background: ${
-        equipped ? 'rgba(78, 205, 196, 0.18)' : 'rgba(255, 255, 255, 0.04)'
-      }; border: 1px solid ${equipped ? '#4ecdc4' : '#2a2a4a'};`;
-
-      const swatch = document.createElement('span');
-      swatch.style.cssText = `width: 14px; height: 14px; flex: 0 0 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.25); background: ${getItemAccentColor(
-        item.itemId
-      )};`;
-
-      const label = document.createElement('span');
-      label.textContent = item.name;
-
-      chip.appendChild(swatch);
-      chip.appendChild(label);
-      chip.addEventListener('click', () => this.equipItem(this.activeTabId, item.itemId));
-      grid.appendChild(chip);
-    }
-
-    this.wardrobeBody.appendChild(grid);
-  }
-
-  /** Equips an owned item, or removes it when the same item is clicked twice. */
-  private equipItem(tabId: string, itemId: string): void {
-    const tab = WARDROBE_TABS.find((t) => t.id === tabId);
-    if (!tab) return;
-
-    if (!tab.slot) {
-      // Hair tab: the item id is the hair style key and its swatch drives the colour.
-      this.currentData.hairStyle = itemId;
-      this.currentData.hairColor = getItemAccentColor(
-        itemId,
-        (this.currentData.hairColor as string) || '#3B2314'
-      );
+    // 2. Wings (backwear)
+    const wingItem = MI_PLANET_CATALOG.find((it) => it.slot === 'outfitBack' && it.id === this.currentData.outfitBack);
+    if (wingItem) {
+      const wingUrl = this.activeAngle === 'back' ? wingItem.backAsset : wingItem.frontAsset;
+      setLayerStyle(this.previewLayers.wings, wingUrl || null);
     } else {
-      const current = this.currentData[tab.slot] as string | null | undefined;
-      this.currentData[tab.slot] = current === itemId ? null : itemId;
+      setLayerStyle(this.previewLayers.wings, null);
     }
 
-    this.previewController?.applyCustomization(this.currentData);
-    this.renderWardrobeBody();
+    // 3. Bottoms (pants)
+    const hasShorts = this.currentData.outfitLegs && this.currentData.outfitLegs !== 'none' && this.currentData.outfitLegs !== 'underwear';
+    setLayerStyle(
+      this.previewLayers.bottom,
+      hasShorts ? '/assets/sprites/avatar/wearables/MiPlanet Olive Green Shorts.png' : null
+    );
+
+    // 4. Tops (shirt)
+    const hasTop = this.currentData.outfitBody && this.currentData.outfitBody !== 'none' && this.currentData.outfitBody !== 'underwear';
+    setLayerStyle(
+      this.previewLayers.top,
+      hasTop ? '/assets/sprites/avatar/wearables/MiPlanet Pink Llama Sweater.png' : null
+    );
+
+    // 5. Shoes
+    const hasShoes = this.currentData.outfitFeet && this.currentData.outfitFeet !== 'none';
+    setLayerStyle(
+      this.previewLayers.shoes,
+      hasShoes ? '/assets/sprites/avatar/wearables/MiPlanet Purple Sneakers.png' : null
+    );
+
+    // 6. Eyes
+    const eyeItem = MI_PLANET_CATALOG.find((it) => it.slot === 'eyes' && it.id === this.currentData.eyes);
+    setLayerStyle(
+      this.previewLayers.eyes,
+      this.activeAngle !== 'back' ? (eyeItem?.asset || '/assets/sprites/avatar/wearables/MiPlanet Basic Blue Eyes.png') : null
+    );
+
+    // 7. Mask
+    const hasMask = this.currentData.outfitFace && this.currentData.outfitFace !== 'none';
+    setLayerStyle(
+      this.previewLayers.mask,
+      hasMask ? '/assets/sprites/avatar/wearables/MiPlanet Skull Balaclava.png' : null
+    );
+
+    // 8. Hair
+    const hasHair = this.currentData.hairStyle && this.currentData.hairStyle !== 'none' && this.currentData.hairStyle !== 'bald';
+    setLayerStyle(
+      this.previewLayers.hair,
+      hasHair ? '/assets/sprites/avatar/wearables/MiPlanet Wavy Golden Hair.png' : null
+    );
+
+    // 9. Hat
+    const hasHat = this.currentData.outfitHead && this.currentData.outfitHead !== 'none';
+    setLayerStyle(
+      this.previewLayers.hat,
+      hasHat ? '/assets/sprites/avatar/wearables/MiPlanet Trapper Hat.png' : null
+    );
   }
 
-  // ─── Server Persistence ───────────────────────────────────────────────────
+  private async handleSave(): Promise<void> {
+    try {
+      await this.persistToServer();
+      this.savedData = { ...this.currentData };
+      this.onSaveCallback(this.currentData);
+
+      const liveAvatar = (
+        window as unknown as Record<string, unknown>
+      ).__havenAvatarController as
+        | { applyCustomization: (d: AvatarData) => void }
+        | undefined;
+      liveAvatar?.applyCustomization(this.currentData);
+
+      this.close();
+      showToast({ icon: '👗', title: 'Look saved!', subtitle: 'Your new style is live.' });
+    } catch (err) {
+      console.error('[AvatarCustomizer] Save failed:', err);
+      showToast({
+        icon: '⚠️',
+        title: 'Save failed',
+        subtitle: 'Could not save your customization. Try again.',
+      });
+    }
+  }
+
   private async persistToServer(): Promise<void> {
     const token = authService.token || (await authService.getToken()) || '';
 
@@ -648,10 +701,6 @@ export class AvatarCustomizer {
 
     authService.updateAvatar({ ...this.currentData });
 
-    // Outfit + gender are authoritative server-side: the socket handler re-checks
-    // that every equipped item is in the player's inventory, persists it, and
-    // broadcasts the standardized `avatar:update` ({ userId, avatarData }) event
-    // to everyone in the room.
     socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
       ...this.currentData,
       gender: normalizeGender(this.currentData.gender),

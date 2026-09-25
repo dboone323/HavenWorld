@@ -120,6 +120,18 @@ export class ChibiBillboard {
         if (layer === 'accessory' && (!this.avatarData?.outfitFace && !this.avatarData?.outfitHand)) {
           continue;
         }
+        if (layer === 'top' && (this.avatarData?.outfitBody === 'none' || this.avatarData?.outfitBody === 'underwear' || this.avatarData?.top === 'none')) {
+          continue;
+        }
+        if (layer === 'bottom' && (this.avatarData?.outfitLegs === 'none' || this.avatarData?.outfitLegs === 'underwear' || this.avatarData?.bottom === 'none')) {
+          continue;
+        }
+        if (layer === 'shoes' && (this.avatarData?.outfitFeet === 'none' || this.avatarData?.shoes === 'none')) {
+          continue;
+        }
+        if (layer === 'hair' && (this.avatarData?.hairStyle === 'none' || this.avatarData?.hairStyle === 'bald' || this.avatarData?.hair === 'none')) {
+          continue;
+        }
         const key = atlas.resolveFrameKey(layer, this.currentAction, this.currentDirection, this.currentFrame);
         const f = atlas.getFrame(key);
         if (f) {
