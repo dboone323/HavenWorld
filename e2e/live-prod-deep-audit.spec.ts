@@ -58,7 +58,18 @@ test.describe('Live Production Comprehensive Feature Deep Dive', () => {
     const testUser = `tester_${Date.now().toString().slice(-6)}`;
     const testEmail = `${testUser}@havenworld.test`;
     const testPass = 'AuditPass123!';
-    const inviteCodes = ['C4AE7EED', 'D590F4BE', '56E8F5C1'];
+    const inviteCodes = [
+      'AUDIT1_1283',
+      'AUDIT2_1686',
+      'AUDIT3_1926',
+      'AUDIT4_2164',
+      'AUDIT5_2401',
+      'AUDIT6_2640',
+      'AUDIT7_2878',
+      'AUDIT8_3116',
+      'AUDIT9_3355',
+      'AUDIT10_3593',
+    ];
 
     for (const code of inviteCodes) {
       await page.locator('#reg-username').fill(testUser);

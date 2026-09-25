@@ -47,6 +47,7 @@ export class ChibiAtlasManager {
 
         await new Promise<void>((resolve, reject) => {
           const img = new Image();
+          img.crossOrigin = 'anonymous';
           img.onload = () => {
             this.atlasImage = img;
             resolve();
