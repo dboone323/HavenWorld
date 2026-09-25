@@ -266,4 +266,25 @@ describe('AvatarController (Babylon.js NullEngine)', () => {
     expect(controller.rootMesh?.rotation.y).toBeCloseTo(Math.PI / 4);
     expect(controller.currentAnimName).toBe('sit');
   });
+
+  it('(o) applyOutfit renders equipped hat, face, back, and hand accessory layers', async () => {
+    await controller.init(new Vector3(0, 0, 0));
+
+    controller.applyOutfit({
+      outfitHead: 'hat-cap-01',
+      outfitFace: 'glasses-sunglasses',
+      outfitBack: 'wings-fairy',
+      outfitHand: 'wand-magic',
+    });
+
+    const hat = scene.getMeshByName('avatar_test-user-1_hat');
+    const face = scene.getMeshByName('avatar_test-user-1_face');
+    const back = scene.getMeshByName('avatar_test-user-1_back');
+    const hand = scene.getMeshByName('avatar_test-user-1_hand');
+
+    expect(hat?.isEnabled()).toBe(true);
+    expect(face?.isEnabled()).toBe(true);
+    expect(back?.isEnabled()).toBe(true);
+    expect(hand?.isEnabled()).toBe(true);
+  });
 });

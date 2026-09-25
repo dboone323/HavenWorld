@@ -39,6 +39,7 @@ export async function truncateAllTables(): Promise<void> {
       "room_furniture",
       "chat_messages",
       "friends",
+      "direct_messages",
       "reports",
       "invite_codes",
       "inventories",

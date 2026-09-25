@@ -70,6 +70,30 @@ class RoomManager {
       player.rotY = rotY;
       player.direction = direction as PlayerState['direction'];
       player.isMoving = isMoving;
+      if (isMoving) {
+        player.isSitting = false;
+      }
+    }
+  }
+
+  sitPlayer(
+    socketId: string,
+    x: number,
+    y: number,
+    z: number = 0,
+    rotY: number = 0,
+    isSitting: boolean = true
+  ): void {
+    const roomId = this.socketToRoom.get(socketId);
+    if (!roomId) return;
+    const player = this.rooms.get(roomId)?.players.get(socketId);
+    if (player) {
+      player.x = x;
+      player.y = y;
+      player.z = z;
+      player.rotY = rotY;
+      player.isMoving = false;
+      player.isSitting = isSitting;
     }
   }
 

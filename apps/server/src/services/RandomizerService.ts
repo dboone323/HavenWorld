@@ -47,7 +47,7 @@ export class RandomizerService {
 
     const io = getIO();
     if (io) {
-      io.to(`room:${roomId}`).emit(SOCKET_EVENTS.CHAT_MESSAGE, {
+      io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, {
         id,
         roomId,
         senderId: 'SYSTEM',

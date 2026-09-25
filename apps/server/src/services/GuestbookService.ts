@@ -37,7 +37,7 @@ export class GuestbookService {
     // Notify room occupants
     const io = getIO();
     if (io) {
-      io.to(`room:${roomId}`).emit(SOCKET_EVENTS.GUESTBOOK_SIGNED, {
+      io.to(roomId).emit(SOCKET_EVENTS.GUESTBOOK_SIGNED, {
         entry: {
           id: entry.id,
           roomId: entry.roomId,

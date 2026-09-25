@@ -122,7 +122,7 @@ export class PetManager {
 
     const io = getIO();
     if (io) {
-      io.to(`room:${owner.roomId}`).emit(SOCKET_EVENTS.PET_REACT, {
+      io.to(owner.roomId).emit(SOCKET_EVENTS.PET_REACT, {
         petId,
         emote,
       });
@@ -184,7 +184,7 @@ export class PetManager {
       pet.x += (pet.targetX - pet.x) * 0.4;
       pet.z += (pet.targetZ - pet.z) * 0.4;
 
-      io.to(`room:${owner.roomId}`).emit(SOCKET_EVENTS.PET_STATE_UPDATE, {
+      io.to(owner.roomId).emit(SOCKET_EVENTS.PET_STATE_UPDATE, {
         petId,
         state: pet.state,
         position: { x: pet.x, y: pet.y, z: pet.z },

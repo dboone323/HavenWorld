@@ -42,7 +42,7 @@ export class JukeboxService {
 
     const io = getIO();
     if (io) {
-      io.to(`room:${roomId}`).emit('jukebox:track_changed', {
+      io.to(roomId).emit('jukebox:track_changed', {
         roomId,
         trackId: track.id,
         title: track.title,

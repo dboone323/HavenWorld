@@ -123,6 +123,7 @@ export interface PlayerState {
   rotY?: number;
   direction: Direction;
   isMoving: boolean;
+  isSitting?: boolean;
   avatar: AvatarData;
   roomId?: string;
 }
@@ -138,6 +139,22 @@ export interface ChatMessage {
   username?: string;
   text?: string;
   roomId?: string;
+}
+
+export interface DirectMessagePayload {
+  id: string;
+  senderId: string;
+  senderUsername: string;
+  receiverId: string;
+  receiverUsername?: string;
+  content: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface UnreadDMsPayload {
+  unreadCount: number;
+  recentMessages: DirectMessagePayload[];
 }
 
 export interface FurnitureState {

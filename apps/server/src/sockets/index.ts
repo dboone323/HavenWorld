@@ -6,7 +6,7 @@ import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
 import { SOCKET_EVENTS, normalizeGender } from '@havenworld/shared';
 import { AnalyticsService } from '../services/AnalyticsService';
-import type { PlayerState, FurnitureState, AvatarData, ChatMessage } from '@havenworld/shared';
+import type { PlayerState, FurnitureState, AvatarData, ChatMessage, DirectMessagePayload } from '@havenworld/shared';
 import {
   JoinRoomSchema, MoveSchema, ChatSchema,
   FurniturePlaceSchema, FurnitureRemoveSchema,
@@ -17,6 +17,8 @@ import {
   AdoptPetSchema, NamePetSchema, FeedPetSchema,
   PizzaOrderSchema, RecycleItemSchema, StartCraftSchema, ClaimCraftSchema,
   SetMoodSchema, EmoteSchema, ClubChatSchema,
+  DMSendSchema, DMReadSchema,
+  SitSchema,
 } from './socketSchemas';
 import { FishingService } from '../services/FishingService';
 import { PrivacyManager } from '../services/PrivacyManager';
@@ -310,6 +312,31 @@ export function registerSocketHandlers(io: Server): void {
             });
           }
         }
+
+        // Surface unread DMs on join
+        const unreadCount = await prisma.directMessage.count({
+          where: { receiverId: userId, read: false },
+        });
+        if (unreadCount > 0) {
+          const recentUnread = await prisma.directMessage.findMany({
+            where: { receiverId: userId, read: false },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            include: { sender: { select: { username: true } } },
+          });
+          socket.emit(SOCKET_EVENTS.DM_UNREAD, {
+            unreadCount,
+            recentMessages: recentUnread.map((m) => ({
+              id: m.id,
+              senderId: m.senderId,
+              senderUsername: m.sender.username,
+              receiverId: m.receiverId,
+              content: m.content,
+              createdAt: m.createdAt.toISOString(),
+              read: m.read,
+            })),
+          });
+        }
       } catch (err) {
         console.error('[Socket] auth:join error:', err);
         socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
@@ -397,6 +424,40 @@ export function registerSocketHandlers(io: Server): void {
       }
     );
 
+    // ── player:sit (Networked Sitting & Alignment) ───────────────────────────
+    socket.on(
+      SOCKET_EVENTS.PLAYER_SIT,
+      async (rawData: unknown) => {
+        const parsed = SitSchema.safeParse(rawData);
+        if (!parsed.success) {
+          socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+          return;
+        }
+        const data = parsed.data;
+        const currentRoom = roomManager.getPlayerRoom(socket.id);
+        if (!currentRoom || currentRoom !== data.roomId) return;
+
+        const cz = data.z ?? 0;
+        const cRotY = (data.rotY ?? 0) % (Math.PI * 2);
+
+        // Update in-memory state in RoomManager
+        roomManager.sitPlayer(socket.id, data.x, data.y, cz, cRotY, data.isSitting);
+
+        // Broadcast to all players in the room including sender
+        const sitPayload = {
+          playerId: userId,
+          userId,
+          seatId: data.seatId,
+          x: data.x,
+          y: data.y,
+          z: cz,
+          rotY: cRotY,
+          isSitting: data.isSitting,
+        };
+        io.to(data.roomId).emit(SOCKET_EVENTS.PLAYER_SIT, sitPayload);
+      }
+    );
+
     // ── chat:send ─────────────────────────────────────────────────────────────
     socket.on(
       SOCKET_EVENTS.CHAT_SEND,
@@ -478,6 +539,107 @@ export function registerSocketHandlers(io: Server): void {
         io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, message);
       }
     );
+
+    // ── 1:1 Direct Messages ──────────────────────────────────────────────────
+    socket.on(SOCKET_EVENTS.DM_SEND, async (rawData: unknown) => {
+      const parsed = DMSendSchema.safeParse(rawData);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.DM_ERROR, { code: 'INVALID_PAYLOAD', message: 'Invalid direct message format.' });
+        return;
+      }
+      const { receiverId, content } = parsed.data;
+      if (receiverId === userId) {
+        socket.emit(SOCKET_EVENTS.DM_ERROR, { code: 'SELF_DM', message: 'You cannot direct message yourself.' });
+        return;
+      }
+
+      try {
+        // 1. Check mute status
+        const sender = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { username: true, mutedUntil: true, status: true },
+        });
+        if (sender?.mutedUntil && sender.mutedUntil > new Date()) {
+          socket.emit(SOCKET_EVENTS.DM_ERROR, { code: 'MUTED', message: 'You are currently muted.' });
+          return;
+        }
+
+        // 2. Check blocking in Friend relation (either direction)
+        const block = await prisma.friend.findFirst({
+          where: {
+            OR: [
+              { requesterId: userId, addresseeId: receiverId, status: 'BLOCKED' },
+              { requesterId: receiverId, addresseeId: userId, status: 'BLOCKED' },
+            ],
+          },
+        });
+        if (block) {
+          socket.emit(SOCKET_EVENTS.DM_ERROR, {
+            code: 'BLOCKED',
+            message: 'Unable to deliver message to this user.',
+          });
+          return;
+        }
+
+        // 3. Filter text
+        const { filtered } = moderateMessage(content);
+
+        // 4. Verify receiver
+        const receiver = await prisma.user.findUnique({
+          where: { id: receiverId },
+          select: { id: true, username: true },
+        });
+        if (!receiver) {
+          socket.emit(SOCKET_EVENTS.DM_ERROR, { code: 'USER_NOT_FOUND', message: 'Recipient not found.' });
+          return;
+        }
+
+        // 5. Persist to DB
+        const savedDM = await prisma.directMessage.create({
+          data: {
+            senderId: userId,
+            receiverId,
+            content: filtered,
+          },
+        });
+
+        const dmPayload: DirectMessagePayload = {
+          id: savedDM.id,
+          senderId: userId,
+          senderUsername: sender?.username || username,
+          receiverId,
+          receiverUsername: receiver.username,
+          content: savedDM.content,
+          createdAt: savedDM.createdAt.toISOString(),
+          read: false,
+        };
+
+        // 6. Deliver to receiver's user room and echo to sender's user room
+        io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.DM_RECEIVE, dmPayload);
+        io.to(`user:${userId}`).emit(SOCKET_EVENTS.DM_RECEIVE, dmPayload);
+      } catch (err) {
+        console.error('[Socket] DM send error:', err);
+        socket.emit(SOCKET_EVENTS.DM_ERROR, { code: 'SERVER_ERROR', message: 'Failed to send message.' });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.DM_READ, async (rawData: unknown) => {
+      const parsed = DMReadSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      const { partnerId } = parsed.data;
+      try {
+        await prisma.directMessage.updateMany({
+          where: {
+            senderId: partnerId,
+            receiverId: userId,
+            read: false,
+          },
+          data: { read: true },
+        });
+      } catch (err) {
+        console.error('[Socket] DM read error:', err);
+      }
+    });
 
     // ── avatar:update ─────────────────────────────────────────────────────────
     socket.on(
@@ -763,10 +925,10 @@ export function registerSocketHandlers(io: Server): void {
       TradeManager.cancelTrade(userId, 'Trade declined');
     });
 
-    socket.on(SOCKET_EVENTS.OFFER_ITEM, (rawData: unknown) => {
+    socket.on(SOCKET_EVENTS.OFFER_ITEM, async (rawData: unknown) => {
       const parsed = OfferItemSchema.safeParse(rawData);
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
-      TradeManager.offerItem(userId, parsed.data.slotIndex, parsed.data.inventoryItemId, parsed.data.name, parsed.data.assetUrl);
+      await TradeManager.offerItem(userId, parsed.data.slotIndex, parsed.data.inventoryItemId, parsed.data.name, parsed.data.assetUrl);
     });
 
     socket.on(SOCKET_EVENTS.OFFER_COINS, (rawData: unknown) => {
@@ -891,7 +1053,7 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) return;
       const p = roomManager.getPlayer(userId);
       if (p?.roomId) {
-        io.to(`room:${p.roomId}`).emit(SOCKET_EVENTS.AVATAR_EMOTE, {
+        io.to(p.roomId).emit(SOCKET_EVENTS.AVATAR_EMOTE, {
           userId,
           emoteId: parsed.data.emoteId,
         });

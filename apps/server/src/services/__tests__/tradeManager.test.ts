@@ -109,7 +109,7 @@ describe('TradeManager (P2P Trade)', () => {
     const user1 = await createTestUser({ havenCoins: 500 });
     const user2 = await createTestUser({ havenCoins: 200 });
 
-    const item1 = await createTestItem({ name: 'Trader Chair' });
+    const item1 = await createTestItem({ name: 'Trader Chair', isTradeable: true });
     const inv1 = await prisma.inventory.create({
       data: { userId: user1.id, itemId: item1.id, quantity: 1 },
     });
@@ -121,7 +121,7 @@ describe('TradeManager (P2P Trade)', () => {
     TradeManager.acceptTrade(user2.id);
 
     // User 1 offers item1; User 2 offers 50 coins
-    TradeManager.offerItem(user1.id, 0, item1.id, item1.name);
+    await TradeManager.offerItem(user1.id, 0, item1.id, item1.name);
     TradeManager.offerCoins(user2.id, 50);
 
     TradeManager.setReady(user1.id);

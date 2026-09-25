@@ -10,6 +10,7 @@ export const SOCKET_EVENTS = {
 
   // Player Movement
   PLAYER_MOVE:         'player:move',
+  PLAYER_SIT:          'player:sit',
   PLAYER_POSITION:     'player:position',
   POSITION_CORRECTION: 'player:position_correction',
   ERROR:               'error',
@@ -18,6 +19,13 @@ export const SOCKET_EVENTS = {
   CHAT_SEND:    'chat:send',
   CHAT_MESSAGE: 'chat:message',
   CHAT_ERROR:   'chat:error',
+
+  // 1:1 Direct Messages
+  DM_SEND:    'dm:send',
+  DM_RECEIVE: 'dm:receive',
+  DM_UNREAD:  'dm:unread',
+  DM_READ:    'dm:read',
+  DM_ERROR:   'dm:error',
 
   // Avatar
   AVATAR_UPDATE:  'avatar:update',

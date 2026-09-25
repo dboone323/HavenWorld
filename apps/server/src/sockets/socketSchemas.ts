@@ -34,6 +34,16 @@ export const MoveSchema = z.object({
   isMoving: z.boolean().optional().default(false),
 });
 
+export const SitSchema = z.object({
+  roomId: z.string().min(1).max(128),
+  seatId: z.string().min(1).max(128).optional(),
+  x: coord,
+  y: coord,
+  z: coord.optional().default(0),
+  rotY: z.number().finite().optional().default(0),
+  isSitting: z.boolean().default(true),
+});
+
 // ── Chat ───────────────────────────────────────────────────────────────────────
 export const ChatSchema = z.object({
   content: safeString(200),
@@ -118,7 +128,7 @@ export const TradeRequestSchema = z.object({
 });
 
 export const OfferItemSchema = z.object({
-  slotIndex: z.number().int().min(0).max(3),
+  slotIndex: z.number().int().min(0).max(5),
   inventoryItemId: uuid,
   name: safeString(100),
   assetUrl: z.string().url().max(500).optional(),
@@ -126,6 +136,16 @@ export const OfferItemSchema = z.object({
 
 export const OfferCoinsSchema = z.object({
   amount: z.number().int().min(0).max(1_000_000),
+});
+
+// ── 1:1 Direct Messages ───────────────────────────────────────────────────────
+export const DMSendSchema = z.object({
+  receiverId: uuid,
+  content: safeString(300),
+});
+
+export const DMReadSchema = z.object({
+  partnerId: uuid,
 });
 
 // ── Pets ──────────────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ export class ScavengerHuntService {
 
     const io = getIO();
     if (io) {
-      io.to(`room:${roomId}`).emit('scavenger:spawned', {
+      io.to(roomId).emit('scavenger:spawned', {
         id,
         x,
         y,
@@ -82,7 +82,7 @@ export class ScavengerHuntService {
 
     const io = getIO();
     if (io) {
-      io.to(`room:${ticket.roomId}`).emit('scavenger:claimed', {
+      io.to(ticket.roomId).emit('scavenger:claimed', {
         ticketId,
         winnerId: userId,
         winnerName: updatedUser.username,

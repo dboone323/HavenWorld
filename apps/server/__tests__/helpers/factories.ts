@@ -113,6 +113,7 @@ export async function createTestItem(
     price: number;
     category: ItemCategory;
     spriteKey: string;
+    isTradeable: boolean;
   }> = {}
 ): Promise<Item> {
   const uniqueSuffix = randomUUID().slice(0, 8);
@@ -122,6 +123,7 @@ export async function createTestItem(
       price: overrides.price ?? 100,
       category: overrides.category || 'FURNITURE',
       spriteKey: overrides.spriteKey || `item_${uniqueSuffix}`,
+      isTradeable: overrides.isTradeable ?? false,
     },
   });
 }

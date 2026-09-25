@@ -1,6 +1,10 @@
 import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { PassportModal } from '../passport/PassportModal';
+import { authService } from '../services/auth';
+import { SERVER_URL } from '../config';
+import { showToast } from './ToastNotification';
+import { SceneManager } from '../engine/SceneManager';
 
 interface ContextMenuOptions {
   x: number;
@@ -101,6 +105,85 @@ export class AvatarContextMenu {
     });
     menu.appendChild(btnTrade);
 
+    // Direct Message Button
+    const btnMessage = document.createElement('button');
+    btnMessage.className = 'context-menu-item';
+    btnMessage.innerHTML = '<span>✉️</span> Message';
+    btnMessage.addEventListener('click', async () => {
+      AvatarContextMenu.dismiss();
+      const { DirectMessagePanel } = await import('./DirectMessagePanel');
+      const panel = DirectMessagePanel.getInstance() || new DirectMessagePanel();
+      panel.open(options.targetUserId, options.targetUsername);
+    });
+    menu.appendChild(btnMessage);
+
+    // Add Friend Button
+    const btnFriend = document.createElement('button');
+    btnFriend.className = 'context-menu-item';
+    btnFriend.innerHTML = '<span>👋</span> Add Friend';
+    btnFriend.addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${SERVER_URL}/api/friends/request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authService.token || ''}`,
+          },
+          body: JSON.stringify({ targetUserId: options.targetUserId }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast({ icon: '👋', title: 'Friend Request Sent', subtitle: `Sent to ${options.targetUsername}` });
+        } else {
+          showToast({ icon: '⚠️', title: 'Friend Request', subtitle: data.error || 'Could not send request' });
+        }
+      } catch {
+        showToast({ icon: '⚠️', title: 'Error', subtitle: 'Network error sending request' });
+      }
+      AvatarContextMenu.dismiss();
+    });
+    menu.appendChild(btnFriend);
+
+    // Visit Room Button
+    const btnVisit = document.createElement('button');
+    btnVisit.className = 'context-menu-item';
+    btnVisit.innerHTML = '<span>🏠</span> Visit Room';
+    btnVisit.addEventListener('click', async () => {
+      AvatarContextMenu.dismiss();
+      try {
+        const res = await fetch(`${SERVER_URL}/api/users/id/${options.targetUserId}/room`, {
+          headers: { Authorization: `Bearer ${authService.token || ''}` },
+        });
+        if (!res.ok) {
+          showToast({ icon: '🏠', title: 'Visit Failed', subtitle: 'Player has no personal room' });
+          return;
+        }
+        const room = await res.json();
+        const tpRes = await fetch(`${SERVER_URL}/api/rooms/${room.id}/teleport`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authService.token || ''}`,
+          },
+          body: JSON.stringify({ targetRoomId: room.id }),
+        });
+        const tpData = await tpRes.json();
+        if (!tpRes.ok || !tpData.allowed) {
+          showToast({ icon: '🔒', title: 'Cannot Visit', subtitle: tpData.reason || 'This loft is private.' });
+          return;
+        }
+        showToast({ icon: '🚀', title: 'Visiting Loft', subtitle: `Entering ${options.targetUsername}'s loft` });
+        SceneManager.getInstance().switchTo('room', {
+          roomId: room.id,
+          isVisiting: true,
+          visitedHostName: options.targetUsername,
+        }).catch(console.error);
+      } catch (err) {
+        showToast({ icon: '⚠️', title: 'Visit Error', subtitle: 'Failed to visit player room' });
+      }
+    });
+    menu.appendChild(btnVisit);
+
     // Inspect Passport Button
     const btnPassport = document.createElement('button');
     btnPassport.className = 'context-menu-item';
@@ -115,24 +198,30 @@ export class AvatarContextMenu {
     const btnReport = document.createElement('button');
     btnReport.className = 'context-menu-item danger';
     btnReport.innerHTML = '<span>⚠️</span> Report';
-    btnReport.addEventListener('click', () => {
+    btnReport.addEventListener('click', async () => {
       const reason = prompt(`Report ${options.targetUsername} for inappropriate behavior:`);
       if (reason && reason.trim()) {
-        const { API_URL } = require('../config');
-        const { authService } = require('../services/auth');
-        fetch(`${API_URL}/reports`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authService.token || ''}`,
-          },
-          body: JSON.stringify({
-            reportedUserId: options.targetUserId,
-            reason: reason.trim(),
-            category: 'HARASSMENT',
-          }),
-        }).then(() => alert('Report submitted to moderation team.'))
-          .catch(() => alert('Failed to submit report.'));
+        try {
+          const res = await fetch(`${SERVER_URL}/api/reports`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authService.token || ''}`,
+            },
+            body: JSON.stringify({
+              reportedUserId: options.targetUserId,
+              reason: reason.trim(),
+              category: 'HARASSMENT',
+            }),
+          });
+          if (res.ok) {
+            showToast({ icon: '🛡️', title: 'Report Submitted', subtitle: 'Report submitted to moderation team.' });
+          } else {
+            showToast({ icon: '⚠️', title: 'Report Failed', subtitle: 'Could not submit report.' });
+          }
+        } catch {
+          showToast({ icon: '⚠️', title: 'Error', subtitle: 'Network error submitting report.' });
+        }
       }
       AvatarContextMenu.dismiss();
     });

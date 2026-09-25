@@ -108,7 +108,7 @@ export class PrivacyManager {
 
     const io = getIO();
     if (io) {
-      io.to(`room:${roomId}`).emit(SOCKET_EVENTS.PRIVACY_UPDATED, {
+      io.to(roomId).emit(SOCKET_EVENTS.PRIVACY_UPDATED, {
         roomId,
         mode,
       });

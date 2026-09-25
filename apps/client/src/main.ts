@@ -153,6 +153,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('chat-panel')?.classList.toggle('hidden');
   });
 
+  document.getElementById('btn-toggle-dm')?.addEventListener('click', async () => {
+    const { DirectMessagePanel } = await import('./ui/DirectMessagePanel');
+    const panel = DirectMessagePanel.getInstance() || new DirectMessagePanel();
+    panel.toggle();
+  });
+
   document.getElementById('chk-room-lock')?.addEventListener('change', (e) => {
     const isLocked = (e.target as HTMLInputElement).checked;
     const roomId = (window as any).__havenRoomId;

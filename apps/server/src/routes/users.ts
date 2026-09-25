@@ -304,6 +304,17 @@ router.get('/me/room', requireAuth, async (req: AuthRequest, res) => {
   return res.json(room);
 });
 
+// GET /api/users/id/:userId/room — get target user's personal room
+router.get('/id/:userId/room', requireAuth, async (req: AuthRequest, res) => {
+  const targetId = req.params.userId as string;
+  const room = await prisma.room.findFirst({
+    where: { ownerId: targetId },
+    select: { id: true, name: true, width: true, height: true, accessMode: true },
+  });
+  if (!room) return res.status(404).json({ error: 'Personal room not found.' });
+  return res.json(room);
+});
+
 // GET /api/users/:username — public profile of another user
 router.get('/:username', requireAuth, async (req: AuthRequest, res) => {
   const username = req.params.username as string;
@@ -311,10 +322,25 @@ router.get('/:username', requireAuth, async (req: AuthRequest, res) => {
     where: {
       username: { equals: username, mode: 'insensitive' },
     },
-    select: { id: true, username: true, createdAt: true },
+    select: {
+      id: true,
+      username: true,
+      createdAt: true,
+      ownedRooms: {
+        where: { backgroundKey: 'map-personal-room' },
+        select: { id: true, name: true, accessMode: true },
+        take: 1,
+      },
+    },
   });
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  return res.json(user);
+  const personalRoom = user.ownedRooms?.[0] || null;
+  return res.json({
+    id: user.id,
+    username: user.username,
+    createdAt: user.createdAt,
+    personalRoom,
+  });
 });
 
 export default router;

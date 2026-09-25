@@ -173,6 +173,16 @@ export class RemoteAvatar {
     }
   }
 
+  public setSitting(isSitting: boolean, x?: number, y?: number, z?: number, rotY?: number): void {
+    if (x !== undefined && y !== undefined && z !== undefined) {
+      this.updatePosition(x, y, z, rotY);
+    }
+    // Adjust avatar posture height when sitting vs standing
+    if (this._meshes.length > 0) {
+      this._meshes[0].position.y = isSitting ? 0.45 : 0.85;
+    }
+  }
+
   public showSpeech(message: string): void {
     if (!this._speechBubbleMesh || !this._speechText) return;
 

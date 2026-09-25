@@ -1,7 +1,7 @@
 import * as BABYLON from '@babylonjs/core';
 import { AdvancedDynamicTexture, Rectangle, TextBlock } from '@babylonjs/gui';
 import type { AvatarData } from '@havenworld/shared';
-import { getItemAccentColor, normalizeGender } from '@havenworld/shared';
+import { getItemAccentColor, normalizeGender, SOCKET_EVENTS } from '@havenworld/shared';
 import { socketService } from '../services/socket';
 import { assetUrl } from '../config';
 
@@ -150,6 +150,17 @@ export class AvatarController {
     if (this.currentAnimName === 'sit' && this.rootMesh) {
       this.rootMesh.position.y = 0;
       this.currentAnimName = 'idle';
+      const roomId =
+        (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+        this.roomId;
+      socketService.emit(SOCKET_EVENTS.PLAYER_SIT, {
+        roomId,
+        x: this.rootMesh.position.x,
+        y: 0,
+        z: this.rootMesh.position.z,
+        rotY: this.rootMesh.rotation.y,
+        isSitting: false,
+      });
     }
     this.targetPosition = new BABYLON.Vector3(target.x, 0, target.z);
     this.onArrivalCallback = onArrival || null;
@@ -170,6 +181,19 @@ export class AvatarController {
     if (seatMesh.rotation) {
       this.rootMesh.rotation.y = seatMesh.rotation.y;
     }
+
+    const roomId =
+      (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+      this.roomId;
+    socketService.emit(SOCKET_EVENTS.PLAYER_SIT, {
+      roomId,
+      seatId: seatMesh.name,
+      x: this.rootMesh.position.x,
+      y: this.rootMesh.position.y,
+      z: this.rootMesh.position.z,
+      rotY: this.rootMesh.rotation.y,
+      isSitting: true,
+    });
   }
 
   playSocialAnim(name: 'sit' | 'wave' | 'dance'): void {
@@ -284,6 +308,54 @@ export class AvatarController {
         }
       );
     }
+
+    // Headwear (outfitHead)
+    this.upsertLayer(
+      this.layerName('hat'),
+      () => BABYLON.MeshBuilder.CreateCylinder(this.layerName('hat'), { diameter: 0.52, height: 0.22, tessellation: 12 }, this.scene),
+      {
+        position: new BABYLON.Vector3(0, 1.34, 0),
+        scaling: new BABYLON.Vector3(1, 1, 1),
+        color: getItemAccentColor(data.outfitHead, '#1C1C1C'),
+        enabled: Boolean(data.outfitHead),
+      }
+    );
+
+    // Face / Glasses (outfitFace)
+    this.upsertLayer(
+      this.layerName('face'),
+      () => BABYLON.MeshBuilder.CreateBox(this.layerName('face'), { width: 0.36, height: 0.1, depth: 0.05 }, this.scene),
+      {
+        position: new BABYLON.Vector3(0, 1.12, 0.21),
+        scaling: new BABYLON.Vector3(1, 1, 1),
+        color: getItemAccentColor(data.outfitFace, '#000000'),
+        enabled: Boolean(data.outfitFace),
+      }
+    );
+
+    // Back / Wings / Backpack (outfitBack)
+    this.upsertLayer(
+      this.layerName('back'),
+      () => BABYLON.MeshBuilder.CreateBox(this.layerName('back'), { width: 0.42, height: 0.48, depth: 0.16 }, this.scene),
+      {
+        position: new BABYLON.Vector3(0, 0.62, -0.22),
+        scaling: new BABYLON.Vector3(1, 1, 1),
+        color: getItemAccentColor(data.outfitBack, '#8B4513'),
+        enabled: Boolean(data.outfitBack),
+      }
+    );
+
+    // Hand item (outfitHand)
+    this.upsertLayer(
+      this.layerName('hand'),
+      () => BABYLON.MeshBuilder.CreateCylinder(this.layerName('hand'), { diameter: 0.06, height: 0.5, tessellation: 8 }, this.scene),
+      {
+        position: new BABYLON.Vector3(0.32, 0.45, 0.15),
+        scaling: new BABYLON.Vector3(1, 1, 1),
+        color: getItemAccentColor(data.outfitHand, '#FFD700'),
+        enabled: Boolean(data.outfitHand),
+      }
+    );
   }
 
   /** Layer meshes are namespaced per avatar so multiple avatars coexist in a scene. */

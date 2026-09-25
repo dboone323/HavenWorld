@@ -42,6 +42,11 @@ export class RoomEditor {
   private isPlacing = false;
   private lastPointerActionTime = 0;
 
+  // Grid & Snap Toggles
+  public gridVisible = true;
+  public snapEnabled = true;
+  private activeEditorTab: 'furniture' | 'surfaces' = 'furniture';
+
   // Tracks changes in this edit session
   private pendingChanges: Map<string, FurniturePlacement> = new Map();
   private onModeChange?: (inEditMode: boolean) => void;
@@ -106,7 +111,8 @@ export class RoomEditor {
   }
 
   // ─── Grid Helper ──────────────────────────────────────────────────────────
-  private showGrid(): void {
+  public showGrid(): void {
+    if (this.gridMesh) return;
     this.gridMesh = BABYLON.MeshBuilder.CreateGround(
       'editor_grid',
       { width: 30, height: 30, subdivisions: 60 },
@@ -128,9 +134,36 @@ export class RoomEditor {
     this.gridMesh.material = gridMat;
   }
 
-  private hideGrid(): void {
+  public hideGrid(): void {
     this.gridMesh?.dispose();
     this.gridMesh = null;
+  }
+
+  public setGridVisible(visible: boolean): void {
+    this.gridVisible = visible;
+    if (this.isEditing) {
+      if (this.gridVisible) {
+        this.showGrid();
+      } else {
+        this.hideGrid();
+      }
+    }
+  }
+
+  public setSnapEnabled(enabled: boolean): void {
+    this.snapEnabled = enabled;
+  }
+
+  public getGridMesh(): BABYLON.Mesh | null {
+    return this.gridMesh;
+  }
+
+  public hasPendingChanges(): boolean {
+    return this.pendingChanges.size > 0;
+  }
+
+  public addPendingPlacement(placement: FurniturePlacement): void {
+    this.pendingChanges.set(placement.id, placement);
   }
 
   // ─── Ghost Mesh (Placement Preview) ───────────────────────────────────────
@@ -455,10 +488,14 @@ export class RoomEditor {
   }
 
   // ─── Grid Snapping ────────────────────────────────────────────────────────
-  private snapToGrid(pos: BABYLON.Vector3): BABYLON.Vector3 {
-    const snap = 0.5;
-    const snappedX = Math.round(pos.x / snap) * snap;
-    const snappedZ = Math.round(pos.z / snap) * snap;
+  public snapToGrid(pos: BABYLON.Vector3): BABYLON.Vector3 {
+    let snappedX = pos.x;
+    let snappedZ = pos.z;
+    if (this.snapEnabled) {
+      const snap = 0.5;
+      snappedX = Math.round(pos.x / snap) * snap;
+      snappedZ = Math.round(pos.z / snap) * snap;
+    }
     let snappedY = this.floorY;
     if (this.ghostMesh) {
       const bb = this.ghostMesh.getBoundingInfo().boundingBox;
@@ -695,15 +732,131 @@ export class RoomEditor {
         <span>🛋️ Decorator</span>
         <button id="btn-close-editor" style="background:none; border:none; color:#888; cursor:pointer; font-size:14pt;">✕</button>
       </h4>
-      <p style="font-size: 8pt; color: #94a3b8; margin: 0 0 8px;">
-        Click to place. Press <strong>[R]</strong> to rotate 4-ways (360°)!
-      </p>
-      <button id="btn-editor-rotate" style="width: 100%; background: rgba(139, 92, 246, 0.25); border: 1px solid #8b5cf6; border-radius: 6px; color: #c084fc; padding: 7px 10px; font-weight: 600; cursor: pointer; font-size: 9.5pt; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-        <span>🔄 Orientation:</span>
-        <span id="editor-rot-label" style="color: #fff;">0° (South)</span>
-      </button>
-      <div id="editor-inventory-list">Loading inventory…</div>
+
+      <!-- Grid & Snap Toggles -->
+      <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+        <button id="btn-toggle-grid" style="flex: 1; padding: 4px 6px; font-size: 8pt; border-radius: 4px; border: 1px solid ${this.gridVisible ? '#4ecdc4' : '#475569'}; background: ${this.gridVisible ? 'rgba(78, 205, 196, 0.2)' : 'transparent'}; color: #fff; cursor: pointer; font-weight: 600;">
+          Grid: ${this.gridVisible ? 'ON' : 'OFF'}
+        </button>
+        <button id="btn-toggle-snap" style="flex: 1; padding: 4px 6px; font-size: 8pt; border-radius: 4px; border: 1px solid ${this.snapEnabled ? '#4ecdc4' : '#475569'}; background: ${this.snapEnabled ? 'rgba(78, 205, 196, 0.2)' : 'transparent'}; color: #fff; cursor: pointer; font-weight: 600;">
+          Snap: ${this.snapEnabled ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      <!-- Mode Tabs: Furniture vs Floors & Walls -->
+      <div style="display: flex; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 6px;">
+        <button id="tab-editor-furniture" style="flex: 1; padding: 4px; font-size: 8.5pt; font-weight: 600; border-radius: 4px; border: none; background: #3b82f6; color: #fff; cursor: pointer;">Items</button>
+        <button id="tab-editor-surfaces" style="flex: 1; padding: 4px; font-size: 8.5pt; font-weight: 600; border-radius: 4px; border: none; background: transparent; color: #94a3b8; cursor: pointer;">Surfaces</button>
+      </div>
+
+      <div id="editor-furniture-section">
+        <p style="font-size: 8pt; color: #94a3b8; margin: 0 0 8px;">
+          Click or drag item to canvas. Press <strong>[R]</strong> to rotate!
+        </p>
+        <button id="btn-editor-rotate" style="width: 100%; background: rgba(139, 92, 246, 0.25); border: 1px solid #8b5cf6; border-radius: 6px; color: #c084fc; padding: 7px 10px; font-weight: 600; cursor: pointer; font-size: 9.5pt; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+          <span>🔄 Orientation:</span>
+          <span id="editor-rot-label" style="color: #fff;">0° (South)</span>
+        </button>
+        <div id="editor-inventory-list">Loading inventory…</div>
+      </div>
+
+      <div id="editor-surfaces-section" style="display: none;">
+        <div style="font-size: 8.5pt; font-weight: 600; color: #38bdf8; margin-bottom: 6px;">Floor Material</div>
+        <div id="editor-floor-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px;">
+          <button class="surface-btn" data-type="floor" data-key="floor-wood-oak" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🪵 Honey Oak</button>
+          <button class="surface-btn" data-type="floor" data-key="floor-tile-marble" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🏛️ Marble Tile</button>
+          <button class="surface-btn" data-type="floor" data-key="floor-carpet-teal" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🟦 Teal Plush</button>
+          <button class="surface-btn" data-type="floor" data-key="floor-wood-dark" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🌲 Walnut</button>
+        </div>
+
+        <div style="font-size: 8.5pt; font-weight: 600; color: #38bdf8; margin-bottom: 6px;">Wall Material</div>
+        <div id="editor-wall-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <button class="surface-btn" data-type="wall" data-key="wall-plaster-white" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">⚪ Clean White</button>
+          <button class="surface-btn" data-type="wall" data-key="wall-brick-warm" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🧱 Warm Brick</button>
+          <button class="surface-btn" data-type="wall" data-key="wall-wallpaper-navy" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🌌 Navy Starlight</button>
+          <button class="surface-btn" data-type="wall" data-key="wall-wood-panel" style="padding: 6px; font-size: 8pt; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #fff; cursor: pointer;">🪵 Shiplap</button>
+        </div>
+      </div>
     `;
+
+    // Toggle Grid Click
+    const btnGrid = panel.querySelector('#btn-toggle-grid') as HTMLButtonElement | null;
+    btnGrid?.addEventListener('click', () => {
+      this.gridVisible = !this.gridVisible;
+      if (this.gridVisible) {
+        this.showGrid();
+      } else {
+        this.hideGrid();
+      }
+      btnGrid.textContent = `Grid: ${this.gridVisible ? 'ON' : 'OFF'}`;
+      btnGrid.style.borderColor = this.gridVisible ? '#4ecdc4' : '#475569';
+      btnGrid.style.background = this.gridVisible ? 'rgba(78, 205, 196, 0.2)' : 'transparent';
+    });
+
+    // Toggle Snap Click
+    const btnSnap = panel.querySelector('#btn-toggle-snap') as HTMLButtonElement | null;
+    btnSnap?.addEventListener('click', () => {
+      this.snapEnabled = !this.snapEnabled;
+      btnSnap.textContent = `Snap: ${this.snapEnabled ? 'ON' : 'OFF'}`;
+      btnSnap.style.borderColor = this.snapEnabled ? '#4ecdc4' : '#475569';
+      btnSnap.style.background = this.snapEnabled ? 'rgba(78, 205, 196, 0.2)' : 'transparent';
+    });
+
+    // Tab Switching
+    const tabFurniture = panel.querySelector('#tab-editor-furniture') as HTMLButtonElement | null;
+    const tabSurfaces = panel.querySelector('#tab-editor-surfaces') as HTMLButtonElement | null;
+    const secFurniture = panel.querySelector('#editor-furniture-section') as HTMLElement | null;
+    const secSurfaces = panel.querySelector('#editor-surfaces-section') as HTMLElement | null;
+
+    tabFurniture?.addEventListener('click', () => {
+      tabFurniture.style.background = '#3b82f6';
+      tabFurniture.style.color = '#fff';
+      if (tabSurfaces) {
+        tabSurfaces.style.background = 'transparent';
+        tabSurfaces.style.color = '#94a3b8';
+      }
+      if (secFurniture) secFurniture.style.display = 'block';
+      if (secSurfaces) secSurfaces.style.display = 'none';
+    });
+
+    tabSurfaces?.addEventListener('click', () => {
+      tabSurfaces.style.background = '#3b82f6';
+      tabSurfaces.style.color = '#fff';
+      if (tabFurniture) {
+        tabFurniture.style.background = 'transparent';
+        tabFurniture.style.color = '#94a3b8';
+      }
+      if (secFurniture) secFurniture.style.display = 'none';
+      if (secSurfaces) secSurfaces.style.display = 'block';
+    });
+
+    // Surface option click handler
+    panel.querySelectorAll('.surface-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const type = (btn as HTMLElement).dataset.type;
+        const key = (btn as HTMLElement).dataset.key;
+        if (!key) return;
+
+        try {
+          const token = authService.token || (await authService.getToken()) || '';
+          const res = await fetch(`${SERVER_URL}/api/rooms/${this.roomId}/surfaces`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              [type === 'floor' ? 'floorTexture' : 'wallTexture']: key,
+            }),
+          });
+          if (res.ok) {
+            showToast({ icon: '🎨', title: 'Surface Updated', subtitle: `${key} applied.` });
+          }
+        } catch {
+          showToast({ icon: '⚠️', title: 'Surface Error', subtitle: 'Could not update surface.' });
+        }
+      });
+    });
 
     panel.querySelector('#btn-editor-rotate')?.addEventListener('click', () => this.cycleRotation());
 
@@ -893,6 +1046,10 @@ export class RoomEditor {
   }
 
   cancelEdit(): void {
+    if (this.pendingChanges.size > 0) {
+      const confirmDiscard = window.confirm('You have unsaved furniture layout changes. Discard changes?');
+      if (!confirmDiscard) return;
+    }
     // Reload furniture from server (discard pending changes)
     this.furnitureManager.clear();
     this.furnitureManager.loadRoomFurniture(this.roomId);

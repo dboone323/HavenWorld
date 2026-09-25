@@ -213,4 +213,38 @@ router.get('/:friendId/location', requireAuth, async (req: AuthRequest, res) => 
   });
 });
 
+// GET /api/friends/:friendId/dms — direct message history with a partner
+router.get('/:friendId/dms', requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.user!.userId;
+  const friendId = req.params.friendId as string;
+
+  const messages = await prisma.directMessage.findMany({
+    where: {
+      OR: [
+        { senderId: userId, receiverId: friendId },
+        { senderId: friendId, receiverId: userId },
+      ],
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 100,
+    include: {
+      sender: { select: { username: true } },
+      receiver: { select: { username: true } },
+    },
+  });
+
+  return res.json(
+    messages.map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      senderUsername: m.sender.username,
+      receiverId: m.receiverId,
+      receiverUsername: m.receiver.username,
+      content: m.content,
+      createdAt: m.createdAt.toISOString(),
+      read: m.read,
+    }))
+  );
+});
+
 export default router;

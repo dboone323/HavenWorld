@@ -33,13 +33,18 @@ import { DailyLoginModal } from '../ui/DailyLoginModal';
 import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
 import { showToast, clearToasts } from '../ui/ToastNotification';
 import { AvatarContextMenu } from '../ui/AvatarContextMenu';
+import { PlayersListModal, type RoomOccupant } from '../ui/PlayersListModal';
 import { PetController } from '../pets/PetController';
 import { PetManagementPanel } from '../ui/PetManagementPanel';
 import { WorkshopPanel } from '../ui/WorkshopPanel';
 import { ClubPanel } from '../clubs/ClubPanel';
 import { GalleryPanel } from '../gallery/GalleryPanel';
+import { DirectMessagePanel } from '../ui/DirectMessagePanel';
 
-export async function createRoomScene(haven: HavenEngine, data?: { roomId?: string }): Promise<Scene> {
+export async function createRoomScene(
+  haven: HavenEngine,
+  data?: { roomId?: string; isVisiting?: boolean; visitedHostName?: string }
+): Promise<Scene> {
   const scene = new Scene(haven.engine);
   scene.clearColor = new Color4(0.11, 0.13, 0.17, 1.0);
   const unsubs: Array<() => void> = [];
@@ -227,6 +232,97 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     } else {
       remote.updatePosition(p.x ?? 0, p.y ?? 0, p.z ?? 0, p.rotY ?? 0);
     }
+    updateOccupantsCount();
+  }
+
+  // ── Room Occupants Badge & Modal ──────────────────────────────────────────
+  const updateOccupantsCount = () => {
+    const badge = document.getElementById('room-badge-occupants');
+    const total = remoteAvatars.size + 1;
+    if (badge) {
+      badge.textContent = `👥 ${total}`;
+      badge.style.cursor = 'pointer';
+      badge.title = 'Click to view players in this room';
+    }
+  };
+
+  const badgeOccupants = document.getElementById('room-badge-occupants');
+  const onBadgeOccupantsClick = () => {
+    const occupants: RoomOccupant[] = [
+      {
+        id: user.id,
+        username: user.username,
+        isSelf: true,
+        position: avatarController.rootMesh
+          ? {
+              x: avatarController.rootMesh.position.x,
+              y: avatarController.rootMesh.position.y,
+              z: avatarController.rootMesh.position.z,
+            }
+          : undefined,
+      },
+    ];
+    for (const [id, remote] of remoteAvatars.entries()) {
+      occupants.push({
+        id,
+        username: remote.username,
+        isSelf: false,
+        position: remote.rootMesh
+          ? {
+              x: remote.rootMesh.position.x,
+              y: remote.rootMesh.position.y,
+              z: remote.rootMesh.position.z,
+            }
+          : undefined,
+      });
+    }
+    PlayersListModal.show(occupants, (targetId) => {
+      const target = remoteAvatars.get(targetId);
+      if (target?.rootMesh) {
+        avatarController.moveTo(target.rootMesh.position.clone());
+        showToast({ icon: '🏃', title: 'Following', subtitle: `Walking to ${target.username}` });
+      }
+    });
+  };
+  badgeOccupants?.addEventListener('click', onBadgeOccupantsClick);
+  updateOccupantsCount();
+
+  // ── Visiting Room Banner ──────────────────────────────────────────────────
+  let visitingBanner: HTMLElement | null = null;
+  if (data?.isVisiting) {
+    const host = data.visitedHostName || 'Player';
+    visitingBanner = document.createElement('div');
+    visitingBanner.id = 'visiting-banner';
+    visitingBanner.style.cssText = `
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(26, 26, 46, 0.94);
+      border: 1.5px solid #4ecdc4;
+      border-radius: 20px;
+      padding: 6px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 9998;
+      color: #fff;
+      font-family: Calibri, sans-serif;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    `;
+    visitingBanner.innerHTML = `
+      <span style="font-size: 0.9rem; font-weight: 500;">🏠 Visiting <strong style="color: #4ecdc4;">${host}</strong>'s Loft</span>
+      <button id="btn-visiting-return" style="background: #4ecdc4; color: #0d0d1a; border: none; border-radius: 12px; padding: 4px 12px; font-weight: bold; cursor: pointer; font-size: 0.8rem;">Return Home</button>
+    `;
+    document.body.appendChild(visitingBanner);
+    visitingBanner.querySelector('#btn-visiting-return')?.addEventListener('click', () => {
+      const homeLoftId = authService.user?.personalRoom?.id;
+      if (homeLoftId) {
+        SceneManager.getInstance().switchTo('room', { roomId: homeLoftId }).catch(console.error);
+      } else {
+        SceneManager.getInstance().switchTo('lobby').catch(console.error);
+      }
+    });
   }
 
   // ── Furniture & Room Decorator ───────────────────────────────────────────
@@ -400,6 +496,14 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   // ── Input & Chat Controllers ──────────────────────────────────────────────
   inputController = new InputController(scene, avatarController, camera);
+  const dmPanel = DirectMessagePanel.getInstance() || new DirectMessagePanel();
+  dmPanel.setSpeechTrigger((senderId: string, content: string) => {
+    const remote = remoteAvatars.get(senderId);
+    if (remote) {
+      remote.showSpeech(`✉️ ${content}`);
+    }
+  });
+
   const chatOverlay = new ChatOverlay(null, (msg: ChatMessage) => {
     audioEngine.playChatMessage();
     const pid = msg.playerId || msg.senderId;
@@ -414,24 +518,41 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
 
   // ── Interaction & Context Menu Pointer Observable ────────────────────────
   const pointerObserver = scene.onPointerObservable.add((pointerInfo) => {
+    const handleAvatarInteraction = (mesh: any, clientX: number, clientY: number) => {
+      if (!mesh) return false;
+      const meta = mesh.metadata || mesh.parent?.metadata;
+      if (meta?.isRemoteAvatar && meta?.userId && meta?.username) {
+        AvatarContextMenu.show({
+          x: clientX,
+          y: clientY,
+          targetUserId: meta.userId,
+          targetUsername: meta.username,
+        });
+        return true;
+      }
+      return false;
+    };
+
     // Right-click on meshes (POINTERDOWN with right button or POINTERTAP)
     if (pointerInfo.type === PointerEventTypes.POINTERDOWN && pointerInfo.event.button === 2) {
       const pick = scene.pick(scene.pointerX, scene.pointerY);
       if (pick?.hit && pick.pickedMesh) {
-        const meta = pick.pickedMesh.metadata;
-        if (meta?.isRemoteAvatar && meta?.userId && meta?.username) {
-          AvatarContextMenu.show({
-            x: pointerInfo.event.clientX,
-            y: pointerInfo.event.clientY,
-            targetUserId: meta.userId,
-            targetUsername: meta.username,
-          });
-        }
+        handleAvatarInteraction(pick.pickedMesh, pointerInfo.event.clientX, pointerInfo.event.clientY);
       }
     }
 
-    // Left-click on interactive trigger meshes
+    // Left-click on interactive trigger meshes or remote avatars
     if (pointerInfo.type === PointerEventTypes.POINTERPICK) {
+      const evt = pointerInfo.event as PointerEvent;
+      if (evt.button === 0 || evt.button === undefined) {
+        const handled = handleAvatarInteraction(
+          pointerInfo.pickInfo?.pickedMesh || null,
+          evt.clientX,
+          evt.clientY
+        );
+        if (handled) return;
+      }
+
       const meshName = pointerInfo.pickInfo?.pickedMesh?.name;
       if (!meshName) return;
 
@@ -477,6 +598,7 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
           for (const p of state.players) {
             addOrUpdateRemoteAvatar(p);
           }
+          updateOccupantsCount();
         }
         // Apply the room's persisted mood on join
         if (state?.mood) {
@@ -550,6 +672,27 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
     })
   );
 
+  // Player sit
+  unsubs.push(
+    socketService.on<{
+      playerId: string;
+      userId?: string;
+      seatId?: string;
+      x: number;
+      y: number;
+      z: number;
+      rotY: number;
+      isSitting: boolean;
+    }>(SOCKET_EVENTS.PLAYER_SIT, (data) => {
+      const pid = data.playerId || data.userId;
+      if (!pid || pid === user.id) return;
+      const remote = remoteAvatars.get(pid);
+      if (remote) {
+        remote.setSitting(data.isSitting, data.x, data.y, data.z, data.rotY);
+      }
+    })
+  );
+
   // Player left
   unsubs.push(
     socketService.on<{ playerId: string }>(SOCKET_EVENTS.ROOM_PLAYER_LEFT, ({ playerId }) => {
@@ -557,6 +700,23 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       if (remote) {
         remote.dispose();
         remoteAvatars.delete(playerId);
+        updateOccupantsCount();
+      }
+    })
+  );
+
+  // Friend status broadcasts
+  unsubs.push(
+    socketService.on<{ friendId: string; username: string }>(SOCKET_EVENTS.FRIEND_ONLINE, (data) => {
+      if (data?.username) {
+        showToast({ icon: '🟢', title: 'Friend Online', subtitle: `${data.username} is now online` });
+      }
+    })
+  );
+  unsubs.push(
+    socketService.on<{ friendId: string; username: string }>(SOCKET_EVENTS.FRIEND_OFFLINE, (data) => {
+      if (data?.username) {
+        showToast({ icon: '⚪', title: 'Friend Offline', subtitle: `${data.username} went offline` });
       }
     })
   );
@@ -710,6 +870,11 @@ export async function createRoomScene(haven: HavenEngine, data?: { roomId?: stri
       remote.dispose();
     }
     remoteAvatars.clear();
+    badgeOccupants?.removeEventListener('click', onBadgeOccupantsClick);
+    visitingBanner?.remove();
+    visitingBanner = null;
+    PlayersListModal.dismiss();
+    AvatarContextMenu.dismiss();
     document.getElementById('room-info-pill')?.classList.add('hidden');
     document.getElementById('room-controls-card')?.classList.add('hidden');
     (window as any).__havenRoomReady = false;

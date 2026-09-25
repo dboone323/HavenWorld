@@ -112,6 +112,27 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
   const { layout } = parsed.data;
   const activeItems = layout.filter((p) => !p.isRemoved);
 
+  // Enforce item ownership check: all items must exist in decorator/owner inventory
+  if (activeItems.length > 0) {
+    const itemIds = [...new Set(activeItems.map((p) => p.itemId))];
+    const userInventory = await prisma.inventory.findMany({
+      where: {
+        userId,
+        itemId: { in: itemIds },
+      },
+      select: { itemId: true },
+    });
+    const ownedIds = new Set(userInventory.map((i) => i.itemId));
+    const missing = itemIds.filter((id) => !ownedIds.has(id));
+    if (missing.length > 0) {
+      return res.status(403).json({
+        error: 'You do not own all placed furniture items in your inventory.',
+        code: 'ITEM_NOT_OWNED',
+        missingItemIds: missing,
+      });
+    }
+  }
+
   await prisma.$transaction([
     prisma.roomFurniture.deleteMany({ where: { roomId } }),
     prisma.roomFurniture.createMany({
@@ -136,6 +157,50 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
   }
 
   return res.json({ success: true, placedCount: activeItems.length });
+});
+
+// PUT /api/rooms/:id/surfaces — update floor and wall customization
+const surfaceBodySchema = z.object({
+  floorTexture: z.string().min(1).max(128).optional(),
+  wallTexture: z.string().min(1).max(128).optional(),
+});
+
+router.put('/:id/surfaces', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  const userId = req.user!.userId;
+
+  const room = await prisma.room.findUnique({ where: { id: roomId } });
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+
+  const allowed = await canDecorateRoom(userId, roomId);
+  if (!allowed) {
+    return res.status(403).json({ error: 'You do not have decorator permissions in this room.' });
+  }
+
+  const parsed = surfaceBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid surface parameters', issues: parsed.error.issues });
+  }
+
+  const updated = await prisma.room.update({
+    where: { id: roomId },
+    data: {
+      ...(parsed.data.floorTexture ? { floorTexture: parsed.data.floorTexture } : {}),
+      ...(parsed.data.wallTexture ? { wallTexture: parsed.data.wallTexture } : {}),
+    },
+    select: { id: true, floorTexture: true, wallTexture: true },
+  });
+
+  const io = getIO();
+  if (io) {
+    io.to(roomId).emit('room:surfaces_updated', {
+      roomId,
+      floorTexture: updated.floorTexture,
+      wallTexture: updated.wallTexture,
+    });
+  }
+
+  return res.json({ success: true, surfaces: updated });
 });
 
 // GET /api/rooms/:id — single room details including furniture

@@ -50,6 +50,10 @@ export class InputController {
         this._avatar.lookAt(pick.pickedPoint);
 
         const mesh = pick.pickedMesh;
+        if (mesh.metadata?.isRemoteAvatar) {
+          // Clicked on a remote avatar — context menu handles this
+          return;
+        }
         const isSeat =
           mesh.name.startsWith('sofa') ||
           mesh.name.includes('chair') ||

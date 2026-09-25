@@ -94,6 +94,33 @@ export class TradeManager {
   }
 
   /**
+   * Directly initializes an active trade session for testing without distance/room preconditions
+   */
+  static startTestSession(initiatorId: string, receiverId: string) {
+    const tradeId = `trade_test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const session: ActiveTradeSession = {
+      id: tradeId,
+      initiatorId,
+      receiverId,
+      roomId: 'room-test',
+      initiatorItems: [],
+      receiverItems: [],
+      initiatorCoins: 0,
+      receiverCoins: 0,
+      initiatorReady: false,
+      receiverReady: false,
+      initiatorConfirmed: false,
+      receiverConfirmed: false,
+      state: 'OFFER_PHASE',
+    };
+
+    this.sessions.set(tradeId, session);
+    this.userActiveTrades.set(initiatorId, tradeId);
+    this.userActiveTrades.set(receiverId, tradeId);
+    return session;
+  }
+
+  /**
    * Accepts trade request
    */
   static acceptTrade(userId: string) {
@@ -133,9 +160,47 @@ export class TradeManager {
   /**
    * Modifies an item slot in the offer (Anti-scam: resets ready states and reverts lock!)
    */
-  static offerItem(userId: string, slotIndex: number, inventoryItemId: string, itemName: string, assetUrl?: string) {
+  static async offerItem(userId: string, slotIndex: number, inventoryItemId: string, itemName: string, assetUrl?: string) {
     const session = this.getSessionForUser(userId);
     if (!session || session.state === 'COMPLETED') return;
+
+    if (slotIndex < 0 || slotIndex > 5) return;
+
+    if (inventoryItemId) {
+      // 1. Verify item is tradeable
+      const dbItem = await prisma.item.findUnique({ where: { id: inventoryItemId } });
+      if (!dbItem || !dbItem.isTradeable) {
+        getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'This item is not tradeable.' });
+        return;
+      }
+
+      // 2. Verify user owns the item
+      const userInv = await prisma.inventory.findUnique({
+        where: { userId_itemId: { userId, itemId: inventoryItemId } },
+      });
+      if (!userInv || userInv.quantity < 1) {
+        getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'You do not own this item.' });
+        return;
+      }
+
+      // 3. Verify item is not currently equipped
+      const avatar = await prisma.avatar.findUnique({ where: { userId } });
+      if (avatar) {
+        const equipped = [
+          avatar.outfitHead,
+          avatar.outfitFace,
+          avatar.outfitBody,
+          avatar.outfitLegs,
+          avatar.outfitFeet,
+          avatar.outfitBack,
+          avatar.outfitHand,
+        ];
+        if (equipped.includes(inventoryItemId)) {
+          getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'Cannot trade an equipped item. Please unequip it first.' });
+          return;
+        }
+      }
+    }
 
     if (session.state === 'LOCKED') {
       session.state = 'OFFER_PHASE';
@@ -278,6 +343,12 @@ export class TradeManager {
         if (receiverCoins > 0) {
           await tx.user.update({ where: { id: receiverId }, data: { havenCoins: { decrement: receiverCoins } } });
           await tx.user.update({ where: { id: initiatorId }, data: { havenCoins: { increment: receiverCoins } } });
+        }
+
+        // Verify all items are tradeable before transferring
+        for (const item of [...initiatorItems, ...receiverItems]) {
+          const dbItem = await tx.item.findUnique({ where: { id: item.inventoryItemId } });
+          if (!dbItem || !dbItem.isTradeable) throw new Error(`Item ${item.name} is not tradeable`);
         }
 
         // Swap initiator items -> receiver
