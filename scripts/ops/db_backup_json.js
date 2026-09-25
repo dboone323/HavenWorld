@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // db_backup_json.js — version-independent backup of every table in the live DB to JSON.
-// Usage: cd /opt/havenworld/apps/server && node /tmp/db_backup_json.js /tmp/db_backup.json
+// Usage: cd /opt/havenworld/apps/server && node /opt/havenworld/tmp/db_backup_json.js /opt/havenworld/tmp/db_backup.json
 'use strict';
 const fs = require('fs');
-const OUT = process.argv[2] || '/tmp/db_backup.json';
+const OUT = process.argv[2] || '/opt/havenworld/tmp/db_backup.json';
 const ENV = '/opt/havenworld/apps/server/.env';
 
 let url = process.env.DATABASE_URL;

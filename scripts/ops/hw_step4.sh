@@ -30,23 +30,23 @@ echo "=== 5. REGISTER $U ==="
 curl -s -m 15 -X POST http://127.0.0.1:3000/api/auth/register \
   -H 'Content-Type: application/json' \
   -d "{\"username\":\"$U\",\"email\":\"$U@example.com\",\"password\":\"$P\"}" \
-  -o /tmp/reg.json -w "http=%{http_code}\n"
-head -c 600 /tmp/reg.json; echo
+  -o /opt/havenworld/tmp/reg.json -w "http=%{http_code}\n"
+head -c 600 /opt/havenworld/tmp/reg.json; echo
 
 echo "=== 6. LOGIN BY USERNAME ==="
 curl -s -m 15 -X POST http://127.0.0.1:3000/api/auth/login \
   -H 'Content-Type: application/json' \
   -d "{\"username\":\"$U\",\"password\":\"$P\"}" \
-  -o /tmp/login.json -w "http=%{http_code}\n"
-python3 -c "import json;d=json.load(open('/tmp/login.json'));print('keys:',sorted(d.keys()));print('accessToken len:',len(d.get('accessToken') or d.get('access_token') or ''));print('user:',json.dumps(d.get('user'),)[:300])" 2>/dev/null || head -c 600 /tmp/login.json
+  -o /opt/havenworld/tmp/login.json -w "http=%{http_code}\n"
+python3 -c "import json;d=json.load(open('/opt/havenworld/tmp/login.json'));print('keys:',sorted(d.keys()));print('accessToken len:',len(d.get('accessToken') or d.get('access_token') or ''));print('user:',json.dumps(d.get('user'),)[:300])" 2>/dev/null || head -c 600 /opt/havenworld/tmp/login.json
 echo
 
 echo "=== 7. LOGIN BY EMAIL + AUTHENTICATED CALL ==="
-TOKEN=$(python3 -c "import json;d=json.load(open('/tmp/login.json'));print(d.get('accessToken') or d.get('access_token') or '')" 2>/dev/null)
+TOKEN=$(python3 -c "import json;d=json.load(open('/opt/havenworld/tmp/login.json'));print(d.get('accessToken') or d.get('access_token') or '')" 2>/dev/null)
 curl -s -m 15 -X POST http://127.0.0.1:3000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$U@example.com\",\"password\":\"$P\"}" -o /dev/null -w "login_by_email=%{http_code}\n"
-curl -s -m 15 http://127.0.0.1:3000/api/auth/me -H "Authorization: Bearer $TOKEN" -o /tmp/me.json -w "me=%{http_code}\n"
-head -c 400 /tmp/me.json; echo
+curl -s -m 15 http://127.0.0.1:3000/api/auth/me -H "Authorization: Bearer $TOKEN" -o /opt/havenworld/tmp/me.json -w "me=%{http_code}\n"
+head -c 400 /opt/havenworld/tmp/me.json; echo
 
 echo "=== 8. DB ROWS CREATED BY THE SMOKE USER ==="
 psql "$DB" -t -A -c "SELECT username || ' | role=' || role || ' | coins=' || \"havenCoins\" || ' | hash=' || left(\"passwordHash\",7) FROM users WHERE username LIKE 'smoke_%' OR username = '$U';"

@@ -13,7 +13,7 @@ echo "=== 2. CLEAR FAILED MIGRATION STATE ==="
 pnpm exec prisma migrate resolve --rolled-back 20260919000000_add_analytics_tutorial_craft_notifications 2>&1 | tail -4
 
 echo "=== 3. DROP THE MIS-GENERATED MIGRATION FOLDER (never applied) ==="
-rm -rf prisma/migrations/20260923160936_complete_game_schema /tmp/hw_step2.out
+rm -rf prisma/migrations/20260923160936_complete_game_schema /opt/havenworld/tmp/hw_step2.out
 ls prisma/migrations
 
 echo "=== 4. MIGRATE DEPLOY (init + repaired 000000 + gender) ==="
@@ -23,7 +23,7 @@ printf 'tables now: '; psql "$DB" -t -A -c "SELECT count(*) FROM information_sch
 echo "=== 5. GENERATE COMPLETE-SCHEMA MIGRATION FROM REAL DRIFT ==="
 DIR="prisma/migrations/20260923170000_complete_game_schema"
 mkdir -p "$DIR"
-pnpm exec prisma migrate diff --from-url "$DB" --to-schema-datamodel prisma/schema.prisma --script > "$DIR/migration.sql" 2>/tmp/diff.err || cat /tmp/diff.err
+pnpm exec prisma migrate diff --from-url "$DB" --to-schema-datamodel prisma/schema.prisma --script > "$DIR/migration.sql" 2>/opt/havenworld/tmp/diff.err || cat /opt/havenworld/tmp/diff.err
 echo "generated lines: $(wc -l < "$DIR/migration.sql")"
 grep -c 'CREATE TABLE' "$DIR/migration.sql" || true
 head -6 "$DIR/migration.sql"

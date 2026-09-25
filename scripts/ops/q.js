@@ -1,4 +1,4 @@
-const { Client } = require('/tmp/pgq/node_modules/pg');
+const { Client } = require('pg');
 const fs = require('fs');
 const env = {};
 fs.readFileSync('/opt/havenworld/apps/server/.env', 'utf8').split('\n').forEach(l => {

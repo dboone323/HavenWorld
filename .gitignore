@@ -40,6 +40,10 @@ havenworld.db
 *.bak
 backups/
 
+# Python caches
+__pycache__/
+*.py[cod]
+
 # Scratch / temp working directories
 tmp/
 scratch/

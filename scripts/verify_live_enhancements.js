@@ -1,7 +1,21 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const fs = require('fs');
 
-const ARTIFACT_DIR = '/Users/danielstevens/.gemini/antigravity/brain/98772a0b-e303-46e0-a01b-49806d7328e0';
+const ROOT = path.resolve(__dirname, '..');
+const ARTIFACT_DIR = process.env.HAVENWORLD_ARTIFACT_DIR
+  ? path.resolve(process.env.HAVENWORLD_ARTIFACT_DIR)
+  : path.join(ROOT, 'screenshots', 'live-verification');
+const LIVE_EMAIL = process.env.HAVENWORLD_LIVE_EMAIL;
+const LIVE_PASSWORD = process.env.HAVENWORLD_LIVE_PASSWORD;
+const TARGET_USER_ID = process.env.HAVENWORLD_TARGET_USER_ID;
+const TARGET_USERNAME = process.env.HAVENWORLD_TARGET_USERNAME || LIVE_EMAIL;
+if (!LIVE_EMAIL || !LIVE_PASSWORD || !TARGET_USER_ID) {
+  throw new Error(
+    'Set HAVENWORLD_LIVE_EMAIL, HAVENWORLD_LIVE_PASSWORD, and HAVENWORLD_TARGET_USER_ID before running this script.'
+  );
+}
+fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
 async function verify() {
   console.log('Launching headless browser...');
@@ -30,10 +44,10 @@ async function verify() {
   await page.screenshot({ path: loginShot });
   console.log('Saved login card screenshot to:', loginShot);
 
-  // Sign in with test user
-  console.log('Signing in with chibi_05442...');
-  await page.fill('#login-email', 'chibi_05442');
-  await page.fill('#login-password', 'ChibiTest123!');
+  // Sign in with an explicitly supplied live test account
+  console.log(`Signing in as ${LIVE_EMAIL}...`);
+  await page.fill('#login-email', LIVE_EMAIL);
+  await page.fill('#login-password', LIVE_PASSWORD);
   await page.click('#login-submit');
 
   console.log('Waiting for #game-container...');
@@ -97,8 +111,8 @@ async function verify() {
         AvatarContextMenu.show({
           x: 720,
           y: 420,
-          targetUserId: 'chibi_05442',
-          targetUsername: 'chibi_05442',
+          targetUserId: TARGET_USER_ID,
+          targetUsername: TARGET_USERNAME,
           isSelf: true,
         });
       }

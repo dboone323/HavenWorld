@@ -5,7 +5,7 @@
 set -uo pipefail
 cd /opt/havenworld/apps/server
 DB=$(grep -m1 '^DATABASE_URL=' .env | cut -d= -f2- | tr -d '"')
-DUMP=/tmp/legacy_backup.sql.gz
+DUMP=/opt/havenworld/tmp/legacy_backup.sql.gz
 
 echo "=== A. which tables in the dump actually carry DATA ==="
 gunzip -c "$DUMP" | grep '^COPY ' | sed 's/ FROM stdin;//' | tr '\n' ' '

@@ -89,8 +89,8 @@ environments is the **schema** (via migrations in git) and **backups** (via `pg_
 
 ### Backups taken before the 2026-09-23 migration
 
-- `oracle-cloud:/tmp/legacy_backup.sql.gz` — full pre-migration dump (pg_dump 17.11).
-- Local copy: `~/havenworld-legacy-backup-20260923.sql.gz`.
+- `oracle-cloud:/opt/havenworld/backups/legacy_backup.sql.gz` — full pre-migration dump (pg_dump 17.11).
+- Local ignored copy: `backups/havenworld-legacy-backup-20260923.sql.gz`.
 - The original 8 tables were **not dropped**. They were renamed with a `legacy_` prefix and
   moved into a `legacy` schema, so the original 282 profiles are one query away:
   `select count(*) from legacy.legacy_profiles;`
@@ -208,8 +208,8 @@ Consequences worth knowing:
   **PBKDF2-SHA256** (`legacy_prototype/src/server/db.ts`), while the current server uses
   **bcryptjs** (`$2b$`). A genuine import would need a verify-then-rehash-on-first-login shim.
 - The `legacy` schema therefore holds nothing irreplaceable — see the backlog item in §8.
-- Still keep `/tmp/legacy_backup.sql.gz` **and** its local copy: `/tmp` is volatile, and that
-  dump is the only snapshot of the pre-migration database.
+- Keep `/opt/havenworld/backups/legacy_backup.sql.gz` and the local ignored copy in
+  `backups/`: remote `/tmp` is volatile, and that dump is the only snapshot of the pre-migration database.
 
 ---
 

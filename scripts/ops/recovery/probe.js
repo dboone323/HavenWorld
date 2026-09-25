@@ -1,0 +1,1 @@
+import { PrismaClient } from ".prisma/client"; const p=new PrismaClient(); console.log("client:", !!p); console.log("user table?", p.$queryRaw`SELECT COUNT(*)::int FROM profiles`); p.$disconnect().catch(()=>{})

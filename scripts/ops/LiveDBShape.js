@@ -1,4 +1,4 @@
-const {Client} = require('/tmp/pgq/node_modules/pg');
+const {Client} = require('pg');
 
 async function main() {
   const c = new Client({connectionString: process.env.DATABASE_URL});

@@ -1,5 +1,7 @@
 # Execution Plan for macOS Workstation Agent (VS Code Insiders on Apple Silicon)
 
+> **Historical environment record.** The absolute path below records the original workstation layout. Current tooling must run from the repository root and must not hardcode a user home directory.
+
 > **Target Environment**: macOS 27 (Apple Silicon arm64), Xcode 27.0 (27A5252f), Swift 6.4, Node v26.7.0  
 > **Repository Directory**: `/Users/danielstevens/Developer/HavenWorld`  
 > **Remote Origin**: `https://github.com/dboone323/HavenWorld.git` (`main` branch)  

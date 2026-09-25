@@ -11,9 +11,9 @@ psql "$DB" -t -A -c "SELECT table_name FROM information_schema.tables WHERE tabl
 
 echo "=== 1. MOVE ALL PUBLIC TABLES INTO 'legacy' SCHEMA ==="
 psql "$DB" -q -c "CREATE SCHEMA IF NOT EXISTS legacy;"
-psql "$DB" -t -A -c "SELECT format('ALTER TABLE public.%I SET SCHEMA legacy;', table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';" > /tmp/move.sql
-cat /tmp/move.sql
-if [ -s /tmp/move.sql ]; then psql "$DB" -v ON_ERROR_STOP=1 -q -f /tmp/move.sql; fi
+psql "$DB" -t -A -c "SELECT format('ALTER TABLE public.%I SET SCHEMA legacy;', table_name) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';" > /opt/havenworld/tmp/move.sql
+cat /opt/havenworld/tmp/move.sql
+if [ -s /opt/havenworld/tmp/move.sql ]; then psql "$DB" -v ON_ERROR_STOP=1 -q -f /opt/havenworld/tmp/move.sql; fi
 printf 'public tables remaining: '; psql "$DB" -t -A -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
 printf 'legacy tables: '; psql "$DB" -t -A -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='legacy' AND table_type='BASE TABLE';"
 
@@ -25,16 +25,16 @@ printf 'count: '; psql "$DB" -t -A -c "SELECT count(*) FROM information_schema.t
 psql "$DB" -t -A -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY 1;" | tr '\n' ' '; echo
 
 echo "=== 4. DRIFT vs schema.prisma ==="
-pnpm exec prisma migrate diff --from-url "$DB" --to-schema-datamodel prisma/schema.prisma --script > /tmp/drift.sql 2>/tmp/drift.err || cat /tmp/drift.err
-LINES=$(wc -l < /tmp/drift.sql)
+pnpm exec prisma migrate diff --from-url "$DB" --to-schema-datamodel prisma/schema.prisma --script > /opt/havenworld/tmp/drift.sql 2>/opt/havenworld/tmp/drift.err || cat /opt/havenworld/tmp/drift.err
+LINES=$(wc -l < /opt/havenworld/tmp/drift.sql)
 echo "drift lines: $LINES"
-head -15 /tmp/drift.sql
+head -15 /opt/havenworld/tmp/drift.sql
 
 if [ "$LINES" -gt 3 ]; then
   TS=$(date -u +%Y%m%d%H%M%S)
   DIR="prisma/migrations/${TS}_complete_game_schema"
   mkdir -p "$DIR"
-  cp /tmp/drift.sql "$DIR/migration.sql"
+  cp /opt/havenworld/tmp/drift.sql "$DIR/migration.sql"
   echo "=== 5. APPLY NEW MIGRATION ${TS}_complete_game_schema ==="
   pnpm exec prisma migrate deploy 2>&1 | tail -10
 else

@@ -3,10 +3,13 @@ import fs from 'fs';
 import path from 'path';
 
 const SCREENSHOT_DIR = path.resolve(process.cwd(), 'screenshots/audit');
-const ARTIFACT_DIR = '/Users/danielstevens/.gemini/antigravity/brain/98772a0b-e303-46e0-a01b-49806d7328e0';
+const ARTIFACT_DIR = path.resolve(process.cwd(), 'screenshots/audit/artifacts');
 
 if (!fs.existsSync(SCREENSHOT_DIR)) {
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+}
+if (!fs.existsSync(ARTIFACT_DIR)) {
+  fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 }
 
 interface AuditLog {

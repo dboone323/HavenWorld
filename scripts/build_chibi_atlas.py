@@ -113,10 +113,14 @@ def make_shadow_frame(frame_w: int = FRAME_W, frame_h: int = FRAME_H, scale: flo
     return frame
 
 def main():
-    brain_dir = '/Users/danielstevens/.gemini/antigravity/brain/98772a0b-e303-46e0-a01b-49806d7328e0'
-    front_path = os.path.join(brain_dir, 'chibi_avatar_front_1790356911681.jpg')
-    back_path = os.path.join(brain_dir, 'chibi_avatar_back_1790356929482.jpg')
-    left_path = os.path.join(brain_dir, 'chibi_avatar_left_1790356952380.jpg')
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    artifact_dir = os.environ.get('CHIBI_SOURCE_DIR', os.path.join(root, 'screenshots', 'recovery'))
+    front_path = os.path.join(artifact_dir, 'chibi_avatar_front_1790356911681.jpg.png')
+    back_path = os.path.join(artifact_dir, 'chibi_avatar_back_1790356929482.jpg.png')
+    left_path = os.path.join(artifact_dir, 'chibi_avatar_left_1790356952380.jpg.png')
+    for source in (front_path, back_path, left_path):
+        if not os.path.exists(source):
+            raise FileNotFoundError(f'Missing source sprite: {source}')
 
     print('Extracting high-resolution character sprites...')
     sprite_down = extract_foreground(front_path)
@@ -203,9 +207,9 @@ def main():
     }
 
     target_dirs = [
-        'apps/client/public/assets/sprites/avatar',
-        'apps/client/src/assets/sprites/avatar',
-        'apps/client/dist/assets/sprites/avatar',
+        os.path.join(root, 'apps/client/public/assets/sprites/avatar'),
+        os.path.join(root, 'apps/client/src/assets/sprites/avatar'),
+        os.path.join(root, 'apps/client/dist/assets/sprites/avatar'),
     ]
 
     for d in target_dirs:

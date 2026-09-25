@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// dump_schema2.js — full schema dump to /tmp/schema.json
+// dump_schema2.js — full schema dump to /opt/havenworld/tmp/schema.json
 // reads DATABASE_URL from /opt/havenworld/apps/server/.env
 "use strict";
 const fs = require('fs');
@@ -88,6 +88,6 @@ const client = new Client({ connectionString: dbUrl });
     out.tables[t].indexes.push(r.indexdef);
   }
   await client.end();
-  fs.writeFileSync('/tmp/schema.json', JSON.stringify(out, null, 2));
-  console.log('WROTE /tmp/schema.json');
+  fs.writeFileSync('/opt/havenworld/tmp/schema.json', JSON.stringify(out, null, 2));
+  console.log('WROTE /opt/havenworld/tmp/schema.json');
 })().catch(e => { console.error(e.message || e); process.exit(1); });

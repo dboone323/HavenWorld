@@ -14,7 +14,7 @@
  *  4. Stamp a real '20260918000000_init' ledger entry (so prisma migrate deploy stays happy).
  * Runs in one transaction; ROLLBACK on any error.
  */
-const { Client } = require('/tmp/pgq/node_modules/pg');
+const { Client } = require('pg');
 const fs = require('fs');
 const env = {};
 fs.readFileSync('/opt/havenworld/apps/server/.env', 'utf8').split('\n').forEach(l => {

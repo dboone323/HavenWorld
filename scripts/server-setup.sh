@@ -16,6 +16,10 @@ set -euo pipefail
 APP_DIR="/opt/havenworld"
 HAVENWORLD_USER="havenworld"
 
+# Project-local scratch/output area for operational helpers. Never use system /tmp.
+sudo mkdir -p "$APP_DIR/tmp" "$APP_DIR/logs/local" "$APP_DIR/backups"
+sudo chown -R "$HAVENWORLD_USER:$HAVENWORLD_USER" "$APP_DIR/tmp" "$APP_DIR/logs" "$APP_DIR/backups"
+
 ok()   { printf '\033[32m  OK\033[0m  %s\n' "$1"; }
 info() { printf '\033[36m  --\033[0m  %s\n' "$1"; }
 warn() { printf '\033[33m WARN\033[0m  %s\n' "$1"; }

@@ -1,0 +1,347 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── LIVE DB: profiles (has auth_user_id, password_hash, coins/gems) ──
+model User {
+  id           String    @id  @default(dbgenerated("gen_random_uuid()")) @map("id")
+  authUserId   String?   @map("auth_user_id")
+  email        String?   @map("email")
+  passwordHash String?   @map("password_hash")
+  username     String?   @map("username")
+  havenCoins   Int       @default(0) @map("coins")
+  havenGems    Int       @default(0) @map("gems")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastDailyClaim DateTime? @map("last_daily_claim")
+  updatedAt    DateTime? @map("updated_at") @updatedAt
+  profile      Avatar?
+  rooms        Room[]   @relation("RoomOwner")
+  sentMessages    Message[]  @relation("SentBy")
+  sentFriends     Friend[]   @relation("FriendInitiator")
+  receipts       Inventory[]  @relation("InventoryUser")
+  placedFurn     RoomFurniture[] @relation("PlacedBy")
+  invitedRooms   Room[]   @relation("InvitedRoom")
+  inviteCodes  InviteCode[] @relation("InviteOf")
+
+  @@map("profiles")
+}
+
+model Avatar {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("avatar_id")
+  userId       String   @unique @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skin         String?  @default("default_skin")
+  hairStyle    String?  @default("default_hair") @map("hair_style")
+  hairColor    String?  @default("#000000") @map("hair_color")
+  shirtColor   String?  @default("#ffffff") @map("shirt_color")
+  pantsColor   String?  @default("#8B4513") @map("pants_color")
+  color        String?  @map("color")
+  updatedAt    DateTime @default(now()) @map("updated_at") @updatedAt
+  createdAt    DateTime @default(now()) @map("created_at")
+  profile      User     @relation(fields: [userId], references: [id])
+  inventory    Inventory[]
+
+  @@map("avatar_profiles")
+}
+
+model InviteCode {
+  id          String   @id             @default(dbgenerated("gen_random_uuid()")) @map("id")
+  code        String   @unique         @map("code")
+  usesLeft    Int      @default(1)    @map("uses_left")
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiresAt   DateTime? @map("expires_at")
+  isUsed      Boolean  @default(false) @map("is_used")
+  usedAt      DateTime?              @map("used_at")
+  usedBy      String?   @map("used_by")
+  inviteOf    User?    @relation("InviteOf", fields: [inviteOfId], references: [id])
+  inviteOfId  String?  @map("invite_of_id")
+
+  @@map("invite_codes")
+}
+
+model Message {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  topic        String    @map("topic")
+  extension    String?   @map("extension")
+  senderId     String?   @map("sender_id")
+  sender       User?     @relation("SentBy", fields: [senderId], references: [id])
+  receiverId   String?   @map("receiver_id")
+  receiver     User?     @relation("ReceivedBy")
+  payload      Json?     @map("payload")
+  text         String?   @map("text")
+  event        String?   @map("event")
+  sentAt       DateTime  @default(now()) @map("sent_at")
+  private      Boolean   @default(false) @map("private")
+  updatedAt    DateTime  @default(now()) @map("updatedAt")
+  insertedAt   DateTime  @default(now()) @map("inserted_at")
+  binaryPayload Json?    @map("binary_payload")
+  skipBroadcast Boolean @default(false) @map("skip_broadcast")
+  roomId       String?   @map("room_id")
+  room         Room?     @relation(fields: [roomId], references: [id])
+  voteForRoom  Room?     @relation("VoteForRoom")
+  voteRecord   VoteRecord? @relation("VoteRecord")
+  reactionTopic String?  @map("reaction_topic")
+  reactionText String?   @map("reaction_text")
+  reactionUser String?   @map("reaction_user")
+
+  @@index([roomId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Room {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  ownerId     String     @map("owner_id")
+  owner       User       @relation("RoomOwner", fields: [ownerId], references: [id])
+  code        String?    @unique @map("room_code")
+  name        String?    @map("name")
+  isPublic    Boolean    @default(true) @map("is_public")
+  likesCount  Int        @default(0) @map("likes_count")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @default(now()) @map("updatedAt") @updatedAt
+  participants ProfileVisitor[] @relation("Participant")
+  messages    Message[]
+  furniture   RoomFurniture[]
+  invitedBy   User?      @relation("InvitedRoom")
+
+  @@map("rooms")
+}
+
+model Friend {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String   @map("user_id")
+  user        User     @relation("FriendInitiator", fields: [userId], references: [id])
+  friendId    String   @map("friend_id")
+  friend      User     @relation("FriendOf")
+  status      String?  @default("pending") @map("status")
+  createdAt   DateTime @default(now()) @map("created_at")
+  respondedAt DateTime? @map("responded_at")
+
+  @@map("user_friends")
+  @@index([userId])
+  @@index([friendId])
+}
+
+model Inventory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId    String   @map("user_id")
+  user      User     @relation("InventoryUser", fields: [userId], references: [id])
+  itemType  String?  @map("item_type")
+  quantity  Int      @default(1) @map("quantity")
+  data      Json?    @map("item_data")
+  acquiredAt DateTime @default(now()) @map("acquired_at")
+
+  @@map("user_inventory")
+  @@index([userId])
+}
+
+model RoomFurniture {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  roomId           String   @map("room_id")
+  room             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  itemType         String?  @map("item_type")
+  gridX            Float?   @map("grid_x")
+  gridY            Float?   @map("grid_y")
+  rotation         Float?   @default(0) @map("rotation")
+  parentFurnitureId String? @map("parent_furniture_id")
+  furnitureOwnerId String?  @map("furniture_owner_id")
+  placedFrom       String?  @map("placed_from")
+  createdById      String?  @map("created_by_id")
+  updatedAt        DateTime @default(now()) @map("updatedAt") @updatedAt
+  createdAt        DateTime @default(now()) @map("created_at")
+  elevation        Float?   @default(0) @map("elevation")
+  savedFurnitureId String?  @map("saved_furniture_id")
+  savedFrom      String?   @map("saved_from")
+  saveToSave      String?   @map("save_to_save")
+  leftFrom      String?   @map("left_from")
+  leftUserId      String?   @map("left_user_id")
+  infoCode        String?   @map("info_code")
+  infoSSO         String?   @map("info_sso")
+  infoRID         String?   @map("info_rid")
+  deleted          Boolean  @default(false) @map("deleted")
+  showDelete       Boolean  @default(false) @map("show_delete")
+  localResponse   Boolean  @default(false) @map("local_response")
+
+  placedBy        User?    @relation("PlacedBy", fields: [placedFrom], references: [id])
+  parent          RoomFurniture? @relation("ParentFurniture", fields: [parentFurnitureId], references: [id])
+  children        RoomFurniture[] @relation("ParentFurniture")
+  savedFurn       RoomFurniture? @relation("SavedFurn", fields: [savedFurnitureId], references: [id])
+  savedBy        RoomFurniture? @relation("SavedBy", fields: [savedFrom], references: [id])
+
+  @@index([roomId])
+  @@index([placedFrom])
+  @@index([parentFurnitureId])
+  @@index([savedFurnitureId])
+  @@index([savedFrom])
+  @@map("placed_furniture")
+}
+
+model Session {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  token       String   @unique @map("token")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model LoginAttempt {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String?  @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id])
+  ip         String?
+  userAgent  String?
+  success     Boolean  @default(false)
+  reason      String?  @map("reason")
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiredAfter DateTime? @map("expired_after")
+  uiColor     String?  @map("ui_color")
+
+  @@map("login_attempts")
+}
+
+model PasswordResetRequest {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String?  @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id])
+  token       String   @unique @map("token")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  isUsed      Boolean  @default(false) @map("is_used")
+
+  @@map("password_reset_requests")
+  @@index([userId])
+  @@index([token])
+}
+
+model visitor_profile {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  profileId   String   @map("profile_id")
+  profile     User     @relation(fields: [profileId], references: [id])
+  visitorId   String   @map("visitor_id")
+  roomId      String   @map("room_id")
+  room        Room     @relation(fields: [roomId], references: [id])
+  lastVisited DateTime @default(now()) @map("last_visited")
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+  entryFrom   String?  @default("unknown") @map("entry_from")
+  location   String?  @default("unknown") @map("location")
+  device     String?  @default("unknown") @map("device")
+  browser    String?  @default("unknown") @map("browser")
+  os         String?  @default("unknown") @map("os")
+  screen     String?  @default("unknown") @map("screen")
+  roundAndScore String?  @map("roundAndScore")
+  rawMessage  String?  @map("raw_message")
+  rawPicture  String?  @map("raw_picture")
+
+  @@map("visitor_profiles")
+  @@index([profileId])
+  @@index([visitorId])
+  @@index([roomId])
+}
+
+model ProfileVisitor {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  profileId   String   @map("profile_id")
+  profile     User     @relation(fields: [profileId], references: [id])
+  visitorId   String   @map("visitor_id")
+  visitorProfile visitor_profile @relation("VisitorProfileLink", fields: [visitorId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updatedAt") @updatedAt
+
+  @@map("profile_visitors")
+  @@unique([profileId, visitorId])
+}
+
+model SavedFurniture {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  ownerId     String   @map("owner_id")
+  owner       User     @relation("SavedFurn", fields: [ownerId], references: [id])
+  name        String?  @default("saved furniture") @map("name")
+  data        Json?    @map("data")
+  items       Json?    @map("items")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updatedAt") @updatedAt
+
+  @@map("saved_furniture")
+}
+
+model VoteRecord {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String?  @map("user_id")
+  user        User?    @relation("VoteRecord", fields: [userId], references: [id])
+  targetRecord  String? @map("target_record")
+  targetRecord2 String? @map("target_record_2")
+  voteId      String?  @map("vote_id")
+  voteScore   Int      @default(0) @map("vote_score")
+  createdAt   DateTime @default(now()) @map("created_at")
+  expireAt    DateTime? @map("expire_at")
+
+  @@map("vote_records")
+  @@index([userId])
+  @@index([voteId])
+}
+
+model FontChoice {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  fontName    String?  @map("font_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updatedAt") @updatedAt
+
+  @@map("font_choices")
+  @@index([userId])
+}
+
+model FontStyle {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  name        String   @unique @map("name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updatedAt") @updatedAt
+
+  @@map("font_styles")
+}
+
+model FurnitureTemplate {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  name          String   @unique @map("name")
+  fileName      String?  @map("file_name")
+  thumbnailFile String?  @map("thumbnail_file")
+  width         Float?   @map("width")
+  height        Float?   @map("height")
+  scale         Float?   @default(1)
+  depth         Float?   @default(0) @map("depth")
+  type          String?  @map("type")
+  rarity        String?  @default("common") @map("rarity")
+  seasonal      Boolean  @default(false) @map("seasonal")
+  seasonalData  Json?    @map("seasonal_data")
+  tags          String?  @map("tags")
+  qrCodeContent String?  @map("qr_code_content")
+  qrDecoded     String?  @map("qr_decoded")
+  description   String?  @map("description")
+  previewUrl    String?  @map("preview_url")
+  thumbnailUrl  String?  @map("thumbnail_url")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @map("updatedAt") @updatedAt
+
+  @@map("furniture_templates")
+}
+
+model AnalyticsEvent {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  event     String  @map("event")
+  createdAt DateTime @default(now()) @map("created_at")
+  userId    String? @map("user_id")
+  roomId    String? @map("room_id")
+  extraData Json?   @map("extra_data")
+
+  @@map("analytics_events")
+}

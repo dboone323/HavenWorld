@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // db_audit_prisma.js — read-only audit of the live HavenWorld DB via the app's own Prisma client.
-// Run with:  cd /opt/havenworld/apps/server && node /tmp/db_audit_prisma.js
+// Run with:  cd /opt/havenworld/apps/server && node /opt/havenworld/tmp/db_audit_prisma.js
 'use strict';
 
 const fs = require('fs');

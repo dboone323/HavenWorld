@@ -24,7 +24,7 @@ Component | Host / Provider | URL / Access
 
 ## Autonomous Deployment Runbook
 
-Always run all commands from the repository root: `/Users/danielstevens/Developer/HavenWorld`.
+Always run all commands from the repository root (the directory containing this skill's parent `.agents/` folder). In this workspace that is the HavenWorld checkout; do not assume or hardcode a user's home-directory path.
 
 ### Step 1: Quality Gate — Type Checking (`make lint`)
 Execute:

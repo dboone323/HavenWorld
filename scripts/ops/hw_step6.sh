@@ -18,24 +18,24 @@ U="pubs_$(date +%s)"
 P="SmokeTest123"
 echo "=== 3. REGISTER THROUGH THE PUBLIC URL ($U) ==="
 curl -sk -m 25 -X POST "$API/api/auth/register" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$U\",\"email\":\"$U@example.com\",\"password\":\"$P\"}" -o /tmp/preg.json -w "http=%{http_code}\n"
-cat /tmp/preg.json; echo
+  -d "{\"username\":\"$U\",\"email\":\"$U@example.com\",\"password\":\"$P\"}" -o /opt/havenworld/tmp/preg.json -w "http=%{http_code}\n"
+cat /opt/havenworld/tmp/preg.json; echo
 
 echo "=== 4. LOGIN THROUGH THE PUBLIC URL ==="
 curl -sk -m 25 -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$U\",\"password\":\"$P\"}" -o /tmp/plogin.json -w "http=%{http_code}\n"
+  -d "{\"username\":\"$U\",\"password\":\"$P\"}" -o /opt/havenworld/tmp/plogin.json -w "http=%{http_code}\n"
 python3 -c "
 import json
-d=json.load(open('/tmp/plogin.json'))
+d=json.load(open('/opt/havenworld/tmp/plogin.json'))
 print('accessToken chars:', len(d.get('accessToken','')))
 print('user:', json.dumps(d.get('user'))[:200])
-" 2>/dev/null || head -c 300 /tmp/plogin.json
+" 2>/dev/null || head -c 300 /opt/havenworld/tmp/plogin.json
 echo
 
-TOKEN=$(python3 -c "import json;print(json.load(open('/tmp/plogin.json')).get('accessToken',''))" 2>/dev/null)
+TOKEN=$(python3 -c "import json;print(json.load(open('/opt/havenworld/tmp/plogin.json')).get('accessToken',''))" 2>/dev/null)
 echo "=== 5. AUTHENTICATED CALL THROUGH THE PUBLIC URL ==="
-curl -sk -m 20 "$API/api/users/me" -H "Authorization: Bearer $TOKEN" -o /tmp/pme.json -w "GET /api/users/me -> %{http_code}\n"
-head -c 220 /tmp/pme.json; echo
+curl -sk -m 20 "$API/api/users/me" -H "Authorization: Bearer $TOKEN" -o /opt/havenworld/tmp/pme.json -w "GET /api/users/me -> %{http_code}\n"
+head -c 220 /opt/havenworld/tmp/pme.json; echo
 
 echo "=== 6. CLEANUP (scoped to this user only, seeded rooms preserved) ==="
 UID_=$(psql "$DB" -t -A -c "SELECT id FROM users WHERE username='$U';")
