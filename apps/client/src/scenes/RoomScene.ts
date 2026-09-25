@@ -452,6 +452,7 @@ export async function createRoomScene(
         currentMood = mood;
         moodSystem.applyMood(mood);
         loftSettings?.dismiss();
+        audioEngine.playFurniturePlace();
         showToast({ icon: '🎨', title: 'Mood updated', subtitle: 'Your new room mood is live.' });
       },
     });

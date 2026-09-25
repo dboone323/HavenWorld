@@ -181,8 +181,8 @@ export class AvatarCustomizer {
     div.appendChild(canvas);
 
     const label = document.createElement('p');
-    label.textContent = '3D Live Preview (drag to rotate)';
-    label.style.cssText = 'text-align: center; color: #888; font-size: 9.5pt; margin: 8px 0;';
+    label.textContent = 'Live 2D Chibi Preview';
+    label.style.cssText = 'text-align: center; color: #4ecdc4; font-size: 9.5pt; font-weight: 600; margin: 8px 0;';
     div.appendChild(label);
 
     setTimeout(() => this.initPreviewScene(canvas), 100);
@@ -201,13 +201,13 @@ export class AvatarCustomizer {
       const cam = new BABYLON.ArcRotateCamera(
         'previewCam',
         -Math.PI / 2,
-        Math.PI / 2.3,
-        3.5,
-        new BABYLON.Vector3(0, 1.2, 0),
+        Math.PI / 2,
+        2.4,
+        new BABYLON.Vector3(0, 0.9, 0),
         scene
       );
-      cam.lowerRadiusLimit = 2;
-      cam.upperRadiusLimit = 5;
+      cam.lowerRadiusLimit = 1.6;
+      cam.upperRadiusLimit = 4;
       cam.attachControl(canvas, true);
 
       const hemi = new BABYLON.HemisphericLight('previewHemi', new BABYLON.Vector3(0, 1, 0), scene);

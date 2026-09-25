@@ -137,11 +137,12 @@ export class PizzaScene {
     const stepIndex = this.selectedIngredients.length;
     const expected = this.currentRecipe.ingredients[stepIndex];
     this.selectedIngredients.push(ing);
-    audioEngine.playFurniturePlace();
+    audioEngine.playClick();
 
     // Immediate incorrect-step feedback. The pick still counts — the server
     // grades the full sequence — but the player knows right away.
     if (expected !== undefined && ing !== expected) {
+      audioEngine.playError();
       const wantName = INGREDIENTS[expected]?.name ?? expected;
       const gotName = INGREDIENTS[ing]?.name ?? ing;
       showToast({
@@ -164,6 +165,7 @@ export class PizzaScene {
     // Submit lock: ignore duplicate submits while an order is in flight.
     if (!this.overlay || this.submitInFlight) return;
     if (this.selectedIngredients.length === 0) {
+      audioEngine.playError();
       showToast({
         icon: '🍕',
         title: 'Empty crust',
@@ -210,6 +212,7 @@ export class PizzaScene {
         durationMs: 5000,
       });
     } else {
+      audioEngine.playError();
       showToast({
         icon: '❌',
         title: 'Order failed',

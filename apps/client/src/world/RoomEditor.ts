@@ -5,6 +5,7 @@ import { SERVER_URL, assetUrl } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from '../ui/ToastNotification';
 import { applyRoomSurfaces } from './SurfaceManager';
+import { audioEngine } from '../audio/AudioEngine';
 
 export interface FurniturePlacement {
   id: string; // UUID (temp for new items, DB id for existing)
@@ -36,6 +37,7 @@ export class RoomEditor {
   private pointerObserver: BABYLON.Observer<BABYLON.PointerInfo> | null = null;
   private contextMenu: HTMLElement | null = null;
   private selectedToolbar: HTMLElement | null = null;
+  private editorHighlightLayer: BABYLON.HighlightLayer | null = null;
 
   private currentRotation = 0; // 0, 90, 180, 270 degrees
   private keydownListener: ((e: KeyboardEvent) => void) | null = null;
@@ -173,6 +175,26 @@ export class RoomEditor {
     this.ghostItemId = itemId;
     this.ghostAssetUrl = assetUrlProp || `/assets/furniture/${itemId}.glb`;
 
+    // 1. Immediately spawn procedural ghost preview so placement starts with 0 latency
+    const dims = FurnitureManager.getProceduralDimensions(itemId);
+    const ghostBox = BABYLON.MeshBuilder.CreateBox('ghost_placement', dims, this.scene);
+    const ghostMat = new BABYLON.StandardMaterial('ghost_mat_preview', this.scene);
+    ghostMat.diffuseColor = new BABYLON.Color3(0.3, 0.5, 1.0);
+    ghostMat.alpha = 0.55;
+    ghostMat.backFaceCulling = false;
+    ghostBox.material = ghostMat;
+    ghostBox.isPickable = false;
+    ghostBox.rotation.y = (this.currentRotation * Math.PI) / 180;
+    this.ghostMesh = ghostBox;
+
+    const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY);
+    if (pick?.hit && pick.pickedPoint) {
+      this.ghostMesh.position = this.snapToGrid(pick.pickedPoint);
+    } else {
+      this.ghostMesh.position = new BABYLON.Vector3(0, this.floorY + 0.4, 0);
+    }
+
+    // 2. Asynchronously load the 3D GLB model and replace procedural ghost once ready
     const fullAssetUrl = this.ghostAssetUrl.startsWith('/')
       ? assetUrl(this.ghostAssetUrl)
       : assetUrl(`/assets/furniture/${itemId}.glb`);
@@ -182,41 +204,31 @@ export class RoomEditor {
 
     try {
       const result = await BABYLON.SceneLoader.ImportMeshAsync('', folder, fileName, this.scene);
-      this.ghostMesh = result.meshes[0];
-      this.ghostMesh.name = 'ghost_placement';
-      this.ghostMesh.isPickable = false;
-      this.ghostMesh.rotation.y = (this.currentRotation * Math.PI) / 180;
+      // Only apply if user is still placing this exact item
+      if (this.ghostItemId === itemId && this.ghostMesh) {
+        const lastPos = this.ghostMesh.position.clone();
+        const lastRot = this.ghostMesh.rotation.y;
+        this.clearGhostMesh();
 
-      // Apply translucent blue material to all sub-meshes
-      result.meshes.forEach((mesh) => {
-        const ghostMat = new BABYLON.StandardMaterial(`ghost_mat_${mesh.name}`, this.scene);
-        ghostMat.diffuseColor = new BABYLON.Color3(0.3, 0.5, 1.0);
-        ghostMat.alpha = 0.55;
-        ghostMat.backFaceCulling = false;
-        mesh.material = ghostMat;
-        mesh.isPickable = false;
-      });
-    } catch {
-      console.warn(`[RoomEditor] 3D GLB model not found for ${itemId}. Using procedural ghost preview.`);
-      const dims = FurnitureManager.getProceduralDimensions(itemId);
-      const ghostBox = BABYLON.MeshBuilder.CreateBox('ghost_placement', dims, this.scene);
-      const ghostMat = new BABYLON.StandardMaterial('ghost_mat_fallback', this.scene);
-      ghostMat.diffuseColor = new BABYLON.Color3(0.3, 0.5, 1.0);
-      ghostMat.alpha = 0.55;
-      ghostMat.backFaceCulling = false;
-      ghostBox.material = ghostMat;
-      ghostBox.isPickable = false;
-      ghostBox.rotation.y = (this.currentRotation * Math.PI) / 180;
-      this.ghostMesh = ghostBox;
-    }
+        this.ghostMesh = result.meshes[0];
+        this.ghostMesh.name = 'ghost_placement';
+        this.ghostMesh.isPickable = false;
+        this.ghostMesh.position = lastPos;
+        this.ghostMesh.rotation.y = lastRot;
 
-    if (this.ghostMesh) {
-      const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY);
-      if (pick?.hit && pick.pickedPoint) {
-        this.ghostMesh.position = this.snapToGrid(pick.pickedPoint);
+        result.meshes.forEach((mesh) => {
+          const mat = new BABYLON.StandardMaterial(`ghost_mat_${mesh.name}`, this.scene);
+          mat.diffuseColor = new BABYLON.Color3(0.3, 0.5, 1.0);
+          mat.alpha = 0.55;
+          mat.backFaceCulling = false;
+          mesh.material = mat;
+          mesh.isPickable = false;
+        });
       } else {
-        this.ghostMesh.position = new BABYLON.Vector3(0, this.floorY + 0.4, 0);
+        result.meshes.forEach((m) => m.dispose());
       }
+    } catch {
+      // Retain the procedural bounding box preview if GLB is missing or slow
     }
   }
 
@@ -590,11 +602,32 @@ export class RoomEditor {
       item.mesh.getChildMeshes().forEach((m) => (m.showBoundingBox = true));
     } catch {}
 
+    // Attach distinct teal highlight to selected furniture
+    if (!this.editorHighlightLayer && this.scene.getEngine().getRenderingCanvas()) {
+      try {
+        this.editorHighlightLayer = new BABYLON.HighlightLayer('editor_hl', this.scene, { isStroke: true });
+      } catch {}
+    }
+    if (this.editorHighlightLayer) {
+      if (item.mesh instanceof BABYLON.Mesh) {
+        try {
+          this.editorHighlightLayer.addMesh(item.mesh, BABYLON.Color3.FromHexString('#4ecdc4'));
+        } catch {}
+      }
+      item.mesh.getChildMeshes().forEach((m) => {
+        if (m instanceof BABYLON.Mesh) {
+          try {
+            this.editorHighlightLayer?.addMesh(m, BABYLON.Color3.FromHexString('#4ecdc4'));
+          } catch {}
+        }
+      });
+    }
+
     const toolbar = document.createElement('div');
     toolbar.id = 'furniture-selected-toolbar';
     toolbar.style.cssText = `
       position: fixed;
-      bottom: 80px;
+      top: 75px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(15, 15, 35, 0.95);
@@ -700,6 +733,18 @@ export class RoomEditor {
         this.selectedFurniture.mesh.showBoundingBox = false;
         this.selectedFurniture.mesh.getChildMeshes().forEach((m) => (m.showBoundingBox = false));
       } catch {}
+      if (this.editorHighlightLayer) {
+        try {
+          if (this.selectedFurniture.mesh instanceof BABYLON.Mesh) {
+            this.editorHighlightLayer.removeMesh(this.selectedFurniture.mesh);
+          }
+          this.selectedFurniture.mesh.getChildMeshes().forEach((m) => {
+            if (m instanceof BABYLON.Mesh) {
+              this.editorHighlightLayer?.removeMesh(m);
+            }
+          });
+        } catch {}
+      }
     }
     this.selectedToolbar?.remove();
     this.selectedToolbar = null;
@@ -838,6 +883,14 @@ export class RoomEditor {
         const key = (btn as HTMLElement).dataset.key;
         if (!key) return;
 
+        // Visual active swatch glow highlight
+        panel.querySelectorAll(`.surface-btn[data-type="${type}"]`).forEach((b) => {
+          (b as HTMLElement).style.border = '1px solid #475569';
+          (b as HTMLElement).style.boxShadow = 'none';
+        });
+        (btn as HTMLElement).style.border = '2px solid #4ecdc4';
+        (btn as HTMLElement).style.boxShadow = '0 0 8px rgba(78, 205, 196, 0.6)';
+
         // Apply immediately in Babylon scene for instant feedback
         applyRoomSurfaces(this.scene, type === 'floor' ? key : undefined, type === 'wall' ? key : undefined);
 
@@ -854,9 +907,14 @@ export class RoomEditor {
             }),
           });
           if (res.ok) {
+            audioEngine.playFurniturePlace();
             showToast({ icon: '🎨', title: 'Surface Updated', subtitle: `${key} applied.` });
+          } else {
+            audioEngine.playError();
+            showToast({ icon: '⚠️', title: 'Surface Error', subtitle: 'Could not update surface.' });
           }
         } catch {
+          audioEngine.playError();
           showToast({ icon: '⚠️', title: 'Surface Error', subtitle: 'Could not update surface.' });
         }
       });
@@ -1022,6 +1080,7 @@ export class RoomEditor {
       });
 
       if (!res.ok) {
+        audioEngine.playError();
         showToast({
           icon: '❌',
           title: 'Save failed',
@@ -1033,6 +1092,7 @@ export class RoomEditor {
       this.pendingChanges.clear();
       this.removeSelectedToolbar();
       this.exitEditMode();
+      audioEngine.playSuccess();
       showToast({
         icon: '💾',
         title: 'Room layout saved!',
@@ -1041,6 +1101,7 @@ export class RoomEditor {
       console.log('[RoomEditor] Layout saved successfully.');
     } catch (err) {
       console.error('[RoomEditor] Save error:', err);
+      audioEngine.playError();
       showToast({
         icon: '❌',
         title: 'Save failed',

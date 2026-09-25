@@ -42,6 +42,7 @@ export class FishingController {
   startFishing(roomId: string): void {
     if (this.isFishing) return;
     this.isFishing = true;
+    audioEngine.playClick();
     // Immediate feedback — never leave the player wondering if the click worked.
     showToast({ icon: '🎣', title: 'Casting…', subtitle: 'Waiting for a bite…' });
     socketService.emit(SOCKET_EVENTS.CAST_LINE, { roomId });
@@ -251,6 +252,7 @@ export class FishingController {
 
     this.socketUnsubs.push(
       socketService.on(SOCKET_EVENTS.FISH_ESCAPED, () => {
+        audioEngine.playError();
         this.endSession();
         showToast({
           icon: '💨',

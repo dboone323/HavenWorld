@@ -23,6 +23,9 @@ export class TradeModal {
   private countdownInterval: NodeJS.Timeout | null = null;
   private myInventory: InventoryItem[] = [];
 
+  private promptTimer: ReturnType<typeof setTimeout> | null = null;
+  private promptInterval: ReturnType<typeof setInterval> | null = null;
+
   constructor() {
     this.setupSocketListeners();
   }
@@ -32,6 +35,7 @@ export class TradeModal {
     socketService.on<{ tradeId: string; initiatorId: string; initiatorName: string }>(
       SOCKET_EVENTS.TRADE_REQUESTED,
       (data) => {
+        audioEngine.playDoorbell();
         this.showIncomingPrompt(data.initiatorName);
       }
     );
@@ -65,6 +69,7 @@ export class TradeModal {
 
     // 5. Trade cancellation
     socketService.on(SOCKET_EVENTS.TRADE_CANCELLED, (data: { reason: string }) => {
+      audioEngine.playError();
       showToast({ icon: '❌', title: 'Trade Cancelled', subtitle: data.reason || 'Trade ended.' });
       this.close();
     });
@@ -72,6 +77,7 @@ export class TradeModal {
     // 6. Generic errors
     socketService.on<{ message?: string }>(SOCKET_EVENTS.ERROR, (err) => {
       if (this.overlay && err?.message) {
+        audioEngine.playError();
         showToast({ icon: '⚠️', title: 'Trade Notice', subtitle: err.message });
       }
     });
@@ -80,6 +86,7 @@ export class TradeModal {
   private showIncomingPrompt(initiatorName: string): void {
     this.dismissPrompt();
 
+    let timeLeft = 30;
     const prompt = document.createElement('div');
     prompt.id = 'trade-incoming-prompt';
     prompt.style.cssText = `
@@ -105,7 +112,7 @@ export class TradeModal {
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 1.3rem;">🤝</span>
         <div>
-          <div style="font-weight: 700; color: #4ecdc4;">Trade Request</div>
+          <div style="font-weight: 700; color: #4ecdc4;">Trade Request (<span id="trade-prompt-timer">30</span>s)</div>
           <div style="font-size: 0.85rem; color: #cbd5e1;">${initiatorName} wants to trade with you.</div>
         </div>
       </div>
@@ -118,18 +125,39 @@ export class TradeModal {
     document.body.appendChild(prompt);
     this.promptOverlay = prompt;
 
+    this.promptInterval = setInterval(() => {
+      timeLeft--;
+      const timerEl = document.getElementById('trade-prompt-timer');
+      if (timerEl) timerEl.textContent = String(Math.max(0, timeLeft));
+      if (timeLeft <= 0) {
+        socketService.emit(SOCKET_EVENTS.TRADE_DECLINE, {});
+        this.dismissPrompt();
+        showToast({ icon: '⏱️', title: 'Trade Expired', subtitle: 'Incoming trade request timed out.' });
+      }
+    }, 1000);
+
     prompt.querySelector('#btn-trade-accept-req')?.addEventListener('click', () => {
+      audioEngine.playClick();
       socketService.emit(SOCKET_EVENTS.TRADE_ACCEPT, {});
       this.dismissPrompt();
     });
 
     prompt.querySelector('#btn-trade-decline-req')?.addEventListener('click', () => {
+      audioEngine.playClick();
       socketService.emit(SOCKET_EVENTS.TRADE_DECLINE, {});
       this.dismissPrompt();
     });
   }
 
   private dismissPrompt(): void {
+    if (this.promptInterval) {
+      clearInterval(this.promptInterval);
+      this.promptInterval = null;
+    }
+    if (this.promptTimer) {
+      clearTimeout(this.promptTimer);
+      this.promptTimer = null;
+    }
     if (this.promptOverlay) {
       this.promptOverlay.remove();
       this.promptOverlay = null;

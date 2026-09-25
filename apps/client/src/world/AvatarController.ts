@@ -81,8 +81,14 @@ export class AvatarController {
       this.rootMesh.position = spawnPosition.clone();
       this.rootMesh.rotationQuaternion = null; // Enable Euler rotation.y control
 
-      // Collect morph target managers from all sub-meshes
+      // In browser with canvas, the 2D Chibi billboard provides the visual avatar.
+      // All 3D GLB meshes act strictly as invisible collision/picking hitboxes.
       for (const mesh of result.meshes) {
+        if (typeof window !== 'undefined') {
+          mesh.visibility = 0;
+        }
+        mesh.isPickable = true;
+        mesh.metadata = { ...(mesh.metadata || {}), isLocalAvatar: true };
         if (mesh.morphTargetManager) {
           this.morphManagers.push(mesh.morphTargetManager);
         }
@@ -430,6 +436,9 @@ export class AvatarController {
     mesh.position = opts.position;
     mesh.scaling = opts.scaling;
     mesh.setEnabled(opts.enabled);
+    if (typeof window !== 'undefined') {
+      mesh.visibility = 0;
+    }
   }
 
   // ─── Morph Targets ────────────────────────────────────────────────────────

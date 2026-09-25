@@ -335,6 +335,80 @@ export class AudioEngine {
     osc.stop(now + 0.3);
   }
 
+  /** Tactile UI / Interaction Click: crisp short sine transient (750 Hz, 30ms) */
+  playClick(): void {
+    if (!this.canPlay('ui')) return;
+    const ctx = this.ctx;
+    if (!ctx || !this.masterGain) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(750, now);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.03);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.03);
+  }
+
+  /** Error / Rejection Tone: descending buzz (180 Hz -> 110 Hz, 180ms) */
+  playError(): void {
+    if (!this.canPlay('ui')) return;
+    const ctx = this.ctx;
+    if (!ctx || !this.masterGain) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.18);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.18);
+  }
+
+  /** Success / Achievement Chime: ascending major triad (523 Hz -> 659 Hz -> 784 Hz) */
+  playSuccess(): void {
+    if (!this.canPlay('gameplay')) return;
+    const ctx = this.ctx;
+    if (!ctx || !this.masterGain) return;
+
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, idx) => {
+      const now = ctx.currentTime + idx * 0.07;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(now);
+      osc.stop(now + 0.16);
+    });
+  }
+
   private canPlay(category: SoundCategory): boolean {
     if (this.settings.isMuted) return false;
     if (!this.settings.categories[category]) return false;

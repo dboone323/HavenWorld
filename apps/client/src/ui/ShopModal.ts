@@ -2,6 +2,7 @@ import { authService } from '../services/auth';
 import { audioEngine } from '../audio/AudioEngine';
 import type { CatalogItem } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
+import { showToast } from './ToastNotification';
 
 export class ShopModal {
   private overlay: HTMLElement | null = null;
@@ -36,6 +37,7 @@ export class ShopModal {
   }
 
   private async buyItem(itemId: string, currency: 'COIN' | 'GEM'): Promise<void> {
+    audioEngine.playClick();
     const token = authService.token || (await authService.getToken()) || '';
 
     try {
@@ -51,14 +53,28 @@ export class ShopModal {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Purchase failed');
+        audioEngine.playError();
+        showToast({
+          icon: '⚠️',
+          title: 'Purchase failed',
+          subtitle: data.error || 'Could not complete transaction',
+        });
         return;
       }
 
       audioEngine.playCoinPickup();
-      alert(`🎉 Purchased ${data.item.name}! Added to your wardrobe / furniture inventory.`);
+      showToast({
+        icon: '🎉',
+        title: 'Item Purchased!',
+        subtitle: `${data.item?.name || 'Item'} added to your inventory.`,
+      });
     } catch (err: any) {
-      alert(err?.message || 'Error processing purchase');
+      audioEngine.playError();
+      showToast({
+        icon: '⚠️',
+        title: 'Purchase error',
+        subtitle: err?.message || 'Error processing purchase',
+      });
     }
   }
 

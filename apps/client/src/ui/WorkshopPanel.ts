@@ -7,6 +7,7 @@ import {
 import { API_URL } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from './ToastNotification';
+import { audioEngine } from '../audio/AudioEngine';
 
 type MaterialStock = {
   timber: number;
@@ -130,6 +131,7 @@ export class WorkshopPanel {
         const recipe = this.recipesById.get(data.recipeId);
         const name = recipe?.name ?? 'item';
         const minutes = recipe?.craftingMinutes;
+        audioEngine.playFurniturePlace();
         showToast({
           icon: '🔨',
           title: 'Crafting started',
@@ -154,6 +156,7 @@ export class WorkshopPanel {
         const [recipeId, timer] = entry;
         clearTimeout(timer);
         this.pendingCrafts.delete(recipeId);
+        audioEngine.playError();
         showToast({
           icon: '⚠️',
           title: 'Could not start crafting',
@@ -202,6 +205,7 @@ export class WorkshopPanel {
     if (shortfall) {
       const have = this.materials[RAW_TO_STOCK[shortfall.type]];
       const need = shortfall.qty - have;
+      audioEngine.playError();
       showToast({
         icon: '🪵',
         title: 'Not enough materials',
@@ -211,6 +215,7 @@ export class WorkshopPanel {
       return;
     }
 
+    audioEngine.playClick();
     socketService.emit(SOCKET_EVENTS.START_CRAFT, { recipeId: recipe.id });
 
     // Do NOT claim success here — wait for the server's workshop:craft_started.

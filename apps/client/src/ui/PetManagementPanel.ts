@@ -1,7 +1,7 @@
 import { socketService } from '../services/socket';
 import { SOCKET_EVENTS, type PetType } from '@havenworld/shared';
-import { API_URL } from '../config';
-import { authService } from '../services/auth';
+import { showToast } from './ToastNotification';
+import { audioEngine } from '../audio/AudioEngine';
 
 export class PetManagementPanel {
   private static overlay: HTMLElement | null = null;
@@ -63,7 +63,10 @@ export class PetManagementPanel {
     document.body.appendChild(overlay);
     this.overlay = overlay;
 
-    panel.querySelector('#pet-panel-close')?.addEventListener('click', () => this.dismiss());
+    panel.querySelector('#pet-panel-close')?.addEventListener('click', () => {
+      audioEngine.playClick();
+      this.dismiss();
+    });
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) this.dismiss();
     });
@@ -72,11 +75,21 @@ export class PetManagementPanel {
       const type = (panel.querySelector('#pet-type-select') as HTMLSelectElement).value as PetType;
       const name = (panel.querySelector('#pet-name-input') as HTMLInputElement).value.trim();
       if (!name) {
-        alert('Please give your pet a name!');
+        audioEngine.playError();
+        showToast({
+          icon: '⚠️',
+          title: 'Pet Name Required',
+          subtitle: 'Please give your new companion a name.',
+        });
         return;
       }
+      audioEngine.playPetHappy();
       socketService.emit(SOCKET_EVENTS.ADOPT_PET, { petType: type, name });
-      alert(`🎉 Congratulations! You adopted ${name}!`);
+      showToast({
+        icon: '🐾',
+        title: 'Pet Adopted!',
+        subtitle: `You welcomed ${name} to HavenWorld!`,
+      });
       this.dismiss();
     });
   }

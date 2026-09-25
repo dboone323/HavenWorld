@@ -39,6 +39,7 @@ export class ChibiBillboard {
     this.material.diffuseTexture = this.dynamicTexture;
     this.material.diffuseTexture.hasAlpha = true;
     this.material.useAlphaFromDiffuseTexture = true;
+    this.material.transparencyMode = BABYLON.Material.MATERIAL_ALPHATESTANDBLEND;
     this.material.emissiveColor = new BABYLON.Color3(1, 1, 1);
     this.material.disableLighting = true; // Crisp pixel art without 3D darkening
     this.material.specularColor = new BABYLON.Color3(0, 0, 0);

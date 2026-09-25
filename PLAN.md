@@ -36,6 +36,40 @@
 
 ---
 
+## Active Operational Milestone: Live Production Refinements & Tactile Feedback (Modules A–E)
+
+Active tracking for immediate implementation to address furniture responsiveness, complete 2D chibi avatar styling, and systematic success/failure state handling across all existing features.
+
+### Module A: Enforce Pure 2D Chibi Billboard Avatar & Wardrobe Preview
+- [x] **A.1 Hide All 3D Humanoid/Capsule Meshes in Game World**: In `AvatarController.ts` and `RemoteAvatar.ts`, set all imported GLB sub-meshes (`result.meshes`), procedural box/cylinder outfit layers, and placeholder capsules to `visibility = 0`, keeping them strictly as invisible physics/picking proxies.
+- [x] **A.2 Pure 2D Chibi Billboard Rendering**: Ensure `ChibiBillboard` plane is the sole visible representation of local and remote players with 8-frame walk and 2-frame idle sprite cycles and `MATERIAL_ALPHATESTANDBLEND` transparency.
+- [x] **A.3 2D Chibi Wardrobe & Customizer Preview**: In `AvatarCustomizer.ts`, replace the 3D capsule preview viewport with a crisp 2D Chibi layered paper-doll preview that updates live as skin tones, hair colors, eye colors, tops, bottoms, and hats are modified.
+
+### Module B: Furniture Responsiveness & Tactile In-World Interactions
+- [x] **B.1 Interactive Non-Seat Furniture Clicks**: In `InputController.ts`, when clicking tables, lamps, TVs, bookshelves, plants, or rugs, walk the avatar to the object and display an in-world inspection badge (Item Name, Category, Rarity).
+- [x] **B.2 Interactive Props (Lamps & Electronics)**: Clicking a lamp toggles its emissive light state and plays click audio; clicking seats moves to seat and switches to sitting posture.
+- [x] **B.3 Visual Hover Highlight Layer**: Add a Babylon `HighlightLayer` on hovered furniture for immediate visual confirmation of clickability with pointer cursor.
+- [x] **B.4 Tactile Audio Cues**: Connect `AudioEngine` triggers for furniture interactions (`playClick()`, `playFurniturePlace()`).
+
+### Module C: Room Decorator & Layout Persistence
+- [x] **C.1 Reposition Selection Toolbar**: In `RoomEditor.ts`, move `#furniture-selected-toolbar` from `bottom: 80px` to `top: 75px; left: 50%`, preventing overlap with bottom HUD docks.
+- [x] **C.2 Selected Item Highlight**: Pulse a distinct teal highlight outline around the actively selected piece of furniture in edit mode via `HighlightLayer`.
+- [x] **C.3 Active Surface Swatch Glow**: In the Surfaces tab, render a glowing active border (`2px solid #4ecdc4` + cyan box shadow) on the currently applied floor and wall swatches.
+- [x] **C.4 Instant Placement Ghost**: Immediately render a procedural bounding box ghost upon clicking an inventory item button so placement is responsive even while the GLB model streams in.
+- [x] **C.5 Layout Save Confirmation & Error Handling**: Show success checkmark toast and play audio (`playSuccess()`) on layout save; display warning toast and play `playError()` on failure.
+
+### Module D: Mini-Games, Professions & Economic Feedback
+- [x] **D.1 Pizza Chef Feedback Loops**: In `PizzaScene.ts`, add `playClick()` on ingredient trays, `playCoinPickup()` and floating `+Coins` notification on order completion, and `playError()` on timer expiration or recipe error.
+- [x] **D.2 Fishing Feedback Loops**: In `FishingController.ts`, add `playFishingBite()` on hook strike and splash audio on catch completion, plus `playError()` on fish escape.
+- [x] **D.3 Shop & Workshop Confirmation**: In `ShopModal.ts` and `WorkshopPanel.ts`, replace blocking `alert()` dialogs with clean `showToast()`, `playCoinPickup()`, `playFurniturePlace()`, and `playError()` failure handling.
+
+### Module E: Robust Success and Failure State Handling
+- [x] **E.1 Standardized API Request Error & Recovery Pattern**: Wrap all client interactions (surfaces, mood, inventory, pet adoption, quest claim) in consistent feedback with audible error chimes (`playError()`) and user-facing toasts without freezing modal alerts.
+- [x] **E.2 Trade Modal 30-Second Timeout**: Add auto-expiration timer to incoming trade prompts; auto-decline and inform the sender if recipient is away.
+- [x] **E.3 Real Automated Verification**: Real functional Vitest tests in `apps/client/src/world/__tests__/liveProductionTactileModules.test.ts` covering Modules A-E without mocks or stubs.
+
+---
+
 ## Track 1: Multiplayer Engine & Technical Infrastructure
 
 Focuses on authoritative game loops, reliable network synchronization, spatial optimizations, and responsive client delivery.
