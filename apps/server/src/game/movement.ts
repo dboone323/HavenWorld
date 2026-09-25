@@ -55,20 +55,6 @@ export class MovementValidator {
       };
     }
 
-    const stateIsPixel = Math.abs(state.x) > 100 || Math.abs(state.y) > 100;
-    const reqIsPixel = Math.abs(requested.x) > 100 || Math.abs(requested.y) > 100;
-    if (stateIsPixel !== reqIsPixel) {
-      state.x = requested.x;
-      state.y = requested.y;
-      state.z = requested.z ?? 0;
-      state.timestamp = now;
-      return {
-        valid: true,
-        correctedPosition: requested,
-        violations: 0,
-      };
-    }
-
     const elapsedMs = Math.max(16, Math.min(2000, now - state.timestamp)); // clamp between 16ms and 2s
     const elapsedSec = elapsedMs / 1000;
 
@@ -77,14 +63,9 @@ export class MovementValidator {
     const dz = (requested.z ?? 0) - state.z;
     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    // Coordinate space awareness:
-    // If coords are large (> 100), assume 2D pixel scale (320px/sec max)
-    const isPixelScale = Math.abs(requested.x) > 100 || Math.abs(requested.y) > 100;
-    const baseSpeed = isPixelScale ? 320 : this.MAX_SPEED_UNITS_PER_SEC;
+    const baseSpeed = this.MAX_SPEED_UNITS_PER_SEC;
     const maxAllowedDistance = baseSpeed * elapsedSec * this.SPEED_TOLERANCE;
-
-    // Minimum distance threshold to forgive minor packet burst (e.g. 1 unit or 20 pixels)
-    const minThreshold = isPixelScale ? 30 : 1.5;
+    const minThreshold = 1.5;
 
     if (distance > Math.max(minThreshold, maxAllowedDistance)) {
       state.violations += 1;

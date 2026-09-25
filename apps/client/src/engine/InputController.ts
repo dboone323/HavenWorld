@@ -221,8 +221,12 @@ export class InputController {
           mesh.name === 'placeholder_ground' ||
           mesh.name.includes('rug');
 
-        if (isWalkable) {
-          this._avatar.moveTo(pick.pickedPoint);
+        if (isWalkable && pick.pickedPoint) {
+          // Clamp walk target within the 14m physical room bounds (-6.4m to +6.4m)
+          const target = pick.pickedPoint.clone();
+          target.x = Math.max(-6.4, Math.min(6.4, target.x));
+          target.z = Math.max(-6.4, Math.min(6.4, target.z));
+          this._avatar.moveTo(target);
         }
       }
     });

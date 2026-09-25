@@ -76,6 +76,73 @@ Active tracking for immediate implementation to address furniture responsiveness
 
 ---
 
+## Master System Audit & Progressive Refinement Roadmap (Parts 1–9)
+
+> **Audit Objective**: Systematically comb through the HavenWorld architecture **1 part at a time**, separating verified production reality from historical claims. For each part, categorize every feature into 4 actionable verdicts:
+> 1. ✅ **What Works**: Fully implemented end-to-end, reachable in the Babylon.js client, and verified by real tests and live production.
+> 2. ❌ **What Does Not Work**: Broken, unlinked UI, missing event handlers, or non-functional mock/stub remnants.
+> 3. 🔄 **What Needs More Refining**: Technically working but rough (UX friction, visual artifacts, lack of tactile feedback, performance drag).
+> 4. 🗑️ **What to Remove / Prune**: Legacy dead weight (Canvas2D/Phaser/SQLite relics) or over-scoped secondary features that distract from core gameplay polish.
+
+### Audit Progress Matrix
+
+| Part | Subsystem | Focus Area | Status | Key Deliverable |
+| :---: | :--- | :--- | :---: | :--- |
+| **Part 1** | **Core Engine & Network Infrastructure** | Viewport, camera, movement, speed authority, sockets | **AUDITED & REFINED** | Mobile aspect framing, clean 3D validator, boundary clamps |
+| **Part 2** | **Avatar System & Wardrobe** | 2D chibi billboard, multi-angle sprites, wardrobe catalog | *Queued Next* | Layer sorting, item preview, clothing persistence |
+| **Part 3** | **Loft Geometry & Furniture Decorator** | 3D room, placement ghost, surfaces, collision | *Pending* | Furniture grid snap, rotation controls, save reliability |
+| **Part 4** | **Economy, Shop & Trading System** | Coins, shop catalogs, 8-slot comparative trading | *Pending* | Coin transaction safety, inventory sync, modal feedback |
+| **Part 5** | **Social Systems & In-World Chat** | 3D speech bubbles, context menus, moderation | *Pending* | Typing indicators, emote sync, whisper routing |
+| **Part 6** | **Mini-Games & Secondary Activities** | Pizza chef, fishing dock, arcade | *Pending* | Loop polish, tactile reward audio, payout balancing |
+| **Part 7** | **Progression, Quests & Identity** | Daily quests, level xp, passport badges | *Pending* | Claim animations, profile inspection, achievement sync |
+| **Part 8** | **Client HUD, Navigation & Polish** | Dock icons, modals, audio synthesizers, pwa | *Pending* | Responsive scaling, modal backdrop blur, touch targets |
+| **Part 9** | **World Destinations & Public Spaces** | Central lobby, haven park, coffee shop | *Pending* | Transition portals, crowd performance, ambiance |
+
+---
+
+### Part 1 Deep Audit: Core Engine, Movement, Viewport & Network Infrastructure
+
+#### 1. Subsystem Audit Breakdown
+
+- **1.1 Server-Side Movement Authority (`apps/server/src/game/movement.ts`, `apps/server/src/sockets/index.ts`)**:
+  - ✅ **What Works**: `MovementValidator` enforces server-authoritative speed limits (`8.0 units/sec` with latency tolerance multiplier `2.5x`). Rate limits socket packets to 20 updates/sec. Detects and corrects speed anomalies.
+  - 🗑️ **What Was Pruned**: Removed legacy 2D pixel scale branches (`Math.abs(x) > 100`, `320px/sec`) that remained from the old Canvas 2D engine. The server now exclusively validates 3D metric world coordinates.
+  - 🔄 **Refined**: Clamped elapsed delta times between `16ms` and `2000ms` to prevent false positive violations during tab switching or network packet batching.
+
+- **1.2 Click-to-Move & Navigation (`apps/client/src/engine/InputController.ts`, `AvatarController.ts`)**:
+  - ✅ **What Works**: Babylon.js pointer pick raycasts against floor and walkable furniture. Avatar calculates smooth vector traversal toward target.
+  - 🔄 **What Was Refined**:
+    - **Step Clamping**: Clamped movement step (`Math.min(dist, WALK_SPEED * delta)`) to eliminate arrival overshoot where the avatar stepped past the destination and snapped backwards.
+    - **Floor Boundary Clamping**: Click-to-move targets are clamped within the physical room boundaries (`[-6.4m, +6.4m]`), preventing avatars from walking off the cutaway floor edges.
+    - **Direction Hysteresis**: Added `0.20m` deadband threshold (`Math.abs(absX - absZ) > 0.2`) in `AvatarController.ts` and `RemoteAvatar.ts`. Moving diagonally no longer flip-flops between horizontal and vertical sprites on every frame.
+    - **Zero-Latency Billboard Sync**: `updatePosition()` is called synchronously within the movement loop, eliminating the 1-frame lagging jitter caused by uncoordinated render observers.
+  - ❌ **What Does Not Work Yet**: True obstacle pathfinding (A* around placed furniture). Currently, click-to-move is linear raycast. Placed furniture bounding boxes do not dynamically steer paths; avatars walk linearly through the room.
+
+- **1.3 Orthographic Camera & Viewport Sizing (`apps/client/src/scenes/RoomScene.ts`)**:
+  - ✅ **What Works**: True isometric orthographic projection (`beta = atan(sqrt(2))`, `alpha = -PI/4`). Static camera in personal lofts anchored at `(0, 1.0, 0)` completely eliminates room sway/judder while walking.
+  - 🔄 **What Was Refined**:
+    - **Framing & Avatar Scaling**: Ortho size calibrated from `10.5` to `8.5`, framing the 14m loft cleanly and making the newly scaled `1.78 × 3.05` chibi avatar prominent and legible.
+    - **Mobile Portrait Aspect Compensation**: Added dynamic formula `aspect < 1.0 ? baseOrtho / aspect : baseOrtho` so vertical mobile viewports expand the vertical frustum, preventing the loft sides from being clipped on phones.
+
+- **1.4 Depth Sorting & Billboarding (`apps/client/src/world/ChibiBillboard.ts`)**:
+  - ✅ **What Works**: Native Babylon.js hardware depth buffer sorting with `MATERIAL_ALPHATESTANDBLEND` and `BILLBOARDMODE_Y`. 2D billboard plane stays upright facing the camera while correctly occluding behind 3D models.
+  - 🔄 **What Was Refined**: Removed hardcoded `mesh.position.y = 0.9` in `setAction()`, completely curing the vertical popping/glitching that occurred every 100ms on walk frame updates.
+
+- **1.5 Remote Player Synchronization (`apps/client/src/world/RemoteAvatar.ts`, `apps/server/src/sockets/index.ts`)**:
+  - ✅ **What Works**: Multi-user socket streaming at 10Hz. Remote avatars interpolate with `Vector3.Lerp` and `Scalar.LerpAngle`. Billboard position and direction hysteresis mirror local avatar smoothness.
+  - 🔄 **Needs More Refining**: When remote players join or re-enter, spawn transitions should have a subtle fade-in rather than popping instantly into existence.
+
+- **1.6 Socket Resilience & Connection State (`apps/client/src/services/socket.ts`, `ConnectionBanner.ts`)**:
+  - ✅ **What Works**: Automatic exponential reconnection retries, listener registry retention, and visual `#connection-banner` when server connection drops.
+  - 🔄 **Needs More Refining**: Silent session re-authentication: on reconnect, re-emit `auth:join` with stored token to resume room presence without requiring page refresh.
+
+- **1.7 Part 1 Pruning Decisions (Remove Before Features)**:
+  - 🗑️ **Pruned**: Removed legacy 2D pixel scale branches from `MovementValidator.ts`.
+  - 🗑️ **Shelved**: Shelved speculative multi-node Redis cluster sharding in favor of rock-solid single-instance room routing in `RoomManager.ts` until concurrency demands it.
+  - 🗑️ **Shelved**: Shelved legacy 2D A* grid matrix in `src/client/shared/pathfinding.js` (Canvas2D relic); future pathfinding should be 3D NavMesh / Babylon grid based.
+
+---
+
 ## Track 1: Multiplayer Engine & Technical Infrastructure
 
 Focuses on authoritative game loops, reliable network synchronization, spatial optimizations, and responsive client delivery.

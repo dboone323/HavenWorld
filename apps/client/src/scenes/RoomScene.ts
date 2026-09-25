@@ -115,7 +115,9 @@ export async function createRoomScene(
 
   const updateOrtho = () => {
     const aspect = haven.canvas.width / haven.canvas.height;
-    const orthoSize = 8.5; // Framed comfortably for 14m cutaway room with generous avatar presence
+    // On narrow / mobile portrait screens (aspect < 1.0), expand vertical ortho size so loft is never clipped horizontally
+    const baseOrtho = 8.5;
+    const orthoSize = aspect < 1.0 ? baseOrtho / aspect : baseOrtho;
     camera.orthoLeft = -orthoSize * aspect;
     camera.orthoRight = orthoSize * aspect;
     camera.orthoTop = orthoSize;
