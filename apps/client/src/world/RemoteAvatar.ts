@@ -127,7 +127,7 @@ export class RemoteAvatar {
       this._scene
     );
     plane.parent = this.rootMesh;
-    plane.position.y = 2.4;
+    plane.position.y = 3.35;
     plane.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
 
     const texture = AdvancedDynamicTexture.CreateForMesh(plane, 512, 128);
@@ -147,7 +147,7 @@ export class RemoteAvatar {
       this._scene
     );
     plane.parent = this.rootMesh;
-    plane.position.y = 3.1;
+    plane.position.y = 4.1;
     plane.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
     plane.isVisible = false;
 
@@ -182,6 +182,7 @@ export class RemoteAvatar {
   private _registerRenderLoop(): void {
     const callback = () => {
       const dt = this._scene.getEngine().getDeltaTime();
+      const clampedDt = Math.min(Math.max(dt, 0), 100);
       const currentPos = this.rootMesh.position;
       const dx = this._targetPos.x - currentPos.x;
       const dz = this._targetPos.z - currentPos.z;
@@ -189,14 +190,17 @@ export class RemoteAvatar {
 
       if (!this._isSitting) {
         if (dist > 0.05) {
-          // Moving
-          if (Math.abs(dx) > Math.abs(dz)) {
+          // Moving with direction hysteresis to eliminate diagonal jitter
+          const absX = Math.abs(dx);
+          const absZ = Math.abs(dz);
+          const diff = absX - absZ;
+          if (diff > 0.2) {
             this._chibiDirection = dx > 0 ? 'right' : 'left';
-          } else {
+          } else if (diff < -0.2) {
             this._chibiDirection = dz > 0 ? 'up' : 'down';
           }
-          this._chibiAnimTimer += dt;
-          if (this._chibiAnimTimer >= 100) {
+          this._chibiAnimTimer += clampedDt;
+          if (this._chibiAnimTimer >= 115) {
             this._chibiAnimTimer = 0;
             this._chibiWalkFrame = (this._chibiWalkFrame + 1) % 8;
             this._chibiBillboard?.setAction('walk', this._chibiDirection, this._chibiWalkFrame);
@@ -213,6 +217,9 @@ export class RemoteAvatar {
       this.rootMesh.position = Vector3.Lerp(this.rootMesh.position, this._targetPos, 0.2);
       // Smooth rotation lerp
       this.rootMesh.rotation.y = Scalar.LerpAngle(this.rootMesh.rotation.y, this._targetRotY, 0.2);
+
+      // Keep billboard in exact sync
+      this._chibiBillboard?.updatePosition(this.rootMesh.position, this._isSitting);
     };
 
     this._scene.registerBeforeRender(callback);

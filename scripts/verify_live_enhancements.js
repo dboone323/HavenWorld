@@ -57,6 +57,15 @@ async function verify() {
   await page.screenshot({ path: loftShot });
   console.log('Saved loft screenshot to:', loftShot);
 
+  // Smooth walking test: click floor and capture walk in progress
+  console.log('Testing smooth walking...');
+  await page.mouse.click(640, 500);
+  await page.waitForTimeout(450);
+  const walkShot = path.join(ARTIFACT_DIR, 'live-enhancement-smooth-walk.png');
+  await page.screenshot({ path: walkShot });
+  console.log('Saved walking screenshot to:', walkShot);
+  await page.waitForTimeout(1200);
+
   // 3. Test In-World Speech Bubble: Send chat message and capture floating bubble over avatar
   console.log('Testing in-world speech bubble...');
   const chatInput = page.locator('#chat-input');

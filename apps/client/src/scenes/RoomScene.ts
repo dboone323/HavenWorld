@@ -115,7 +115,7 @@ export async function createRoomScene(
 
   const updateOrtho = () => {
     const aspect = haven.canvas.width / haven.canvas.height;
-    const orthoSize = 10.5; // Perfectly frames the 14m cutaway room with margins
+    const orthoSize = 8.5; // Framed comfortably for 14m cutaway room with generous avatar presence
     camera.orthoLeft = -orthoSize * aspect;
     camera.orthoRight = orthoSize * aspect;
     camera.orthoTop = orthoSize;
@@ -234,10 +234,13 @@ export async function createRoomScene(
     };
   };
 
-  // Camera smooth follow
+  // Camera follow: In personal lofts, keep camera stably centered at (0, 1.0, 0)
+  // so the room and furniture never wobble or jitter.
+  // In large open public spaces (like park/lobby), follow the avatar with smooth ease.
+  const isLoftRoom = roomId.startsWith('room-') && roomId !== 'room-lobby' && roomId !== 'room-park';
   const cameraFollowCallback = () => {
-    if (avatarController.rootMesh) {
-      camera.target = Vector3.Lerp(camera.target, avatarController.rootMesh.position, 0.1);
+    if (!isLoftRoom && avatarController.rootMesh) {
+      camera.target = Vector3.Lerp(camera.target, avatarController.rootMesh.position, 0.08);
     }
   };
   scene.registerBeforeRender(cameraFollowCallback);

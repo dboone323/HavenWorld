@@ -215,6 +215,7 @@ export class AvatarController {
       this.rootMesh.rotation.y = seatMesh.rotation.y;
     }
     this.chibiBillboard?.setAction('sit', 'down', 0);
+    this.chibiBillboard?.updatePosition(this.rootMesh.position, true);
 
     const roomId =
       (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
@@ -519,7 +520,7 @@ export class AvatarController {
       this.scene
     );
     plane.parent = this.rootMesh;
-    plane.position = new BABYLON.Vector3(0, 2.3, 0); // above head
+    plane.position = new BABYLON.Vector3(0, 3.35, 0); // above scaled head
     plane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
     plane.isPickable = false;
 
@@ -616,7 +617,9 @@ export class AvatarController {
     dir.y = 0;
     const dist = dir.length();
     const dt = this.scene.getEngine().getDeltaTime();
-    const delta = dt > 0 ? dt / 1000 : 1 / 60;
+    // Clamp frame delta to prevent animation and movement teleport spikes
+    const clampedDt = Math.min(Math.max(dt, 0), 100);
+    const delta = clampedDt > 0 ? clampedDt / 1000 : 1 / 60;
 
     if (dist < ARRIVAL_THRESHOLD) {
       this.rootMesh.position.copyFrom(this.targetPosition);
@@ -626,6 +629,7 @@ export class AvatarController {
       this.chibiAnimTimer = 0;
       this.chibiWalkFrame = 0;
       this.chibiBillboard?.setAction('idle', this.chibiDirection, 0);
+      this.chibiBillboard?.updatePosition(this.rootMesh.position, false);
       this.crossFadeTo('idle');
 
       // Confirm final position to server
@@ -648,16 +652,19 @@ export class AvatarController {
       return;
     }
 
-    // Determine isometric direction for Chibi sprite
-    if (Math.abs(dir.x) > Math.abs(dir.z)) {
+    // Determine isometric direction with deadband hysteresis to prevent diagonal flickering
+    const absX = Math.abs(dir.x);
+    const absZ = Math.abs(dir.z);
+    const diff = absX - absZ;
+    if (diff > 0.2) {
       this.chibiDirection = dir.x > 0 ? 'right' : 'left';
-    } else {
+    } else if (diff < -0.2) {
       this.chibiDirection = dir.z > 0 ? 'up' : 'down';
     }
 
-    // Step walk frame every ~100ms
-    this.chibiAnimTimer += dt;
-    if (this.chibiAnimTimer >= 100) {
+    // Step walk frame every ~115ms for smooth cadence matching 3.5m/s movement
+    this.chibiAnimTimer += clampedDt;
+    if (this.chibiAnimTimer >= 115) {
       this.chibiAnimTimer = 0;
       this.chibiWalkFrame = (this.chibiWalkFrame + 1) % 8;
       this.chibiBillboard?.setAction('walk', this.chibiDirection, this.chibiWalkFrame);
@@ -668,12 +675,17 @@ export class AvatarController {
     this.rootMesh.rotationQuaternion = null;
     this.rootMesh.rotation.y = angle;
 
-    // Move toward target
-    const step = dir.normalize().scale(WALK_SPEED * delta);
+    // Move toward target without overshooting the destination
+    const maxStep = WALK_SPEED * delta;
+    const stepDist = Math.min(dist, maxStep);
+    const step = dir.normalize().scale(stepDist);
     this.rootMesh.position.addInPlace(step);
 
+    // Synchronize billboard instantly on the exact same frame (0 latency)
+    this.chibiBillboard?.updatePosition(this.rootMesh.position, false);
+
     // Stream position updates at 10Hz for smooth multiplayer sync
-    this.moveEmitTimer += dt;
+    this.moveEmitTimer += clampedDt;
     if (this.moveEmitTimer >= 100) {
       this.moveEmitTimer = 0;
       const roomId =

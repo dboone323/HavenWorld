@@ -134,8 +134,8 @@ export class InWorldSpeechBubbles {
 
     const camera = this.scene.activeCamera;
     const engine = this.scene.getEngine();
-    // Offset above avatar's head (avatar height is ~2.10m, place bubble at 2.45m)
-    const headPos = new BABYLON.Vector3(worldPos.x, worldPos.y + 2.45, worldPos.z);
+    // Offset above scaled avatar head (avatar height is ~3.05m, place bubble comfortably at 3.45m)
+    const headPos = new BABYLON.Vector3(worldPos.x, worldPos.y + 3.45, worldPos.z);
 
     const screenPos = BABYLON.Vector3.Project(
       headPos,

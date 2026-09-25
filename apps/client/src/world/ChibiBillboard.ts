@@ -19,8 +19,8 @@ export class ChibiBillboard {
   constructor(name: string, scene: BABYLON.Scene, parent?: BABYLON.Node | null) {
     this.scene = scene;
 
-    // Calibrated to MiPlanet 133:227 aspect ratio (1.23 x 2.10) for authentic slender chibi silhouette
-    this.mesh = BABYLON.MeshBuilder.CreatePlane(name, { width: 1.23, height: 2.10 }, scene);
+    // Calibrated to MiPlanet 133:227 aspect ratio with prominent scaled presence (1.78 x 3.05)
+    this.mesh = BABYLON.MeshBuilder.CreatePlane(name, { width: 1.78, height: 3.05 }, scene);
     this.mesh.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
     this.mesh.isPickable = true;
 
@@ -33,7 +33,7 @@ export class ChibiBillboard {
           ? (parentNode as BABYLON.AbstractMesh).getAbsolutePosition()
           : (parentNode as any).position;
         if (p) {
-          const yOffset = this.currentAction === 'sit' ? 0.72 : 1.05;
+          const yOffset = this.currentAction === 'sit' ? 1.05 : 1.525;
           this.mesh.position.set(p.x, p.y + yOffset, p.z);
         }
       };
@@ -41,12 +41,12 @@ export class ChibiBillboard {
       this.beforeRenderObserver = followObserver;
       followObserver();
     } else {
-      this.mesh.position.y = 1.05;
+      this.mesh.position.y = 1.525;
     }
 
     this.dynamicTexture = new BABYLON.DynamicTexture(
       `${name}_tex`,
-      { width: 192, height: 256 },
+      { width: 256, height: 340 },
       scene,
       false,
       BABYLON.Constants.TEXTURE_BILINEAR_SAMPLINGMODE
@@ -73,11 +73,23 @@ export class ChibiBillboard {
     this.render();
   }
 
+  public updatePosition(pos: BABYLON.Vector3, isSitting = false): void {
+    if (!this.mesh || this.mesh.isDisposed()) return;
+    const yOffset = isSitting || this.currentAction === 'sit' ? 1.05 : 1.525;
+    this.mesh.position.set(pos.x, pos.y + yOffset, pos.z);
+  }
+
   public setAction(action: ChibiAction, direction: ChibiDirection, frameIndex: number = 0): void {
+    if (
+      this.currentAction === action &&
+      this.currentDirection === direction &&
+      this.currentFrame === frameIndex
+    ) {
+      return;
+    }
     this.currentAction = action;
     this.currentDirection = direction;
     this.currentFrame = frameIndex;
-    this.mesh.position.y = action === 'sit' ? 0.65 : 0.9;
     this.render();
   }
 
