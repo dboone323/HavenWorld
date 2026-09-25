@@ -128,7 +128,7 @@ export const TradeRequestSchema = z.object({
 });
 
 export const OfferItemSchema = z.object({
-  slotIndex: z.number().int().min(0).max(5),
+  slotIndex: z.number().int().min(0).max(7),
   inventoryItemId: uuid,
   name: safeString(100),
   assetUrl: z.string().url().max(500).optional(),

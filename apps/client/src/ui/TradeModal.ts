@@ -220,77 +220,84 @@ export class TradeModal {
 
     const panel = document.createElement('div');
     panel.style.cssText = `
-      background: #1a1a2e;
-      border: 2px solid #4ecdc4;
-      border-radius: 14px;
-      width: min(720px, 95vw);
+      background: var(--card-porcelain, rgba(248, 248, 247, 0.985));
+      border: 1px solid rgba(40, 48, 56, 0.24);
+      border-radius: 18px;
+      width: min(840px, 95vw);
       max-height: 90vh;
       overflow-y: auto;
-      padding: 22px;
-      color: #e2e8f0;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85);
+      padding: 24px;
+      color: var(--mp-ink, #173044);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
       display: flex;
       flex-direction: column;
       gap: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     `;
 
     panel.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.3rem;">🤝</span>
-          <h3 style="margin: 0; color: #4ecdc4;">Secure Player Trade (6 Slots)</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dce6ec; padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.5rem;">🤝</span>
+          <div>
+            <h2 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #173044;">Player Trade</h2>
+            <div style="font-size: 0.82rem; color: #597080;">8-slot secure exchange · Both players must confirm</div>
+          </div>
         </div>
-        <span id="trade-countdown-timer" style="font-size: 0.95rem; font-weight: bold; color: #888;"></span>
+        <span id="trade-countdown-timer" style="font-size: 0.95rem; font-weight: 800; color: #e5b945;"></span>
       </div>
 
-      <!-- Trade Grid: My Offer vs Their Offer -->
+      <!-- Trade Grid: My Offer vs Their Offer (MiPlanet 2-column comparison) -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         <!-- My Offer -->
-        <div id="panel-my-offer" style="background: #16213e; border: 2px solid #333; border-radius: 10px; padding: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-weight: bold; color: #4ecdc4;">My Offer</div>
-            <span id="badge-my-ready" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: #334155; color: #cbd5e1;">NOT READY</span>
+        <div id="panel-my-offer" style="background: #ffffff; border: 1px solid #dce6ec; border-radius: 14px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="font-weight: 800; font-size: 0.95rem; color: #173044;">Your Offer</div>
+            <span id="badge-my-ready" style="font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 8px; background: #e2e8f0; color: #597080;">Reviewing offer</span>
           </div>
-          <div id="my-trade-slots" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
-            ${[0, 1, 2, 3, 4, 5].map((i) => `
-              <div class="trade-slot trade-slot--mine" data-slot="${i}" style="height: 64px; background: #0f172a; border: 1px dashed #475569; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.72rem; color: #64748b; cursor: pointer; text-align: center; padding: 4px; overflow: hidden;">
+          <div id="my-trade-slots" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+            ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `
+              <div class="trade-slot trade-slot--mine" data-slot="${i}" style="height: 72px; background: #edf3f7; border: 1px dashed #d6e1e9; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.72rem; color: #768897; cursor: pointer; text-align: center; padding: 4px; overflow: hidden; transition: all 0.15s ease;">
                 <span>Empty</span>
               </div>
             `).join('')}
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-size: 0.85rem;">🪙 Coins:</label>
-            <input id="trade-my-coins" type="number" min="0" max="9999" value="0" style="width: 90px; padding: 4px 8px; background: #0f172a; border: 1px solid #475569; color: #ffd700; border-radius: 4px;" />
+          <div style="display: flex; align-items: center; gap: 8px; background: #f8fbff; padding: 8px 10px; border-radius: 8px; border: 1px solid #e2eaf0;">
+            <label style="font-size: 0.85rem; font-weight: 700; color: #173044;">🪙 Coins:</label>
+            <input id="trade-my-coins" type="number" min="0" max="999999" value="0" style="flex: 1; padding: 6px 10px; background: #ffffff; border: 1px solid #c7d6df; color: #173044; border-radius: 6px; font-weight: 700;" />
           </div>
         </div>
 
         <!-- Their Offer -->
-        <div id="panel-their-offer" style="background: #16213e; border: 2px solid #333; border-radius: 10px; padding: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div id="label-their-offer" style="font-weight: bold; color: #38bdf8;">Their Offer</div>
-            <span id="badge-their-ready" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: #334155; color: #cbd5e1;">NOT READY</span>
+        <div id="panel-their-offer" style="background: #ffffff; border: 1px solid #dce6ec; border-radius: 14px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div id="label-their-offer" style="font-weight: 800; font-size: 0.95rem; color: #173044;">Their Offer</div>
+            <span id="badge-their-ready" style="font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 8px; background: #e2e8f0; color: #597080;">Reviewing offer</span>
           </div>
-          <div id="their-trade-slots" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
-            ${[0, 1, 2, 3, 4, 5].map((i) => `
-              <div class="trade-slot" data-slot="${i}" style="height: 64px; background: #0f172a; border: 1px dashed #475569; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.72rem; color: #64748b; text-align: center; padding: 4px; overflow: hidden;">
+          <div id="their-trade-slots" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+            ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `
+              <div class="trade-slot" data-slot="${i}" style="height: 72px; background: #edf3f7; border: 1px dashed #d6e1e9; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.72rem; color: #768897; text-align: center; padding: 4px; overflow: hidden;">
                 <span>Empty</span>
               </div>
             `).join('')}
           </div>
-          <div style="font-size: 0.85rem; color: #ffd700;">🪙 Coins: <span id="their-trade-coins">0</span></div>
+          <div style="display: flex; align-items: center; gap: 8px; background: #f8fbff; padding: 8px 10px; border-radius: 8px; border: 1px solid #e2eaf0;">
+            <span style="font-size: 0.85rem; font-weight: 700; color: #173044;">🪙 Coins Offered:</span>
+            <span id="their-trade-coins" style="font-weight: 800; color: #e5b945; font-size: 0.95rem;">0</span>
+          </div>
         </div>
       </div>
 
       <!-- Inventory Drawer (Tradeable items) -->
-      <div style="background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 12px;">
-        <div style="font-size: 0.85rem; font-weight: 600; color: #9ca3af; margin-bottom: 8px; display: flex; justify-content: space-between;">
-          <span>📦 Click an item to add to your offer (Tradeable Only):</span>
-          <span style="font-size: 0.75rem;">${this.myInventory.length} tradeable items</span>
+      <div style="background: #e9f0f5; border: 1px solid #dce6ec; border-radius: 14px; padding: 14px;">
+        <div style="font-size: 0.85rem; font-weight: 700; color: #173044; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span>📦 Your Inventory (Click an item to offer):</span>
+          <span style="font-size: 0.78rem; color: #597080;">${this.myInventory.length} tradeable items</span>
         </div>
-        <div id="trade-inventory-shelf" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;">
-          ${this.myInventory.length === 0 ? '<div style="color:#6b7280; font-size:0.8rem; padding:8px;">No tradeable items in inventory.</div>' : ''}
+        <div id="trade-inventory-shelf" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px;">
+          ${this.myInventory.length === 0 ? '<div style="color:#768897; font-size:0.85rem; padding:8px;">No tradeable items in inventory.</div>' : ''}
           ${this.myInventory.map((item) => `
-            <div class="inventory-trade-chip" data-item-id="${item.itemId}" data-name="${item.name}" style="background: #1f2937; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 0.8rem; transition: background 0.15s;">
+            <div class="inventory-trade-chip" data-item-id="${item.itemId}" data-name="${item.name}" style="background: #ffffff; border: 1px solid #c7d6df; border-radius: 10px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 0.85rem; font-weight: 600; color: #173044; transition: all 0.15s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.04);">
               <span>🎁</span>
               <span>${item.name}</span>
             </div>
@@ -299,10 +306,10 @@ export class TradeModal {
       </div>
 
       <!-- Controls -->
-      <div style="display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
-        <button id="btn-trade-ready" style="background: #4ecdc4; color: #000; border: none; padding: 9px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: opacity 0.15s;">Ready</button>
-        <button id="btn-trade-confirm" style="background: #22c55e; color: #000; border: none; padding: 9px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; display: none;">Confirm Swap</button>
-        <button id="btn-trade-cancel" style="background: transparent; border: 1px solid #ef4444; color: #ef4444; padding: 9px 18px; border-radius: 6px; cursor: pointer;">Cancel Trade</button>
+      <div style="display: flex; gap: 12px; justify-content: flex-end; align-items: center; border-top: 1px solid #dce6ec; padding-top: 14px;">
+        <button id="btn-trade-ready" style="background: var(--mp-gold, #ffd65b); border: 1px solid #e5b945; color: #242017; padding: 10px 24px; border-radius: 10px; font-weight: 800; cursor: pointer; transition: all 0.15s;">Ready</button>
+        <button id="btn-trade-confirm" style="background: #247c49; color: #ffffff; border: none; padding: 10px 24px; border-radius: 10px; font-weight: 800; cursor: pointer; display: none;">Confirm Swap</button>
+        <button id="btn-trade-cancel" style="background: transparent; border: 1px solid #dce6ec; color: #597080; padding: 10px 20px; border-radius: 10px; font-weight: 700; cursor: pointer;">Cancel</button>
       </div>
     `;
 
@@ -355,10 +362,10 @@ export class TradeModal {
     const isInitiator = this.currentTrade.initiatorId === authService.user?.id;
     const myItems = isInitiator ? this.currentTrade.initiatorItems : this.currentTrade.receiverItems;
 
-    // Find lowest available slot 0..5
+    // Find lowest available slot 0..7
     const occupied = new Set(myItems.map((i) => i.slotIndex));
     let targetSlot = -1;
-    for (let s = 0; s < 6; s++) {
+    for (let s = 0; s < 8; s++) {
       if (!occupied.has(s)) {
         targetSlot = s;
         break;
@@ -366,7 +373,7 @@ export class TradeModal {
     }
 
     if (targetSlot === -1) {
-      showToast({ icon: '⚠️', title: 'Offer Full', subtitle: 'All 6 trade slots are occupied.' });
+      showToast({ icon: '⚠️', title: 'Offer Full', subtitle: 'All 8 trade slots are occupied.' });
       return;
     }
 
@@ -404,13 +411,17 @@ export class TradeModal {
       const idx = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
       const item = mySlotMap.get(idx);
       if (item) {
-        slotEl.innerHTML = `<span style="font-size:1.1rem;">🎁</span><strong style="color:#4ecdc4;">${item.name}</strong><span style="font-size:0.65rem; color:#ef4444;">(click to remove)</span>`;
+        slotEl.innerHTML = `<span style="font-size:1.3rem; margin-bottom:2px;">🎁</span><strong style="color:#173044; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">${item.name}</strong><span style="font-size:0.62rem; color:#e05252; font-weight:700;">(remove)</span>`;
         (slotEl as HTMLElement).style.borderColor = '#4ecdc4';
-        (slotEl as HTMLElement).style.background = '#1e293b';
+        (slotEl as HTMLElement).style.background = '#ffffff';
+        (slotEl as HTMLElement).style.borderStyle = 'solid';
+        (slotEl as HTMLElement).style.boxShadow = '0 2px 8px rgba(78, 205, 196, 0.25)';
       } else {
         slotEl.innerHTML = `<span>Empty</span>`;
-        (slotEl as HTMLElement).style.borderColor = '#475569';
-        (slotEl as HTMLElement).style.background = '#0f172a';
+        (slotEl as HTMLElement).style.borderColor = '#d6e1e9';
+        (slotEl as HTMLElement).style.background = '#edf3f7';
+        (slotEl as HTMLElement).style.borderStyle = 'dashed';
+        (slotEl as HTMLElement).style.boxShadow = 'none';
       }
     });
 
@@ -422,13 +433,17 @@ export class TradeModal {
       const idx = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
       const item = theirSlotMap.get(idx);
       if (item) {
-        slotEl.innerHTML = `<span style="font-size:1.1rem;">🎁</span><strong style="color:#38bdf8;">${item.name}</strong>`;
+        slotEl.innerHTML = `<span style="font-size:1.3rem; margin-bottom:2px;">🎁</span><strong style="color:#173044; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">${item.name}</strong>`;
         (slotEl as HTMLElement).style.borderColor = '#38bdf8';
-        (slotEl as HTMLElement).style.background = '#1e293b';
+        (slotEl as HTMLElement).style.background = '#ffffff';
+        (slotEl as HTMLElement).style.borderStyle = 'solid';
+        (slotEl as HTMLElement).style.boxShadow = '0 2px 8px rgba(56, 189, 248, 0.25)';
       } else {
         slotEl.innerHTML = `<span>Empty</span>`;
-        (slotEl as HTMLElement).style.borderColor = '#475569';
-        (slotEl as HTMLElement).style.background = '#0f172a';
+        (slotEl as HTMLElement).style.borderColor = '#d6e1e9';
+        (slotEl as HTMLElement).style.background = '#edf3f7';
+        (slotEl as HTMLElement).style.borderStyle = 'dashed';
+        (slotEl as HTMLElement).style.boxShadow = 'none';
       }
     });
 
@@ -444,16 +459,16 @@ export class TradeModal {
     // Update Ready Badges & Panels
     const myBadge = this.overlay.querySelector('#badge-my-ready') as HTMLElement;
     if (myBadge) {
-      myBadge.textContent = myReady ? 'READY' : 'NOT READY';
-      myBadge.style.background = myReady ? '#22c55e' : '#334155';
-      myBadge.style.color = myReady ? '#000' : '#cbd5e1';
+      myBadge.textContent = myReady ? '✓ Confirmed' : 'Reviewing offer';
+      myBadge.style.background = myReady ? '#247c49' : '#e2e8f0';
+      myBadge.style.color = myReady ? '#ffffff' : '#597080';
     }
 
     const theirBadge = this.overlay.querySelector('#badge-their-ready') as HTMLElement;
     if (theirBadge) {
-      theirBadge.textContent = theirReady ? 'READY' : 'NOT READY';
-      theirBadge.style.background = theirReady ? '#22c55e' : '#334155';
-      theirBadge.style.color = theirReady ? '#000' : '#cbd5e1';
+      theirBadge.textContent = theirReady ? '✓ Confirmed' : 'Reviewing offer';
+      theirBadge.style.background = theirReady ? '#247c49' : '#e2e8f0';
+      theirBadge.style.color = theirReady ? '#ffffff' : '#597080';
     }
 
     // Buttons

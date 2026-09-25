@@ -23,76 +23,11 @@ export class AvatarContextMenu {
 
     const menu = document.createElement('div');
     menu.id = 'avatar-context-menu';
-    menu.style.cssText = `
-      position: fixed;
-      left: ${options.x}px;
-      top: ${options.y}px;
-      background: rgba(22, 22, 38, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-      padding: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      z-index: 10000;
-      min-width: 170px;
-      color: #fff;
-      font-family: inherit;
-      backdrop-filter: blur(8px);
-      animation: menuFadeIn 0.15s ease-out;
-    `;
+    menu.className = 'mp-context';
+    menu.style.left = `${Math.max(12, Math.min(options.x, window.innerWidth - 230))}px`;
+    menu.style.top = `${Math.max(12, Math.min(options.y, window.innerHeight - 250))}px`;
 
-    // Add inline keyframe animation if not already present
-    if (!document.getElementById('avatar-context-style')) {
-      const style = document.createElement('style');
-      style.id = 'avatar-context-style';
-      style.textContent = `
-        @keyframes menuFadeIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        .context-menu-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 0.85rem;
-          font-weight: 500;
-          transition: background 0.15s;
-          border: none;
-          background: transparent;
-          color: #eee;
-          text-align: left;
-          width: 100%;
-        }
-        .context-menu-item:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #fff;
-        }
-        .context-menu-item.danger:hover {
-          background: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    const header = document.createElement('div');
-    header.style.cssText = `
-      padding: 6px 12px 4px;
-      font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.5);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      margin-bottom: 2px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    `;
+    const header = document.createElement('strong');
     header.textContent = options.targetUsername;
     menu.appendChild(header);
 

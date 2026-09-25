@@ -19,7 +19,8 @@ export class ChibiBillboard {
   constructor(name: string, scene: BABYLON.Scene, parent?: BABYLON.Node | null) {
     this.scene = scene;
 
-    this.mesh = BABYLON.MeshBuilder.CreatePlane(name, { width: 1.35, height: 1.8 }, scene);
+    // Calibrated to MiPlanet 133:227 aspect ratio (1.23 x 2.10) for authentic slender chibi silhouette
+    this.mesh = BABYLON.MeshBuilder.CreatePlane(name, { width: 1.23, height: 2.10 }, scene);
     this.mesh.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
     this.mesh.isPickable = true;
 
@@ -32,7 +33,7 @@ export class ChibiBillboard {
           ? (parentNode as BABYLON.AbstractMesh).getAbsolutePosition()
           : (parentNode as any).position;
         if (p) {
-          const yOffset = this.currentAction === 'sit' ? 0.65 : 0.9;
+          const yOffset = this.currentAction === 'sit' ? 0.72 : 1.05;
           this.mesh.position.set(p.x, p.y + yOffset, p.z);
         }
       };
@@ -40,7 +41,7 @@ export class ChibiBillboard {
       this.beforeRenderObserver = followObserver;
       followObserver();
     } else {
-      this.mesh.position.y = 0.9;
+      this.mesh.position.y = 1.05;
     }
 
     this.dynamicTexture = new BABYLON.DynamicTexture(

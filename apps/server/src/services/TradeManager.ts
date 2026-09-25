@@ -164,7 +164,7 @@ export class TradeManager {
     const session = this.getSessionForUser(userId);
     if (!session || session.state === 'COMPLETED') return;
 
-    if (slotIndex < 0 || slotIndex > 5) return;
+    if (slotIndex < 0 || slotIndex > 7) return;
 
     if (inventoryItemId) {
       // 1. Verify item is tradeable

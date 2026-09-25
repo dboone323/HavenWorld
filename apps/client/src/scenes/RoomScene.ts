@@ -42,13 +42,15 @@ import { GalleryPanel } from '../gallery/GalleryPanel';
 import { DirectMessagePanel } from '../ui/DirectMessagePanel';
 import { TradeModal } from '../ui/TradeModal';
 import { applyRoomSurfaces } from '../world/SurfaceManager';
+import { InWorldSpeechBubbles } from '../ui/InWorldSpeechBubbles';
 
 export async function createRoomScene(
   haven: HavenEngine,
   data?: { roomId?: string; isVisiting?: boolean; visitedHostName?: string }
 ): Promise<Scene> {
   const scene = new Scene(haven.engine);
-  scene.clearColor = new Color4(0.11, 0.13, 0.17, 1.0);
+  // Transparent clearColor allows the atmospheric navy/midnight CSS viewport gradient to blend seamlessly
+  scene.clearColor = new Color4(0.06, 0.08, 0.11, 0.0);
   const unsubs: Array<() => void> = [];
 
   // Instantiate TradeModal and register to window for trade socket events
@@ -240,6 +242,13 @@ export async function createRoomScene(
   };
   scene.registerBeforeRender(cameraFollowCallback);
 
+  // ── 3D In-World Speech Bubbles (MiPlanet standard) ───────────────────────
+  const speechBubbles = InWorldSpeechBubbles.getInstance();
+  speechBubbles.attachScene(scene);
+  speechBubbles.registerLocalAvatar(() => {
+    return avatarController.rootMesh ? avatarController.rootMesh.getAbsolutePosition() : null;
+  });
+
   // ── Remote Avatars ────────────────────────────────────────────────────────
   const remoteAvatars = new Map<string, RemoteAvatar>();
 
@@ -263,6 +272,9 @@ export async function createRoomScene(
         }
       );
       remoteAvatars.set(p.id, remote);
+      speechBubbles.registerRemoteAvatar(p.id, () => {
+        return remote && remote.rootMesh ? remote.rootMesh.getAbsolutePosition() : null;
+      });
     } else {
       remote.updatePosition(p.x ?? 0, p.y ?? 0, p.z ?? 0, p.rotY ?? 0);
     }
@@ -746,6 +758,7 @@ export async function createRoomScene(
       if (remote) {
         remote.dispose();
         remoteAvatars.delete(playerId);
+        speechBubbles.unregisterRemoteAvatar(playerId);
         updateOccupantsCount();
       }
     })
@@ -911,6 +924,7 @@ export async function createRoomScene(
     furnitureManager.clear();
     inputController.dispose();
     chatOverlay.dispose();
+    speechBubbles.detachScene();
     avatarController.dispose();
     for (const remote of remoteAvatars.values()) {
       remote.dispose();

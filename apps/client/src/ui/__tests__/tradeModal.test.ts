@@ -51,19 +51,19 @@ describe('TradeModal (Real Functional UI Validation)', () => {
     expect(document.getElementById('trade-incoming-prompt')).toBeNull();
   });
 
-  it('renders 6 slots for both players and updates ready/confirm buttons', async () => {
+  it('renders 8 slots for both players and updates ready/confirm buttons', async () => {
     await modal.open();
 
     const overlay = document.getElementById('trade-modal-overlay');
     expect(overlay).not.toBeNull();
 
-    // Verify 6 slots for my offer
+    // Verify 8 slots for my offer
     const mySlots = overlay?.querySelectorAll('#my-trade-slots .trade-slot');
-    expect(mySlots?.length).toBe(6);
+    expect(mySlots?.length).toBe(8);
 
-    // Verify 6 slots for their offer
+    // Verify 8 slots for their offer
     const theirSlots = overlay?.querySelectorAll('#their-trade-slots .trade-slot');
-    expect(theirSlots?.length).toBe(6);
+    expect(theirSlots?.length).toBe(8);
 
     // Feed trade state update
     const state: TradeStateData = {
@@ -90,7 +90,7 @@ describe('TradeModal (Real Functional UI Validation)', () => {
     expect(slot0?.textContent).toContain('Magic Hat');
 
     const myBadge = document.getElementById('badge-my-ready');
-    expect(myBadge?.textContent).toBe('READY');
+    expect(myBadge?.textContent).toBe('✓ Confirmed');
   });
 
   it('dismisses modal cleanly when cancel button is clicked', async () => {

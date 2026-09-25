@@ -2,23 +2,49 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --color-bg:        #0d0d1a;
-  --color-surface:   #141428;
-  --color-surface2:  #1e1e3a;
+  --color-bg:        #0e1620;
+  --color-surface:   #172230;
+  --color-surface2:  #213042;
   --color-teal:      #4ecdc4;
   --color-teal-dark: #35a89d;
-  --color-text:      #d0d0e8;
-  --color-muted:     #7070a0;
-  --color-error:     #ff6b6b;
-  --color-border:    #2a2a4a;
-  --radius:          8px;
+  --color-text:      #d8e2ea;
+  --color-muted:     #768897;
+  --color-error:     #e05252;
+  --color-border:    #28384a;
+  --radius:          10px;
   --transition:      150ms ease;
+
+  /* MiPlanet-Standard Design Tokens */
+  --mp-ink:          #173044;
+  --mp-gold:         #ffd65b;
+  --mp-gold-deep:    #e5b945;
+  --mp-line:         #dce6ec;
+  --card-porcelain:  rgba(248, 248, 247, 0.985);
+  --modal-shadow:    0 18px 48px rgba(10, 20, 32, 0.35);
+  --radius-lg:       16px;
+  --radius-md:       12px;
+  --radius-sm:       8px;
 }
 
 body {
-  background: var(--color-bg);
+  background: linear-gradient(
+    to bottom,
+    rgb(22, 32, 42) 0%,
+    rgb(24, 32, 42) 5%,
+    rgb(22, 32, 41) 11%,
+    rgb(21, 31, 40) 16%,
+    rgb(19, 30, 39) 22%,
+    rgb(18, 26, 34) 33%,
+    rgb(15, 22, 30) 43%,
+    rgb(10, 19, 26) 54%,
+    rgb(10, 17, 24) 65%,
+    rgb(10, 17, 24) 75%,
+    rgb(11, 18, 25) 86%,
+    rgb(13, 20, 29) 96%,
+    rgb(14, 22, 30) 100%
+  );
   color:       var(--color-text);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   font-size:   14px;
   line-height: 1.5;
   overflow:    hidden;
@@ -32,10 +58,12 @@ body {
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 .panel {
-  background:   var(--color-surface);
-  border:       1px solid var(--color-border);
-  border-radius: calc(var(--radius) * 1.5);
+  background:   var(--card-porcelain);
+  border:       1px solid rgba(40, 48, 56, 0.24);
+  border-radius: var(--radius-lg);
+  box-shadow:   var(--modal-shadow);
   padding:      2rem;
+  color:        var(--mp-ink);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
@@ -44,36 +72,78 @@ body {
   align-items:   center;
   justify-content: center;
   gap:           0.4rem;
-  padding:       0.5rem 1.2rem;
-  border:        none;
+  padding:       0.6rem 1.25rem;
+  border:        1px solid var(--mp-line);
   border-radius: var(--radius);
   cursor:        pointer;
   font-size:     0.875rem;
-  font-weight:   600;
+  font-weight:   700;
   transition:    background var(--transition), transform var(--transition);
 }
 .btn:active { transform: scale(0.97); }
 
 .btn--teal {
   background: var(--color-teal);
-  color:      #0d0d1a;
+  border-color: #3cb8af;
+  color:      #0a2422;
 }
-.btn--teal:hover { background: var(--color-teal-dark); }
+.btn--teal:hover { background: var(--color-teal-dark); color: #fff; }
+
+.btn--gold {
+  background: var(--mp-gold);
+  border-color: var(--mp-gold-deep);
+  color: #242017;
+}
+.btn--gold:hover { background: #ffca37; }
 
 .btn--ghost {
   background: transparent;
-  border:     1px solid var(--color-border);
-  color:      var(--color-text);
+  border:     1px solid var(--mp-line);
+  color:      var(--mp-ink);
 }
-.btn--ghost:hover { background: var(--color-surface2); }
+.btn--ghost:hover { background: #edf6fc; }
 
 #game-container {
   position: absolute;
   inset:    0;
   z-index:  1;
+  background: inherit;
+  overflow: hidden;
+}
+
+#game-container::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 50%;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgb(21, 30, 38) 7%,
+    rgb(21, 31, 40) 12%,
+    rgb(19, 30, 39) 16%,
+    rgb(18, 28, 38) 20%,
+    rgb(18, 26, 36) 25%,
+    rgb(16, 25, 33) 29%,
+    rgb(16, 23, 31) 33%,
+    rgb(14, 22, 30) 38%,
+    rgb(12, 20, 28) 42%,
+    rgb(12, 19, 26) 46%,
+    rgb(11, 18, 25) 51%,
+    rgb(10, 17, 24) 59%,
+    rgb(10, 17, 24) 81%,
+    rgb(11, 18, 25) 89%,
+    rgb(12, 19, 26) 98%,
+    rgb(13, 20, 28) 100%
+  );
 }
 
 #haven-canvas {
+  position:     relative;
+  z-index:      1;
   width:        100%;
   height:       100%;
   display:      block;
@@ -87,53 +157,88 @@ body {
   top:         50%;
   left:        50%;
   transform:   translate(-50%, -50%);
-  width:       min(420px, 92vw);
+  width:       min(400px, 92vw);
   z-index:     10;
+  background:  rgba(255, 255, 255, 0.96);
+  border:      1px solid #fff;
+  border-radius: 24px;
+  box-shadow:  0 24px 70px rgba(23, 97, 144, 0.28);
+  padding:     28px;
+  color:       var(--mp-ink);
 }
 
 .login-tabs {
   display:         flex;
-  border-bottom:   1px solid var(--color-border);
-  margin-bottom:   1.5rem;
+  gap:             6px;
+  padding:         5px;
+  background:      #eaf1f5;
+  border-radius:   13px;
+  margin-bottom:   1.25rem;
 }
 .tab {
   flex:        1;
-  background:  none;
+  background:  transparent;
   border:      none;
-  color:       var(--color-muted);
-  font-size:   0.9rem;
-  padding:     0.6rem;
+  border-radius: 9px;
+  color:       #526b7c;
+  font-size:   0.875rem;
+  font-weight: 700;
+  padding:     0.55rem;
   cursor:      pointer;
-  transition:  color var(--transition), border-bottom var(--transition);
-  border-bottom: 2px solid transparent;
+  transition:  all var(--transition);
 }
 .tab--active {
-  color:         var(--color-teal);
-  border-bottom: 2px solid var(--color-teal);
+  background:  #ffffff;
+  color:       var(--mp-ink);
+  box-shadow:  0 2px 6px rgba(23, 48, 68, 0.12);
 }
 
 .form-group {
   display:        flex;
   flex-direction: column;
   gap:            0.3rem;
-  margin-bottom:  1rem;
+  margin-bottom:  0.85rem;
 }
-.form-group label { font-size: 0.8rem; color: var(--color-muted); }
 
-input[type="text"],
-input[type="email"],
-input[type="password"] {
-  width:         100%;
-  background:    var(--color-surface2);
-  border:        1px solid var(--color-border);
-  border-radius: var(--radius);
-  color:         var(--color-text);
-  font-size:     0.9rem;
-  padding:       0.55rem 0.8rem;
-  outline:       none;
-  transition:    border-color var(--transition);
+.form-group label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mp-ink);
 }
-input:focus { border-color: var(--color-teal); box-shadow: 0 0 0 2px rgba(78,205,196,0.2); }
+
+.form-group input {
+  padding: 10px 12px;
+  border: 1px solid #c7d6df;
+  border-radius: 9px;
+  font-size: 0.9rem;
+  color: var(--mp-ink);
+  background: #ffffff;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-group input:focus {
+  border-color: #4ecdc4;
+  box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.25);
+}
+
+#login-panel input[type="text"],
+#login-panel input[type="email"],
+#login-panel input[type="password"] {
+  width:         100%;
+  background:    #ffffff;
+  border:        1px solid #c7d6df;
+  border-radius: 9px;
+  color:         var(--mp-ink);
+  font-size:     0.9rem;
+  padding:       10px 12px;
+  outline:       none;
+  transition:    border-color var(--transition), box-shadow var(--transition);
+}
+#login-panel input:focus {
+  border-color: #4ecdc4;
+  box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.25);
+}
 
 .error-text { color: var(--color-error); font-size: 0.8rem; margin-top: 0.5rem; }
 
@@ -679,5 +784,100 @@ input:checked + .slider:before {
   0% { box-shadow: 0 0 10px rgba(241, 196, 15, 0.4); }
   100% { box-shadow: 0 0 18px rgba(241, 196, 15, 0.8); }
 }
+
+/* ── MiPlanet-Style In-World Speech Bubbles ──────────────────────────────── */
+.mp-bubble {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: rgba(16, 28, 45, 0.94);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 13px;
+  padding: 8px 13px;
+  width: max-content;
+  max-width: 220px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  z-index: 99999;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  animation: mp-bubble-pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.mp-bubble strong {
+  color: var(--mp-gold);
+  display: block;
+  font-size: 11px;
+  margin-bottom: 2px;
+  letter-spacing: 0.2px;
+}
+
+@keyframes mp-bubble-pop {
+  from { opacity: 0; transform: translate(-50%, -85%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+}
+
+/* ── MiPlanet-Style Avatar Context Menu ──────────────────────────────────── */
+.mp-context {
+  position: fixed;
+  width: 215px;
+  z-index: 100000;
+  padding: 12px;
+  background: rgba(248, 251, 255, 0.98);
+  border: 1px solid #dce6ec;
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  color: var(--mp-ink);
+  animation: mp-context-in 0.15s ease-out;
+}
+
+.mp-context strong {
+  display: block;
+  padding: 2px 4px 10px;
+  font-size: 13.5px;
+  font-weight: 800;
+  border-bottom: 1px solid #e5edf2;
+  margin-bottom: 8px;
+}
+
+.mp-context button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  margin: 4px 0;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #dce6ec;
+  border-radius: 9px;
+  color: var(--mp-ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.mp-context button:hover {
+  background: #edf6fc;
+  border-color: #bcd4e6;
+  transform: translateY(-1px);
+}
+
+.mp-context button.danger:hover {
+  background: #fde8e8;
+  border-color: #f8b4b4;
+  color: #c81e1e;
+}
+
+@keyframes mp-context-in {
+  from { opacity: 0; transform: scale(0.95) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 
 
