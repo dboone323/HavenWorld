@@ -62,8 +62,12 @@ export class InWorldSpeechBubbles {
 
   private setupSocketListener(): void {
     socketService.on<ChatMessage>(SOCKET_EVENTS.CHAT_MESSAGE, (msg) => {
-      if (!msg || !msg.senderId || !msg.text) return;
-      this.showBubble(msg.senderId, msg.senderName || 'Citizen', msg.text);
+      if (!msg) return;
+      const userId = msg.senderId || msg.playerId || authService.user?.id || '';
+      const name = msg.senderName || msg.username || authService.user?.username || 'Citizen';
+      const text = msg.text || msg.content || '';
+      if (!userId || !text) return;
+      this.showBubble(userId, name, text);
     });
   }
 
@@ -73,10 +77,14 @@ export class InWorldSpeechBubbles {
     // Remove any previous bubble for this user
     this.removeBubble(userId);
 
-    const isSelf = userId === authService.user?.id;
+    const isSelf =
+      userId === authService.user?.id ||
+      (authService.user?.username && senderName === authService.user.username) ||
+      !this.remoteAvatarGetters.has(userId);
+
     const targetGetter = isSelf
       ? this.localAvatarGetter
-      : this.remoteAvatarGetters.get(userId);
+      : this.remoteAvatarGetters.get(userId) || this.localAvatarGetter;
 
     const bubbleEl = document.createElement('div');
     bubbleEl.className = 'mp-bubble';
@@ -118,9 +126,9 @@ export class InWorldSpeechBubbles {
 
   private positionBubbleElement(el: HTMLElement, worldPos: BABYLON.Vector3 | null): void {
     if (!worldPos || !this.scene || !this.scene.activeCamera) {
-      // Center fallback if no 3D target
+      el.style.display = 'block';
       el.style.left = '50%';
-      el.style.top = '70%';
+      el.style.top = '35%';
       return;
     }
 
@@ -136,11 +144,19 @@ export class InWorldSpeechBubbles {
       camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight())
     );
 
+    const canvas = engine.getRenderingCanvas();
+    const rect = canvas
+      ? canvas.getBoundingClientRect()
+      : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+
+    const clientX = rect.left + (screenPos.x / engine.getRenderWidth()) * rect.width;
+    const clientY = rect.top + (screenPos.y / engine.getRenderHeight()) * rect.height;
+
     // Only render if in front of camera
     if (screenPos.z > 0 && screenPos.z < 1) {
       el.style.display = 'block';
-      el.style.left = `${Math.round(screenPos.x)}px`;
-      el.style.top = `${Math.round(screenPos.y)}px`;
+      el.style.left = `${Math.round(clientX)}px`;
+      el.style.top = `${Math.round(clientY)}px`;
     } else {
       el.style.display = 'none';
     }
