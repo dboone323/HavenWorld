@@ -176,7 +176,7 @@ export const RecycleItemSchema = z.object({
 });
 
 export const StartCraftSchema = z.object({
-  recipeId: uuid,
+  recipeId: z.string().min(1).max(64),
 });
 
 export const ClaimCraftSchema = z.object({

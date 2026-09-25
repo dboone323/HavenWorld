@@ -1,52 +1,96 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AudioEngine } from '../AudioEngine';
 
-class MockAudioParam {
+class FunctionalAudioParam {
   value = 1;
-  setValueAtTime = vi.fn((val: number) => {
+  history: Array<{ type: string; value: number; time: number }> = [];
+
+  setValueAtTime(val: number, time: number) {
     this.value = val;
-  });
-  linearRampToValueAtTime = vi.fn();
-  exponentialRampToValueAtTime = vi.fn();
+    this.history.push({ type: 'setValueAtTime', value: val, time });
+  }
+
+  linearRampToValueAtTime(val: number, time: number) {
+    this.value = val;
+    this.history.push({ type: 'linearRampToValueAtTime', value: val, time });
+  }
+
+  exponentialRampToValueAtTime(val: number, time: number) {
+    this.value = val;
+    this.history.push({ type: 'exponentialRampToValueAtTime', value: val, time });
+  }
 }
 
-class MockGainNode {
-  gain = new MockAudioParam();
-  connect = vi.fn();
-  disconnect = vi.fn();
+class FunctionalGainNode {
+  gain = new FunctionalAudioParam();
+  connectedTo: any[] = [];
+  disconnected = false;
+
+  connect(destination: any) {
+    this.connectedTo.push(destination);
+  }
+
+  disconnect() {
+    this.disconnected = true;
+    this.connectedTo = [];
+  }
 }
 
-class MockOscillatorNode {
+class FunctionalOscillatorNode {
   type = 'sine';
-  frequency = new MockAudioParam();
-  connect = vi.fn();
-  disconnect = vi.fn();
-  start = vi.fn();
-  stop = vi.fn();
+  frequency = new FunctionalAudioParam();
+  connectedTo: any[] = [];
+  started = false;
+  startTime = 0;
+  stopped = false;
+  stopTime = 0;
+
+  connect(destination: any) {
+    this.connectedTo.push(destination);
+  }
+
+  disconnect() {
+    this.connectedTo = [];
+  }
+
+  start(time = 0) {
+    this.started = true;
+    this.startTime = time;
+  }
+
+  stop(time = 0) {
+    this.stopped = true;
+    this.stopTime = time;
+  }
 }
 
-let activeMockContext: MockAudioContext | null = null;
+let activeFunctionalContext: FunctionalAudioContext | null = null;
 
-class MockAudioContext {
+class FunctionalAudioContext {
   currentTime = 0;
-  destination = {};
-  createdOscillators: MockOscillatorNode[] = [];
-  createdGains: MockGainNode[] = [];
+  destination = { name: 'FunctionalAudioDestination' };
+  createdOscillators: FunctionalOscillatorNode[] = [];
+  createdGains: FunctionalGainNode[] = [];
+  state: AudioContextState = 'running';
 
   constructor() {
-    activeMockContext = this;
+    activeFunctionalContext = this;
   }
 
   createGain() {
-    const gain = new MockGainNode();
+    const gain = new FunctionalGainNode();
     this.createdGains.push(gain);
-    return gain;
+    return gain as unknown as GainNode;
   }
 
   createOscillator() {
-    const osc = new MockOscillatorNode();
+    const osc = new FunctionalOscillatorNode();
     this.createdOscillators.push(osc);
-    return osc;
+    return osc as unknown as OscillatorNode;
+  }
+
+  async resume() {
+    this.state = 'running';
   }
 }
 
@@ -57,8 +101,8 @@ describe('AudioEngine', () => {
   beforeEach(() => {
     localStorage.clear();
     originalAudioContext = (window as any).AudioContext;
-    (window as any).AudioContext = MockAudioContext;
-    activeMockContext = null;
+    (window as any).AudioContext = FunctionalAudioContext;
+    activeFunctionalContext = null;
     engine = new AudioEngine();
   });
 
@@ -74,7 +118,8 @@ describe('AudioEngine', () => {
 
     expect(engine.ctx).not.toBeNull();
     expect(engine.masterGain).not.toBeNull();
-    expect(engine.masterGain?.connect).toHaveBeenCalledWith(activeMockContext?.destination);
+    const functionalMasterGain = engine.masterGain as unknown as FunctionalGainNode;
+    expect(functionalMasterGain.connectedTo).toContain(activeFunctionalContext?.destination);
   });
 
   it('(b) setVolume(0.5) updates masterGain.gain.value = 0.5', () => {
@@ -114,49 +159,54 @@ describe('AudioEngine', () => {
     engine.init();
     engine.playFootstep();
 
-    expect(activeMockContext?.createdOscillators.length).toBe(1);
-    const osc = activeMockContext!.createdOscillators[0];
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(1);
+    const osc = activeFunctionalContext!.createdOscillators[0];
 
     expect(osc.type).toBe('sine');
-    expect(osc.frequency.setValueAtTime).toHaveBeenCalledWith(80, 0);
-    expect(osc.frequency.exponentialRampToValueAtTime).toHaveBeenCalledWith(40, 0.04);
-    expect(osc.start).toHaveBeenCalled();
-    expect(osc.stop).toHaveBeenCalledWith(0.04);
+    expect(osc.frequency.history).toEqual(
+      expect.arrayContaining([
+        { type: 'setValueAtTime', value: 80, time: 0 },
+        { type: 'exponentialRampToValueAtTime', value: 40, time: 0.04 },
+      ])
+    );
+    expect(osc.started).toBe(true);
+    expect(osc.stopped).toBe(true);
+    expect(osc.stopTime).toBe(0.04);
   });
 
   it('(f) playCoinPickup() creates 2 oscillator notes (329.6 Hz → 493.9 Hz), ramps gain', () => {
     engine.init();
     engine.playCoinPickup();
 
-    expect(activeMockContext?.createdOscillators.length).toBe(2);
-    const [note1, note2] = activeMockContext!.createdOscillators;
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(2);
+    const [note1, note2] = activeFunctionalContext!.createdOscillators;
 
     expect(note1.type).toBe('triangle');
     expect(note2.type).toBe('triangle');
 
     // First note at ~329.6 Hz (E4)
-    expect(note1.frequency.setValueAtTime).toHaveBeenCalledWith(
-      expect.closeTo(329.6, 1),
-      expect.any(Number)
-    );
+    const note1Set = note1.frequency.history.find((h) => h.type === 'setValueAtTime');
+    expect(note1Set).toBeDefined();
+    expect(note1Set!.value).toBeCloseTo(329.6, 1);
+
     // Second note at ~493.9 Hz (B4)
-    expect(note2.frequency.setValueAtTime).toHaveBeenCalledWith(
-      expect.closeTo(493.9, 1),
-      expect.any(Number)
-    );
+    const note2Set = note2.frequency.history.find((h) => h.type === 'setValueAtTime');
+    expect(note2Set).toBeDefined();
+    expect(note2Set!.value).toBeCloseTo(493.9, 1);
   });
 
   it('(g) playChatMessage() produces sine burst >800 Hz', () => {
     engine.init();
     engine.playChatMessage();
 
-    expect(activeMockContext?.createdOscillators.length).toBe(1);
-    const osc = activeMockContext!.createdOscillators[0];
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(1);
+    const osc = activeFunctionalContext!.createdOscillators[0];
 
     expect(osc.type).toBe('sine');
-    const freq = (osc.frequency.setValueAtTime as any).mock.calls[0][0];
-    expect(freq).toBeGreaterThan(800);
-    expect(osc.start).toHaveBeenCalled();
+    const setEvent = osc.frequency.history.find((h) => h.type === 'setValueAtTime');
+    expect(setEvent).toBeDefined();
+    expect(setEvent!.value).toBeGreaterThan(800);
+    expect(osc.started).toBe(true);
   });
 
   it('(h) When muted: playFootstep() and playCoinPickup() do not create oscillators', () => {
@@ -166,28 +216,28 @@ describe('AudioEngine', () => {
     engine.playFootstep();
     engine.playCoinPickup();
 
-    expect(activeMockContext?.createdOscillators.length).toBe(0);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(0);
   });
 
   it('Procedural synthesizers: plays furniture place, doorbell, fishing, pet, and trade sounds', () => {
     engine.init();
 
     engine.playFurniturePlace();
-    expect(activeMockContext?.createdOscillators.length).toBe(1);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(1);
 
     engine.playDoorbell();
-    expect(activeMockContext?.createdOscillators.length).toBe(2);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(2);
 
     engine.playFishingBite();
-    expect(activeMockContext?.createdOscillators.length).toBe(5);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(5);
 
     engine.playFishingCatch();
-    expect(activeMockContext?.createdOscillators.length).toBe(9);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(9);
 
     engine.playPetHappy();
-    expect(activeMockContext?.createdOscillators.length).toBe(10);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(10);
 
     engine.playTradeComplete();
-    expect(activeMockContext?.createdOscillators.length).toBe(11);
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(11);
   });
 });

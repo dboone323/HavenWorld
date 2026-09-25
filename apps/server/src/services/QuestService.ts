@@ -109,10 +109,14 @@ export class QuestService {
       }
 
       if (isNowCompleted) {
-        if (record.rewardGems > 0) {
+        const updateData: { havenGems?: { increment: number }; havenCoins?: { increment: number } } = {};
+        if (record.rewardGems > 0) updateData.havenGems = { increment: record.rewardGems };
+        if (record.rewardCoins > 0) updateData.havenCoins = { increment: record.rewardCoins };
+
+        if (Object.keys(updateData).length > 0) {
           await prisma.user.update({
             where: { id: userId },
-            data: { havenGems: { increment: record.rewardGems } },
+            data: updateData,
           });
         }
 

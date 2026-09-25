@@ -165,24 +165,41 @@ export class FishingService {
       startOfWeek.setUTCHours(0, 0, 0, 0);
       startOfWeek.setUTCDate(startOfWeek.getUTCDate() - startOfWeek.getUTCDay());
 
-      await prisma.fishingLeaderboard.upsert({
-        where: {
-          userId_weekOf: {
+      let shouldUpsert = true;
+      if (typeof prisma.fishingLeaderboard.findUnique === 'function') {
+        const existingEntry = await prisma.fishingLeaderboard.findUnique({
+          where: {
+            userId_weekOf: {
+              userId: session.userId,
+              weekOf: startOfWeek,
+            },
+          },
+        });
+        if (existingEntry && session.weightLbs <= existingEntry.weightLbs) {
+          shouldUpsert = false;
+        }
+      }
+
+      if (shouldUpsert) {
+        await prisma.fishingLeaderboard.upsert({
+          where: {
+            userId_weekOf: {
+              userId: session.userId,
+              weekOf: startOfWeek,
+            },
+          },
+          create: {
             userId: session.userId,
+            species: session.fish.name,
+            weightLbs: session.weightLbs,
             weekOf: startOfWeek,
           },
-        },
-        create: {
-          userId: session.userId,
-          species: session.fish.name,
-          weightLbs: session.weightLbs,
-          weekOf: startOfWeek,
-        },
-        update: {
-          weightLbs: { set: session.weightLbs },
-          species: session.fish.name,
-        },
-      });
+          update: {
+            weightLbs: { set: session.weightLbs },
+            species: session.fish.name,
+          },
+        });
+      }
 
       // Notify user
       const io = getIO();

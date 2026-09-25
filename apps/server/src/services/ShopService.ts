@@ -49,6 +49,14 @@ export class ShopService {
           where: { id: userId },
           data: { havenGems: { decrement: price } },
         });
+      } else {
+        if (user.havenCoins < price) {
+          throw new Error('Insufficient HavenCoins');
+        }
+        await tx.user.update({
+          where: { id: userId },
+          data: { havenCoins: { decrement: price } },
+        });
       }
 
       // Ensure item exists in DB items table
@@ -171,6 +179,13 @@ export class ShopService {
           lastLoginDate: now,
         },
       });
+
+      if (coinsAwarded > 0) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { havenCoins: { increment: coinsAwarded } },
+        });
+      }
 
       if (gemsAwarded > 0) {
         await tx.user.update({

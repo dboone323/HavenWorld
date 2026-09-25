@@ -91,12 +91,12 @@ Active tracking for immediate implementation to address furniture responsiveness
 | **Part 1** | **Core Engine & Network Infrastructure** | Viewport, camera, movement, speed authority, sockets | **AUDITED & REFINED** | Mobile aspect framing, clean 3D validator, boundary clamps |
 | **Part 2** | **Avatar System & Wardrobe** | 2D chibi billboard, multi-angle sprites, wardrobe catalog | **AUDITED & REFINED** | Underwear base, 18-frame atlas, 403 save fix, safe item grant |
 | **Part 3** | **Loft Geometry & Furniture Decorator** | 3D room, placement ghost, surfaces, collision | **AUDITED & REFINED** | Top toolbar, instant ghost, tactile audio, surface sync |
-| **Part 4** | **Economy, Shop & Trading System** | Coins, shop catalogs, 8-slot comparative trading | *Queued Next* | Coin transaction safety, inventory sync, modal feedback |
-| **Part 5** | **Social Systems & In-World Chat** | 3D speech bubbles, context menus, moderation | *Pending* | Typing indicators, emote sync, whisper routing |
-| **Part 6** | **Mini-Games & Secondary Activities** | Pizza chef, fishing dock, arcade | *Pending* | Loop polish, tactile reward audio, payout balancing |
-| **Part 7** | **Progression, Quests & Identity** | Daily quests, level xp, passport badges | *Pending* | Claim animations, profile inspection, achievement sync |
-| **Part 8** | **Client HUD, Navigation & Polish** | Dock icons, modals, audio synthesizers, pwa | *Pending* | Responsive scaling, modal backdrop blur, touch targets |
-| **Part 9** | **World Destinations & Public Spaces** | Central lobby, haven park, coffee shop | *Pending* | Transition portals, crowd performance, ambiance |
+| **Part 4** | **Economy, Shop & Trading System** | Coins, shop catalogs, 8-slot comparative trading | **AUDITED & REFINED** | Fixed coin purchase leak, restored trade shelf isTradeable, streak coin awards |
+| **Part 5** | **Social Systems & In-World Chat** | 3D speech bubbles, context menus, moderation | **AUDITED & REFINED** | Removed colliding 3D speech planes, unified in-world MiPlanet bubbles, local emote feedback |
+| **Part 6** | **Mini-Games & Secondary Activities** | Pizza chef, fishing dock, arcade, crafting | **AUDITED & REFINED** | Fixed crafting recipeId schema type, prevented fishing leaderboard score overwrite |
+| **Part 7** | **Progression, Quests & Identity** | Daily quests, level xp, passport badges | **AUDITED & REFINED** | Awarded quest havenCoins, deterministic UTC streak tracking with achievement checks |
+| **Part 8** | **Client HUD, Navigation & Polish** | Dock icons, modals, audio synthesizers, pwa | **AUDITED & REFINED** | Auto-resuming suspended Web Audio, 100% mock-free functional audio test suite |
+| **Part 9** | **World Destinations & Public Spaces** | Central lobby, haven park, coffee shop | **AUDITED & REFINED** | Set public rooms isPublic: true in seed, case-insensitive mesh prefixes, dynamic camera follow |
 
 ---
 
@@ -233,6 +233,169 @@ Active tracking for immediate implementation to address furniture responsiveness
   - 🗑️ **What Was Pruned**:
     - Pruned legacy 2D isometric tilemap math (`gridX * tileWidth / 2 - gridY * tileHeight / 2`) from Canvas 2D engine in `src/client/rooms/`.
     - Pruned obsolete canvas floor tinting filters in favor of native Babylon.js PBR materials in `SurfaceManager.ts`.
+
+---
+
+### Part 4 Deep Audit: Economy, Shop & Peer-to-Peer Trading System
+
+#### 4. Subsystem Audit Breakdown
+
+- **4.1 Currencies & Dual Wallet Balance (`apps/server/src/services/ShopService.ts`, `apps/server/src/routes/marketplace.ts`)**:
+  - ✅ **What Works**:
+    - Dual currency model: `havenCoins` (soft earnable) and `havenGems` (hard premium).
+    - Database transactions (`prisma.$transaction`) ensure atomicity for purchases, sales, and transfers.
+    - Real-time client HUD coin balance display (`#stat-coins`) synced via `/api/users/me`.
+  - ❌ **What Was Broken & Fixed**:
+    - **Free Coin Purchases Leak**: In `ShopService.buyItem()`, coin purchases checked nothing and decremented nothing. Users could purchase any coin catalog item for free regardless of balance. Fixed by adding authoritative `user.havenCoins < price` check and atomic `havenCoins: { decrement: price }`.
+    - **Daily Login Missing Coin Credit**: `ShopService.claimDailyReward()` incremented gems but neglected to increment `user.havenCoins`. Fixed by adding `tx.user.update` with `havenCoins: { increment: coinsAwarded }`.
+  - 🔄 **Needs More Refining**:
+    - Transaction history ledger: add an audit log table for player purchases and trades to enable customer support dispute resolution.
+
+- **4.2 Peer-to-Peer Comparative Trading (`apps/client/src/ui/TradeModal.ts`, `apps/server/src/services/TradeManager.ts`)**:
+  - ✅ **What Works**:
+    - Two-player synchronized trade modal with 8 item slots per player and HavenCoin offer fields.
+    - Dual confirmation protocol: items lock upon both players clicking 'Lock Offer'; final swap requires mutual acceptance.
+    - Server-side inventory re-verification immediately before swap execution preventing item duplication exploits.
+    - 30-second auto-expiration timer with audible warning when trade proposal is pending.
+  - ❌ **What Was Broken & Fixed**:
+    - **Trade Drawer Filter Defect**: `/api/users/me/inventory` omitted `isTradeable`. `TradeModal.ts` evaluated `item.isTradeable === true`, which evaluated to `false` for every inventory item, leaving the trade drawer 100% empty. Fixed by exposing `isTradeable: entry.item.isTradeable` in the inventory API response.
+  - 🗑️ **What Was Pruned**:
+    - Pruned dead file `apps/server/src/game/trade.ts` (0 active references, shadowing `TradeManager.ts`).
+
+- **4.3 Shop Catalog & Purchases (`apps/client/src/ui/ShopModal.ts`, `apps/server/src/routes/marketplace.ts`)**:
+  - ✅ **What Works**:
+    - Tabbed category catalog (Featured, Furniture, Outfits, Consumables) with live coin and gem price badges.
+    - Non-blocking toast notifications on purchase success and failure with `playCoinPickup()` and `playError()` audio cues.
+    - Automatic inventory reload after purchase.
+  - 🔄 **Needs More Refining**:
+    - Preview item on avatar or in 3D scene before buying.
+
+---
+
+### Part 5 Deep Audit: Social Systems, In-World Chat & Moderation
+
+#### 5. Subsystem Audit Breakdown
+
+- **5.1 3D In-World Speech Bubbles (`apps/client/src/ui/InWorldSpeechBubbles.ts`, `apps/client/src/scenes/RoomScene.ts`)**:
+  - ✅ **What Works**:
+    - Authentic MiPlanet-standard HTML DOM speech bubbles (`.mp-bubble`) dynamically projected above avatars using `BABYLON.Vector3.Project`.
+    - Automatic 6-second display duration with smooth ease-out opacity/scale fade.
+    - Word wrapping, sender name tag, and automatic vertical positioning anchored 3.45m above the avatar origin.
+  - ❌ **What Was Broken & Fixed**:
+    - **Dual Bubble Collision**: When remote players sent messages, `RoomScene.ts` triggered both `InWorldSpeechBubbles.showBubble` and `remote.showSpeech()`, spawning an unsightly low-resolution 3D plane texture directly colliding with the HTML DOM bubble. Fixed by removing the redundant 3D plane invocation from `chatOverlay` in `RoomScene.ts`.
+    - **Local Emote Feedback**: Triggering an emote played audio but showed no bubble above the local player's avatar. Fixed by registering local player emote display via `speechBubbles.showBubble` with emote badge icon.
+  - 🔄 **Needs More Refining**:
+    - Typing indicators: wire `TypingIndicatorManager` to show subtle typing dots above the avatar when typing in `#chat-input`.
+
+- **5.2 Avatar Context Menu & Moderation (`apps/client/src/ui/AvatarContextMenu.ts`, `apps/server/src/services/ModerationService.ts`)**:
+  - ✅ **What Works**:
+    - Right-click or touch-hold on any player avatar opens tactile context menu: View Profile, Direct Message, Trade, Add Friend, Report.
+    - ModerationService applies automated text filter for offensive language and handles player reporting.
+    - Direct Message panel (`DirectMessagePanel.ts`) enables private peer-to-peer conversations.
+  - 🔄 **Needs More Refining**:
+    - Player blocking: mute messages and hide speech bubbles from blocked users in current room.
+
+---
+
+### Part 6 Deep Audit: Mini-Games, Professions & Interactivity
+
+#### 6. Subsystem Audit Breakdown
+
+- **6.1 Workshop Crafting & Recycling (`apps/client/src/ui/WorkshopPanel.ts`, `apps/server/src/services/WorkshopService.ts`)**:
+  - ✅ **What Works**:
+    - Recipe catalog with ingredient requirements (timber, fabric, metal).
+    - Item recycling: dismantle unwanted furniture to recover raw materials.
+    - Crafting queue with timed completion and claim collection.
+  - ❌ **What Was Broken & Fixed**:
+    - **StartCraftSchema Validation Failure**: `socketSchemas.ts:178` enforced `recipeId: uuid`. However, crafting recipe IDs in `@havenworld/shared` are string identifiers (e.g. `'recipe_reclaimed_bookshelf'`). All socket craft requests were rejected with `INVALID_PAYLOAD`. Fixed by loosening `recipeId` to `z.string().min(1).max(64)`.
+  - 🗑️ **What Was Pruned**:
+    - Pruned dead file `apps/server/src/game/fishing.ts` (0 active references, shadowing `FishingService.ts`).
+
+- **6.2 Fishing System (`apps/client/src/fishing/FishingController.ts`, `apps/server/src/services/FishingService.ts`)**:
+  - ✅ **What Works**:
+    - Water bobber casting in Haven Park lake with tension indicator and hook bite audio cues (`playFishingBite()`).
+    - Timing mini-game: strike when tension is green to catch fish.
+    - Species variety (Sardines, Bass, Salmon, Golden Koi) with randomized weights.
+  - ❌ **What Was Broken & Fixed**:
+    - **Weekly Leaderboard Score Overwrite**: `FishingService.ts` unconditionally overwrote leaderboard records upon every catch. A player with a 25.0 lb catch would have their score downgraded by catching a 1.2 lb fish. Fixed by enforcing `session.weightLbs > existingEntry.weightLbs` before updating.
+  - 🔄 **Needs More Refining**:
+    - Rod upgrade tiers: higher tier rods increase bite rate and reduce tension decay speed.
+
+- **6.3 Pizza Chef Mini-Game (`apps/client/src/scenes/PizzaScene.ts`)**:
+  - ✅ **What Works**:
+    - Fast-paced timed preparation game: assemble ingredients (sauce, cheese, pepperoni, mushrooms) matching customer ticket orders.
+    - Tactile feedback: audio on ingredient tap, coin reward celebration on order completion, error buzzer on mistakes.
+    - Score and coin payout calculation based on order speed and accuracy.
+
+---
+
+### Part 7 Deep Audit: Progression, Quests & Identity
+
+#### 7. Subsystem Audit Breakdown
+
+- **7.1 Daily & Weekly Quests (`apps/client/src/ui/QuestHUD.ts`, `apps/server/src/services/QuestService.ts`)**:
+  - ✅ **What Works**:
+    - Rotating quest objectives (Decorate room, Catch 3 fish, Complete pizza orders, Trade with a citizen).
+    - Real-time socket event updates on quest progress (`SOCKET_EVENTS.QUEST_PROGRESS_UPDATE`).
+    - Claim celebration toast with `playSuccess()` chime upon quest completion.
+  - ❌ **What Was Broken & Fixed**:
+    - **Quest Coin Reward Omission**: In `QuestService.ts:111`, when a quest completed, `record.rewardGems` was credited to the user, but `record.rewardCoins` was never awarded to `user.havenCoins`. Fixed by adding `havenCoins: { increment: record.rewardCoins }` on completion.
+
+- **7.2 Daily Login Streaks & Achievements (`apps/client/src/ui/DailyLoginModal.ts`, `apps/server/src/routes/users.ts`)**:
+  - ✅ **What Works**:
+    - Daily streak calendar with progressive coin and gem rewards (Days 1–7, 14, 30).
+    - Streak badge milestones and login modal presentation.
+  - ❌ **What Was Broken & Fixed**:
+    - **Non-Deterministic Streak Reset**: `routes/users.ts` evaluated streak continuity using server-local date methods (`getDate()`, `getMonth()`), leading to erratic streak resets across time zones. Fixed by migrating streak calculations to deterministic UTC calendar days (`getUTCDate()`, `getUTCMonth()`).
+    - **Missing Streak Achievement Dispatch**: When streaks incremented, `AchievementService.checkAndAward` was never called for `'STREAK_UPDATE'`. Fixed by triggering achievement validation on daily streak claims.
+
+- **7.3 Citizen Passport & Identity (`apps/client/src/ui/PassportModal.ts`)**:
+  - ✅ **What Works**:
+    - Citizen ID card displaying join date, badges earned, rooms owned, and bio.
+    - Stamp collection tracking major accomplishments throughout HavenWorld.
+  - 🔄 **Needs More Refining**:
+    - Embed 2D chibi avatar bust render on the passport photo area instead of initials badge.
+
+---
+
+### Part 8 Deep Audit: Client HUD, Navigation & UX Polish
+
+#### 8. Subsystem Audit Breakdown
+
+- **8.1 Procedural Native Web Audio Synthesizer (`apps/client/src/audio/AudioEngine.ts`)**:
+  - ✅ **What Works**:
+    - 100% free-tier zero-asset procedural audio synthesis using native Web Audio API (oscillators and gain curves).
+    - Sound library: footsteps, clicks, coin pickups, chat notifications, furniture placement, fishing bites, catches, pet happiness, trade chimes.
+    - Category-based volume sliders and master mute controls persisted in `localStorage`.
+  - ❌ **What Was Broken & Fixed**:
+    - **AudioContext Autoplay Suspension**: In modern browsers (Chrome/Safari), `AudioContext` initializes in a `'suspended'` state. If sounds were triggered, they failed silently unless explicitly resumed. Fixed by automatically calling `this.ctx.resume()` inside `canPlay()` on user gesture triggers.
+    - **Mock Rule Violation in Tests**: `audioEngine.test.ts` utilized `vi.fn()` mock stubs and classes named `Mock...`, violating `RULE[user_global]`. Fixed by replacing all mocks with a fully functional in-memory Web Audio graph simulator that validates real scheduling timelines and state transitions without stubs.
+
+- **8.2 Bottom Navigation Dock & Modal Management (`apps/client/src/main.ts`, `style.css`)**:
+  - ✅ **What Works**:
+    - Sleek bottom dock with quick access: Wardrobe, Loft Decorator, Shop, Friends, Quests, Passport, Settings.
+    - Modal backdrop blur (`backdrop-filter: blur(12px)`) and unified glassmorphism theme (`#0e141e` with cyan borders).
+    - Responsive layout adapting to both desktop widescreen and mobile portrait viewports.
+  - 🔄 **Needs More Refining**:
+    - Add explicit `HelpModal.ts` bound to keyboard shortcut `?` / `F1` for immediate gameplay controls walkthrough.
+
+---
+
+### Part 9 Deep Audit: World Destinations & Public Spaces
+
+#### 9. Subsystem Audit Breakdown
+
+- **9.1 Public Destination Hubs (`apps/server/prisma/seed.ts`, `apps/client/src/world/RoomPrefabs.ts`)**:
+  - ✅ **What Works**:
+    - Public social spaces: The Lobby (`room-lobby`), Town Square (`room-town-square`), Haven Park (`room-park`), and The Cozy Café (`room-cafe`).
+    - Dedicated room environments with themed floor swatches, decorative props, and zone layouts.
+  - ❌ **What Was Broken & Fixed**:
+    - **Public Rooms Hidden in Database Seed**: In `seed.ts`, `room-lobby`, `room-town-square`, and `room-cafe` were flagged as `isPublic: false`, preventing them from appearing in public room directory listings. Fixed by setting `isPublic: true` for all public rooms in `seed.ts`.
+    - **Case-Insensitive Mesh Prefix Processing**: In `RoomLoader.ts:40`, mesh name classification checked only PascalCase `Walkable_` and `Floor`. GLB models exported with lowercase `walkable_` or `floor_` were marked non-pickable, breaking click-to-move in exported public spaces. Fixed by matching prefixes case-insensitively.
+    - **Dynamic Camera Follow in Public Spaces**: `RoomScene.ts` locked the camera at static `(0, 1.0, 0)` in Town Square and The Cozy Café as if they were private lofts. Fixed by following the avatar with smooth camera interpolation across all public destinations.
+  - 🔄 **Needs More Refining**:
+    - Transition portal animations when walking into room exit zones.
+    - Distinct procedural ambient background audio loops for each public zone (park birds, café murmurs, town wind).
 
 ---
 

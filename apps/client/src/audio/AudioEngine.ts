@@ -413,6 +413,9 @@ export class AudioEngine {
     if (this.settings.isMuted) return false;
     if (!this.settings.categories[category]) return false;
     if (!this.ctx) this.initContext();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
     return true;
   }
 }

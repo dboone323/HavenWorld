@@ -5,6 +5,7 @@ import { prisma } from '../prisma';
 import { inventoryService } from '../services/InventoryService';
 import { getIO } from '../sockets';
 import { roomManager } from '../services/RoomManager';
+import { AchievementService } from '../services/AchievementService';
 import { SOCKET_EVENTS, OUTFIT_SLOTS, normalizeGender } from '@havenworld/shared';
 
 const router = Router();
@@ -74,9 +75,9 @@ router.post('/daily-claim', requireAuth, async (req: AuthRequest, res) => {
   if (streak) {
     const lastDate = new Date(streak.lastLoginDate);
     const isSameDay =
-      lastDate.getFullYear() === now.getFullYear() &&
-      lastDate.getMonth() === now.getMonth() &&
-      lastDate.getDate() === now.getDate();
+      lastDate.getUTCFullYear() === now.getUTCFullYear() &&
+      lastDate.getUTCMonth() === now.getUTCMonth() &&
+      lastDate.getUTCDate() === now.getUTCDate();
 
     if (isSameDay) {
       return res.json({
@@ -105,6 +106,8 @@ router.post('/daily-claim', requireAuth, async (req: AuthRequest, res) => {
       data: { havenCoins: { increment: coinsAwarded } },
     });
 
+    await AchievementService.checkAndAward(userId, 'STREAK_UPDATE', { streak: newStreak });
+
     return res.json({
       alreadyClaimed: false,
       streak: newStreak,
@@ -127,6 +130,8 @@ router.post('/daily-claim', requireAuth, async (req: AuthRequest, res) => {
       where: { id: userId },
       data: { havenCoins: { increment: coinsAwarded } },
     });
+
+    await AchievementService.checkAndAward(userId, 'STREAK_UPDATE', { streak: newStreak });
 
     return res.json({
       alreadyClaimed: false,
@@ -325,6 +330,7 @@ router.get('/me/inventory', requireAuth, async (req: AuthRequest, res) => {
       assetUrl: entry.item.assetUrl,
       quantity: entry.quantity,
       isEquipped: entry.isEquipped,
+      isTradeable: entry.item.isTradeable,
     }))
   );
 });

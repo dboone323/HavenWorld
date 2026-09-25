@@ -239,9 +239,9 @@ export async function createRoomScene(
   // Camera follow: In personal lofts, keep camera stably centered at (0, 1.0, 0)
   // so the room and furniture never wobble or jitter.
   // In large open public spaces (like park/lobby), follow the avatar with smooth ease.
-  const isLoftRoom = roomId.startsWith('room-') && roomId !== 'room-lobby' && roomId !== 'room-park';
+  const isPublicRoom = roomId === 'room-lobby' || roomId === 'room-park' || roomId === 'room-town-square' || roomId === 'room-cafe';
   const cameraFollowCallback = () => {
-    if (!isLoftRoom && avatarController.rootMesh) {
+    if (isPublicRoom && avatarController.rootMesh) {
       camera.target = Vector3.Lerp(camera.target, avatarController.rootMesh.position, 0.08);
     }
   };
@@ -556,16 +556,8 @@ export async function createRoomScene(
     }
   });
 
-  const chatOverlay = new ChatOverlay(null, (msg: ChatMessage) => {
+  const chatOverlay = new ChatOverlay(null, () => {
     audioEngine.playChatMessage();
-    const pid = msg.playerId || msg.senderId;
-    const txt = msg.text || msg.content;
-    if (pid && txt) {
-      const remote = remoteAvatars.get(pid);
-      if (remote) {
-        remote.showSpeech(txt);
-      }
-    }
   });
 
   // ── Interaction & Context Menu Pointer Observable ────────────────────────
@@ -847,12 +839,8 @@ export async function createRoomScene(
       SOCKET_EVENTS.AVATAR_EMOTE,
       (data) => {
         audioEngine.playPetHappy();
-        if (data.userId !== user.id) {
-          const remote = remoteAvatars.get(data.userId);
-          if (remote) {
-            remote.showSpeech(`[Emote: ${data.emoteId}]`);
-          }
-        }
+        const displayName = data.userId === user.id ? user.username : 'Player';
+        speechBubbles.showBubble(data.userId, displayName, `✨ ${data.emoteId}`);
       }
     )
   );

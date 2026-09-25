@@ -32,16 +32,17 @@ export class RoomLoader {
 
     for (const mesh of allMeshes) {
       const name = mesh.name;
-      if (name.startsWith('NavMesh_')) {
+      const nameLower = name.toLowerCase();
+      if (nameLower.startsWith('navmesh_')) {
         mesh.isVisible = false;
         mesh.isPickable = false;
         Tags.AddTagsTo(mesh, 'navmesh');
         navMeshes.push(mesh);
-      } else if (name.startsWith('Walkable_') || name === 'Floor') {
+      } else if (nameLower.startsWith('walkable_') || nameLower === 'floor' || nameLower.startsWith('floor_')) {
         Tags.AddTagsTo(mesh, 'walkable');
         mesh.isPickable = true;
         walkableMeshes.push(mesh);
-      } else if (name.startsWith('Collision_')) {
+      } else if (nameLower.startsWith('collision_')) {
         mesh.isVisible = false;
         mesh.isPickable = false;
         Tags.AddTagsTo(mesh, 'collision');
