@@ -19,6 +19,7 @@ import {
   SetMoodSchema, EmoteSchema, ClubChatSchema,
   DMSendSchema, DMReadSchema,
   SitSchema,
+  AvatarUpdateSchema,
 } from './socketSchemas';
 import { FishingService } from '../services/FishingService';
 import { PrivacyManager } from '../services/PrivacyManager';
@@ -408,7 +409,7 @@ export function registerSocketHandlers(io: Server): void {
           cRotY
         );
 
-        // Broadcast to everyone else in the room (legacy & Phase 2 event)
+        // Broadcast canonical position update with timestamp to everyone else in the room
         const movePayload = {
           playerId: userId,
           userId,
@@ -418,9 +419,9 @@ export function registerSocketHandlers(io: Server): void {
           rotY: cRotY,
           direction: data.direction ?? 'down',
           isMoving: data.isMoving ?? false,
+          timestamp: Date.now(),
         };
         socket.to(data.roomId).emit(SOCKET_EVENTS.PLAYER_POSITION, movePayload);
-        socket.to(data.roomId).emit('player:move', movePayload);
       }
     );
 
@@ -509,18 +510,11 @@ export function registerSocketHandlers(io: Server): void {
         // Run through profanity filter
         const { filtered, wasFiltered } = moderateMessage(content);
 
-        // Persist to database for audit log
-        const saved = await prisma.chatMessage.create({
-          data: {
-            roomId,
-            senderId: userId,
-            content: filtered,
-            isFiltered: wasFiltered,
-          },
-        });
+        const msgId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
 
         const message: ChatMessage = {
-          id: saved.id,
+          id: msgId,
           senderId: userId,
           senderName: username,
           playerId: userId,
@@ -528,15 +522,28 @@ export function registerSocketHandlers(io: Server): void {
           text: filtered,
           content: filtered,
           isFiltered: wasFiltered,
-          timestamp: saved.createdAt.toISOString(),
+          timestamp: nowIso,
           roomId,
         };
 
         // Add to in-memory chat history (last 50)
         roomManager.addChatMessage(roomId, message);
 
-        // Broadcast to ALL players in the room INCLUDING sender
+        // Broadcast to ALL players in the room INCLUDING sender immediately
         io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, message);
+
+        // Asynchronously persist to database for audit log without blocking event loop
+        prisma.chatMessage.create({
+          data: {
+            id: msgId,
+            roomId,
+            senderId: userId,
+            content: filtered,
+            isFiltered: wasFiltered,
+          },
+        }).catch((err) => {
+          console.error('[Socket] Failed to persist chat message to DB:', err);
+        });
       }
     );
 
@@ -644,7 +651,13 @@ export function registerSocketHandlers(io: Server): void {
     // ── avatar:update ─────────────────────────────────────────────────────────
     socket.on(
       SOCKET_EVENTS.AVATAR_UPDATE,
-      async (avatarData: Record<string, string | null>) => {
+      async (rawData: unknown) => {
+        const parsed = AvatarUpdateSchema.safeParse(rawData);
+        if (!parsed.success) {
+          socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD', message: 'Invalid avatar update payload' });
+          return;
+        }
+        const avatarData = parsed.data as Record<string, string | null>;
         try {
           const itemFields = [
             'outfitHead',

@@ -199,3 +199,32 @@ export const ClubChatSchema = z.object({
   clubId: uuid,
   content: safeString(300),
 });
+
+// ── Avatar customization ──────────────────────────────────────────────────────
+export const AvatarUpdateSchema = z.object({
+  bodyType: z.union([z.string(), z.number()]).optional(),
+  skinTone: safeString(32).optional(),
+  skinColor: safeString(32).optional(),
+  hairStyle: safeString(64).optional(),
+  hairColor: safeString(32).optional(),
+  eyeStyle: safeString(64).optional(),
+  eyeColor: safeString(32).optional(),
+  gender: z.string().max(32).optional(),
+  topColor: safeString(32).optional(),
+  bottomColor: safeString(32).optional(),
+  outfitHead: safeString(64).nullable().optional(),
+  outfitFace: safeString(64).nullable().optional(),
+  outfitBody: safeString(64).nullable().optional(),
+  outfitLegs: safeString(64).nullable().optional(),
+  outfitFeet: safeString(64).nullable().optional(),
+  outfitBack: safeString(64).nullable().optional(),
+  outfitHand: safeString(64).nullable().optional(),
+  hair: safeString(64).optional(),
+  eyes: safeString(64).optional(),
+  top: safeString(64).optional(),
+  bottom: safeString(64).optional(),
+  shoes: safeString(64).optional(),
+  hat: safeString(64).optional(),
+  accessory: safeString(64).optional(),
+}).strict();
+

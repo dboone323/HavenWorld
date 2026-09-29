@@ -15,6 +15,7 @@ export class ChibiBillboard {
   private currentFrame = 0;
   private avatarData?: AvatarData;
   private beforeRenderObserver: (() => void) | null = null;
+  private _lastRenderKey: string = '';
 
   constructor(name: string, scene: BABYLON.Scene, parent?: BABYLON.Node | null) {
     this.scene = scene;
@@ -58,6 +59,7 @@ export class ChibiBillboard {
     this.material.diffuseTexture.hasAlpha = true;
     this.material.useAlphaFromDiffuseTexture = true;
     this.material.transparencyMode = BABYLON.Material.MATERIAL_ALPHATESTANDBLEND;
+    this.material.needDepthPrePass = true;
     this.material.emissiveColor = new BABYLON.Color3(1, 1, 1);
     this.material.disableLighting = true; // Crisp pixel art without 3D darkening
     this.material.specularColor = new BABYLON.Color3(0, 0, 0);
@@ -102,6 +104,10 @@ export class ChibiBillboard {
     const atlas = ChibiAtlasManager.getInstance();
     const img = atlas.getImage();
     if (!img) return;
+
+    const renderKey = `${this.currentAction}_${this.currentDirection}_${this.currentFrame}_${this.avatarData ? JSON.stringify(this.avatarData) : ''}`;
+    if (renderKey === this._lastRenderKey) return;
+    this._lastRenderKey = renderKey;
 
     try {
       const ctx = this.dynamicTexture.getContext() as CanvasRenderingContext2D;

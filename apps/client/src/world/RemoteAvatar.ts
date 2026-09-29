@@ -34,6 +34,7 @@ export class RemoteAvatar {
 
   private _targetPos: Vector3;
   private _targetRotY: number = 0;
+  private _lastTimestamp: number = 0;
   private _renderObserver: (() => void) | null = null;
 
   constructor(scene: Scene, user: UserProfile, initialPos?: { x: number; y: number; z: number; rotY?: number }) {
@@ -213,10 +214,11 @@ export class RemoteAvatar {
         }
       }
 
-      // Smooth position lerp
-      this.rootMesh.position = Vector3.Lerp(this.rootMesh.position, this._targetPos, 0.2);
-      // Smooth rotation lerp
-      this.rootMesh.rotation.y = Scalar.LerpAngle(this.rootMesh.rotation.y, this._targetRotY, 0.2);
+      // Frame-rate independent exponential smoothing
+      // At 60 FPS (clampedDt ~= 16.6ms), lerpFactor is ~0.207 matching standard responsive damping
+      const lerpFactor = 1 - Math.exp(-14 * (clampedDt / 1000));
+      this.rootMesh.position = Vector3.Lerp(this.rootMesh.position, this._targetPos, lerpFactor);
+      this.rootMesh.rotation.y = Scalar.LerpAngle(this.rootMesh.rotation.y, this._targetRotY, lerpFactor);
 
       // Keep billboard in exact sync
       this._chibiBillboard?.updatePosition(this.rootMesh.position, this._isSitting);
@@ -226,7 +228,14 @@ export class RemoteAvatar {
     this._renderObserver = callback;
   }
 
-  public updatePosition(x: number, y: number, z: number, rotY?: number): void {
+  public updatePosition(x: number, y: number, z: number, rotY?: number, timestamp?: number): void {
+    if (timestamp !== undefined && timestamp !== 0) {
+      if (this._lastTimestamp > 0 && timestamp < this._lastTimestamp) {
+        // Discard out-of-order stale packet
+        return;
+      }
+      this._lastTimestamp = timestamp;
+    }
     this._targetPos.set(x, y, z);
     if (rotY !== undefined) {
       this._targetRotY = rotY;

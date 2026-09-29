@@ -141,4 +141,29 @@ describe('RoomManager', () => {
     const notFound = rm.getPlayer('non_existent_id');
     expect(notFound).toBeUndefined();
   });
+
+  it('should atomically evict prior socket when same user joins with a new session', () => {
+    const playerOther: PlayerState = { id: 'other_user', username: 'Other', x: 5, y: 5, z: 0, rotY: 0, direction: 'down', isMoving: false, avatar: defaultTestAvatar };
+    const playerV1: PlayerState = { id: 'multi_user', username: 'Multi', x: 10, y: 10, z: 0, rotY: 0, direction: 'down', isMoving: false, avatar: defaultTestAvatar };
+    const playerV2: PlayerState = { id: 'multi_user', username: 'Multi', x: 20, y: 20, z: 0, rotY: 0, direction: 'up', isMoving: false, avatar: defaultTestAvatar };
+
+    rm.joinRoom('town_square', 'socket_other', playerOther);
+    rm.joinRoom('town_square', 'socket_old', playerV1);
+    expect(rm.getOccupantCount('town_square')).toBe(2);
+    expect(rm.getPlayer('multi_user')?.x).toBe(10);
+
+    // New connection by same user to another room
+    rm.joinRoom('cozy_cafe', 'socket_new', playerV2);
+
+    // Old socket must have been cleanly removed from town_square while other_user remains
+    expect(rm.getRoomState('town_square')?.players.has('socket_old')).toBe(false);
+    expect(rm.getRoomState('town_square')?.players.has('socket_other')).toBe(true);
+    expect(rm.getOccupantCount('town_square')).toBe(1);
+    expect(rm.getPlayerRoom('socket_old')).toBeUndefined();
+    // New socket is the authoritative registration in cozy_cafe
+    expect(rm.getOccupantCount('cozy_cafe')).toBe(1);
+    expect(rm.getPlayer('multi_user')?.roomId).toBe('cozy_cafe');
+    expect(rm.getPlayer('multi_user')?.x).toBe(20);
+  });
 });
+

@@ -11,6 +11,7 @@ class RoomManager {
   private rooms = new Map<string, RoomState>();
   private socketToRoom = new Map<string, string>(); // socketId → roomId
   private socketToUser = new Map<string, string>(); // socketId → userId
+  private userToSocket = new Map<string, string>(); // userId → socketId
 
   // ── Room lifecycle ──────────────────────────────────────────────────────────
   private ensureRoom(roomId: string): RoomState {
@@ -27,10 +28,15 @@ class RoomManager {
 
   // ── Player join / leave ─────────────────────────────────────────────────────
   joinRoom(roomId: string, socketId: string, player: PlayerState): void {
+    const existingSocket = this.userToSocket.get(player.id);
+    if (existingSocket && existingSocket !== socketId) {
+      this.leaveRoom(existingSocket);
+    }
     const room = this.ensureRoom(roomId);
     room.players.set(socketId, player);
     this.socketToRoom.set(socketId, roomId);
     this.socketToUser.set(socketId, player.id);
+    this.userToSocket.set(player.id, socketId);
   }
 
   leaveRoom(socketId: string): { roomId: string; playerId: string } | null {
@@ -38,9 +44,14 @@ class RoomManager {
     if (!roomId) return null;
     const room = this.rooms.get(roomId);
     const player = room?.players.get(socketId);
+    const userId = this.socketToUser.get(socketId);
+
     room?.players.delete(socketId);
     this.socketToRoom.delete(socketId);
     this.socketToUser.delete(socketId);
+    if (userId && this.userToSocket.get(userId) === socketId) {
+      this.userToSocket.delete(userId);
+    }
 
     // Public community space (Haven Park) is kept alive when empty
     // Personal lofts are cleaned up when empty to free memory
@@ -154,14 +165,13 @@ class RoomManager {
   }
 
   getPlayer(userId: string): (PlayerState & { roomId: string }) | undefined {
-    for (const [roomId, room] of this.rooms) {
-      for (const player of room.players.values()) {
-        if (player.id === userId) {
-          return { ...player, roomId };
-        }
-      }
-    }
-    return undefined;
+    const socketId = this.userToSocket.get(userId);
+    if (!socketId) return undefined;
+    const roomId = this.socketToRoom.get(socketId);
+    if (!roomId) return undefined;
+    const player = this.rooms.get(roomId)?.players.get(socketId);
+    if (!player) return undefined;
+    return { ...player, roomId };
   }
 }
 

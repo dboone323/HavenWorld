@@ -79,4 +79,19 @@ describe('PlayersListModal (Real Functional UI Validation)', () => {
 
     expect(document.getElementById('players-list-overlay')).toBeNull();
   });
+
+  it('safely escapes HTML tags in usernames preventing DOM injection', () => {
+    const occupants: RoomOccupant[] = [
+      { id: 'user-xss', username: '<img src=x onerror=alert(1)>Malicious', isSelf: false },
+    ];
+
+    PlayersListModal.show(occupants);
+    const overlay = document.getElementById('players-list-overlay');
+    expect(overlay).not.toBeNull();
+
+    // Verify raw HTML tag was NOT injected into the DOM
+    expect(overlay?.querySelector('img')).toBeNull();
+    expect(overlay?.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;Malicious');
+  });
 });
+

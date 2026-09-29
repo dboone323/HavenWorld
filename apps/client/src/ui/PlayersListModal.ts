@@ -5,6 +5,7 @@ import { SERVER_URL } from '../config';
 import { showToast } from './ToastNotification';
 import { SceneManager } from '../engine/SceneManager';
 import { PassportModal } from '../passport/PassportModal';
+import { escapeHtml } from '../utils/escapeHtml';
 
 export interface RoomOccupant {
   id: string;
@@ -93,7 +94,7 @@ export class PlayersListModal {
       info.innerHTML = `
         <span style="font-size: 1.1rem;">${player.isSelf ? '⭐' : '👤'}</span>
         <span style="font-weight: 600; color: ${player.isSelf ? '#ffd700' : '#fff'};">
-          ${player.username} ${player.isSelf ? '<span style="font-size: 0.75rem; color: #aaa;">(You)</span>' : ''}
+          ${escapeHtml(player.username)} ${player.isSelf ? '<span style="font-size: 0.75rem; color: #aaa;">(You)</span>' : ''}
         </span>
       `;
       row.appendChild(info);
