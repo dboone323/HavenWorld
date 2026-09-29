@@ -701,8 +701,11 @@ export class AvatarCustomizer {
 
     authService.updateAvatar({ ...this.currentData });
 
+    const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanData } =
+      this.currentData as Record<string, unknown>;
+
     socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
-      ...this.currentData,
+      ...cleanData,
       gender: normalizeGender(this.currentData.gender),
     });
   }

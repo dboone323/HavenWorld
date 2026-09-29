@@ -504,8 +504,32 @@ export function registerSocketHandlers(io: Server): void {
           });
         }
 
-        const roomId = data.roomId ?? roomManager.getPlayerRoom(socket.id);
-        if (!roomId) return;
+        const currentRoomId = roomManager.getPlayerRoom(socket.id);
+        if (!currentRoomId) {
+          socket.emit(SOCKET_EVENTS.CHAT_ERROR, {
+            code: 'NOT_IN_ROOM',
+            message: 'You must be in a room to send chat messages.',
+          });
+          return;
+        }
+
+        if (data.roomId && data.roomId !== currentRoomId) {
+          socket.emit(SOCKET_EVENTS.CHAT_ERROR, {
+            code: 'INVALID_ROOM',
+            message: 'Cannot send messages to a room you are not in.',
+          });
+          return;
+        }
+
+        const roomId = currentRoomId;
+        const roomState = roomManager.getRoomState(roomId);
+        if (!roomState) {
+          socket.emit(SOCKET_EVENTS.CHAT_ERROR, {
+            code: 'ROOM_NOT_FOUND',
+            message: 'Room state not found.',
+          });
+          return;
+        }
 
         // Run through profanity filter
         const { filtered, wasFiltered } = moderateMessage(content);

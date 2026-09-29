@@ -202,7 +202,12 @@ export const ClubChatSchema = z.object({
 
 // ── Avatar customization ──────────────────────────────────────────────────────
 export const AvatarUpdateSchema = z.object({
+  id: safeString(64).optional(),
+  userId: safeString(64).optional(),
   bodyType: z.union([z.string(), z.number()]).optional(),
+  bodyTypeVal: z.number().optional(),
+  heightVal: z.number().optional(),
+  buildVal: z.number().optional(),
   skinTone: safeString(32).optional(),
   skinColor: safeString(32).optional(),
   hairStyle: safeString(64).optional(),
@@ -226,5 +231,7 @@ export const AvatarUpdateSchema = z.object({
   shoes: safeString(64).optional(),
   hat: safeString(64).optional(),
   accessory: safeString(64).optional(),
-}).strict();
+  updatedAt: z.union([safeString(64), z.date()]).optional(),
+  createdAt: z.union([safeString(64), z.date()]).optional(),
+}).strip();
 
