@@ -31,8 +31,7 @@ export class HavenEngine {
     });
 
     // Support HiDPI / Retina displays up to 2x for crisp 1080p+ rendering
-    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-    this._engine.setHardwareScalingLevel(1 / dpr);
+    this._updateHardwareScaling();
 
     // Start the render loop — renders whatever _activeScene is set to
     this._engine.runRenderLoop(() => {
@@ -61,6 +60,7 @@ export class HavenEngine {
     // Automatically resize whenever the canvas dimensions or container visibility changes
     if (typeof ResizeObserver !== 'undefined') {
       this._resizeObserver = new ResizeObserver(() => {
+        this._updateHardwareScaling();
         this._engine.resize();
       });
       this._resizeObserver.observe(canvas);
@@ -144,7 +144,13 @@ export class HavenEngine {
     return this._activeScene;
   }
 
+  private _updateHardwareScaling(): void {
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    this._engine.setHardwareScalingLevel(1 / dpr);
+  }
+
   private _onResize = (): void => {
+    this._updateHardwareScaling();
     this._engine.resize();
   };
 

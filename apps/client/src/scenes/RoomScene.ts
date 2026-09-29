@@ -700,12 +700,13 @@ export async function createRoomScene(
       y: number;
       z?: number;
       rotY?: number;
+      timestamp?: number;
     }>(SOCKET_EVENTS.PLAYER_POSITION, (pos) => {
       const pid = pos.playerId || pos.userId;
       if (!pid || pid === user.id) return;
       const remote = remoteAvatars.get(pid);
       if (remote) {
-        remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0);
+        remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0, pos.timestamp);
       }
     })
   );
@@ -717,12 +718,13 @@ export async function createRoomScene(
       y: number;
       z?: number;
       rotY?: number;
+      timestamp?: number;
     }>('player:move', (pos) => {
       const pid = pos.playerId || pos.userId;
       if (!pid || pid === user.id) return;
       const remote = remoteAvatars.get(pid);
       if (remote) {
-        remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0);
+        remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0, pos.timestamp);
       }
     })
   );

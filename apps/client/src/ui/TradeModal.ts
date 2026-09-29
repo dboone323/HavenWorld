@@ -4,6 +4,7 @@ import { audioEngine } from '../audio/AudioEngine';
 import { showToast } from './ToastNotification';
 import { authService } from '../services/auth';
 import { SERVER_URL } from '../config';
+import { escapeHtml } from '../utils/escapeHtml';
 
 interface InventoryItem {
   id: string;
@@ -113,7 +114,7 @@ export class TradeModal {
         <span style="font-size: 1.3rem;">🤝</span>
         <div>
           <div style="font-weight: 700; color: #4ecdc4;">Trade Request (<span id="trade-prompt-timer">30</span>s)</div>
-          <div style="font-size: 0.85rem; color: #cbd5e1;">${initiatorName} wants to trade with you.</div>
+          <div style="font-size: 0.85rem; color: #cbd5e1;">${escapeHtml(initiatorName)} wants to trade with you.</div>
         </div>
       </div>
       <div style="display: flex; gap: 8px; justify-content: flex-end;">
@@ -411,7 +412,7 @@ export class TradeModal {
       const idx = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
       const item = mySlotMap.get(idx);
       if (item) {
-        slotEl.innerHTML = `<span style="font-size:1.3rem; margin-bottom:2px;">🎁</span><strong style="color:#173044; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">${item.name}</strong><span style="font-size:0.62rem; color:#e05252; font-weight:700;">(remove)</span>`;
+        slotEl.innerHTML = `<span style="font-size:1.3rem; margin-bottom:2px;">🎁</span><strong style="color:#173044; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">${escapeHtml(item.name)}</strong><span style="font-size:0.62rem; color:#e05252; font-weight:700;">(remove)</span>`;
         (slotEl as HTMLElement).style.borderColor = '#4ecdc4';
         (slotEl as HTMLElement).style.background = '#ffffff';
         (slotEl as HTMLElement).style.borderStyle = 'solid';
@@ -433,7 +434,7 @@ export class TradeModal {
       const idx = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
       const item = theirSlotMap.get(idx);
       if (item) {
-        slotEl.innerHTML = `<span style="font-size:1.3rem; margin-bottom:2px;">🎁</span><strong style="color:#173044; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">${item.name}</strong>`;
+        slotEl.innerHTML = `<span style="font-size:1.3rem; margin-bottom:2px;">🎁</span><strong style="color:#173044; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;">${escapeHtml(item.name)}</strong>`;
         (slotEl as HTMLElement).style.borderColor = '#38bdf8';
         (slotEl as HTMLElement).style.background = '#ffffff';
         (slotEl as HTMLElement).style.borderStyle = 'solid';
