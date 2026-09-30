@@ -5,6 +5,7 @@ import { showToast } from './ToastNotification';
 import { authService } from '../services/auth';
 import { SERVER_URL } from '../config';
 import { escapeHtml } from '../utils/escapeHtml';
+import { DraggablePanel } from './DraggablePanel';
 
 interface InventoryItem {
   id: string;
@@ -316,6 +317,7 @@ export class TradeModal {
 
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
+    DraggablePanel.makeDraggable(panel);
 
     // Click inventory chip -> offer item in first empty slot
     panel.querySelectorAll('.inventory-trade-chip').forEach((chip) => {

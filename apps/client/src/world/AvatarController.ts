@@ -11,6 +11,8 @@ const WALK_SPEED = 3.5; // meters per second
 const ARRIVAL_THRESHOLD = 0.15; // stop walking when within 15cm
 
 import { ChibiBillboard, type ChibiDirection } from './ChibiBillboard';
+import { MovementReconciliation } from '../engine/MovementReconciliation';
+import { findWorldPath } from './pathfinding';
 
 export interface UserProfile {
   id: string;
@@ -27,6 +29,10 @@ export class AvatarController {
 
   public isPlaceholder = false;
   public chibiBillboard: ChibiBillboard | null = null;
+  public reconciliation: MovementReconciliation = new MovementReconciliation({ x: 0, y: 0 });
+  private pathWaypoints: BABYLON.Vector3[] = [];
+  private lastMoveSeq: number = 0;
+  private obstacleProvider?: () => Set<string>;
   private chibiDirection: ChibiDirection = 'down';
   private chibiAnimTimer: number = 0;
   private chibiWalkFrame: number = 0;
@@ -47,6 +53,10 @@ export class AvatarController {
   constructor(scene: BABYLON.Scene, user: UserProfile) {
     this.scene = scene;
     this.user = user;
+  }
+
+  public setObstacleProvider(provider: () => Set<string>): void {
+    this.obstacleProvider = provider;
   }
 
   public get position(): BABYLON.Vector3 {
@@ -195,7 +205,23 @@ export class AvatarController {
         isSitting: false,
       });
     }
-    this.targetPosition = new BABYLON.Vector3(target.x, 0, target.z);
+
+    const startX = this.rootMesh?.position.x ?? 0;
+    const startZ = this.rootMesh?.position.z ?? 0;
+    const obstacles = this.obstacleProvider ? this.obstacleProvider() : new Set<string>();
+    const waypoints = findWorldPath(
+      { x: startX, z: startZ },
+      { x: target.x, z: target.z },
+      obstacles
+    );
+
+    this.pathWaypoints = waypoints.map((wp) => new BABYLON.Vector3(wp.x, 0, wp.z));
+    this.targetPosition = this.pathWaypoints.shift() || new BABYLON.Vector3(target.x, 0, target.z);
+
+    // Record predicted move in MovementReconciliation
+    const predicted = this.reconciliation.addPredictedMove(target.x, target.z);
+    this.lastMoveSeq = predicted.seq;
+
     this.onArrivalCallback = onArrival || null;
     this.isMoving = true;
     this.lookAt(this.targetPosition);
@@ -678,6 +704,11 @@ export class AvatarController {
 
     if (dist < ARRIVAL_THRESHOLD) {
       this.rootMesh.position.copyFrom(this.targetPosition);
+      if (this.pathWaypoints.length > 0) {
+        this.targetPosition = this.pathWaypoints.shift()!;
+        this.lookAt(this.targetPosition);
+        return;
+      }
       this.isMoving = false;
       this.targetPosition = null;
       this.moveEmitTimer = 0;
@@ -693,6 +724,7 @@ export class AvatarController {
         this.roomId;
       socketService.emit('player:move', {
         roomId,
+        seq: this.lastMoveSeq,
         x: this.rootMesh.position.x,
         y: this.rootMesh.position.y,
         z: this.rootMesh.position.z,
@@ -748,6 +780,7 @@ export class AvatarController {
         this.roomId;
       socketService.emit('player:move', {
         roomId,
+        seq: this.lastMoveSeq,
         x: this.rootMesh.position.x,
         y: this.rootMesh.position.y,
         z: this.rootMesh.position.z,

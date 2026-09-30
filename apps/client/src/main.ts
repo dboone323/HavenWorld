@@ -23,6 +23,8 @@ import {
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { SERVER_URL } from './config';
 import { AvatarContextMenu } from './ui/AvatarContextMenu';
+import { AccessibilityManager } from './ui/AccessibilityManager';
+import { StreamerModeManager } from './ui/StreamerModeManager';
 import './style.css';
 
 // ── Handle Email Verification Token redirect ──────────────────────────────
@@ -34,6 +36,25 @@ if (verifyToken) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
+  // Apply saved Accessibility settings (UI scale, colorblind filter, dyslexia font)
+  AccessibilityManager.getInstance().applyToDOM();
+
+  // Listen for Streamer Mode toggles to mask/unmask currency displays
+  window.addEventListener('haven:streamer-mode', () => {
+    const coinEl = document.getElementById('coin-amount');
+    const gemEl = document.getElementById('gem-amount');
+    if (coinEl) {
+      const rawCoins = coinEl.dataset.rawCoins || coinEl.textContent || '0';
+      coinEl.dataset.rawCoins = rawCoins;
+      coinEl.textContent = StreamerModeManager.maskSensitiveText(rawCoins);
+    }
+    if (gemEl) {
+      const rawGems = gemEl.dataset.rawGems || gemEl.textContent || '0';
+      gemEl.dataset.rawGems = rawGems;
+      gemEl.textContent = StreamerModeManager.maskSensitiveText(rawGems);
+    }
+  });
+
   // Login UI HTML form setup
   mountLoginUI();
 

@@ -3,6 +3,7 @@ import { audioEngine } from '../audio/AudioEngine';
 import type { CatalogItem } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
 import { showToast } from './ToastNotification';
+import { DraggablePanel } from './DraggablePanel';
 
 export class ShopModal {
   private overlay: HTMLElement | null = null;
@@ -163,6 +164,7 @@ export class ShopModal {
 
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
+    DraggablePanel.makeDraggable(panel);
 
     this.overlay.addEventListener('click', (e) => {
       if (e.target === this.overlay) {

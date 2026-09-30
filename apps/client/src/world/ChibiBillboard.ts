@@ -100,6 +100,14 @@ export class ChibiBillboard {
     this.render();
   }
 
+  public setDimmed(dimmed: boolean): void {
+    if (!this.material) return;
+    this.material.alpha = dimmed ? 0.55 : 1.0;
+    this.material.emissiveColor = dimmed
+      ? new BABYLON.Color3(0.65, 0.65, 0.72)
+      : new BABYLON.Color3(1, 1, 1);
+  }
+
   public render(): void {
     const atlas = ChibiAtlasManager.getInstance();
     const img = atlas.getImage();

@@ -9,6 +9,7 @@ import { authService } from '../services/auth';
 import { socketService } from '../services/socket';
 import { showToast } from './ToastNotification';
 import { SERVER_URL, assetUrl } from '../config';
+import { DraggablePanel } from './DraggablePanel';
 
 interface CatalogItem {
   id: string;
@@ -253,6 +254,7 @@ export class AvatarCustomizer {
     modal.appendChild(this.buildPreviewCard());
 
     el.appendChild(modal);
+    DraggablePanel.makeDraggable(modal);
     return el;
   }
 

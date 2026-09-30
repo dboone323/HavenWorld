@@ -43,6 +43,11 @@ import { DirectMessagePanel } from '../ui/DirectMessagePanel';
 import { TradeModal } from '../ui/TradeModal';
 import { applyRoomSurfaces } from '../world/SurfaceManager';
 import { InWorldSpeechBubbles } from '../ui/InWorldSpeechBubbles';
+import { SmoothCamera } from '../world/SmoothCamera';
+import { MinimapRadar } from '../ui/MinimapRadar';
+import { IdleStateManager } from '../engine/IdleStateManager';
+import { CollaborativeWhiteboard } from '../ui/CollaborativeWhiteboard';
+import { StreamerModeManager } from '../ui/StreamerModeManager';
 
 export async function createRoomScene(
   haven: HavenEngine,
@@ -236,16 +241,53 @@ export async function createRoomScene(
     };
   };
 
-  // Camera follow: In personal lofts, keep camera stably centered at (0, 1.0, 0)
-  // so the room and furniture never wobble or jitter.
-  // In large open public spaces (like park/lobby), follow the avatar with smooth ease.
+  // ── SmoothCamera Follow (Spring-damper with deadzone) ────────────────────
   const isPublicRoom = roomId === 'room-lobby' || roomId === 'room-park' || roomId === 'room-town-square' || roomId === 'room-cafe';
-  const cameraFollowCallback = () => {
-    if (isPublicRoom && avatarController.rootMesh) {
-      camera.target = Vector3.Lerp(camera.target, avatarController.rootMesh.position, 0.08);
+  const smoothCamera = new SmoothCamera({ x: 0, y: 0 }, 0.08, 0.05);
+
+  // ── Minimap Radar HUD ─────────────────────────────────────────────────────
+  const minimapRadar = new MinimapRadar(30, 30, 110);
+  let radarCanvas: HTMLCanvasElement | null = null;
+  if (typeof document !== 'undefined') {
+    radarCanvas = document.getElementById('haven-minimap-radar') as HTMLCanvasElement | null;
+    if (!radarCanvas) {
+      radarCanvas = document.createElement('canvas');
+      radarCanvas.id = 'haven-minimap-radar';
+      radarCanvas.width = minimapRadar.radarSize;
+      radarCanvas.height = minimapRadar.radarSize;
+      radarCanvas.style.cssText = `
+        position: fixed;
+        top: 68px;
+        right: 16px;
+        width: ${minimapRadar.radarSize}px;
+        height: ${minimapRadar.radarSize}px;
+        background: rgba(15, 23, 42, 0.82);
+        border: 1.5px solid rgba(78, 205, 196, 0.55);
+        border-radius: 50%;
+        z-index: 8500;
+        pointer-events: none;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      `;
+      document.body.appendChild(radarCanvas);
     }
-  };
-  scene.registerBeforeRender(cameraFollowCallback);
+  }
+
+  // ── Idle / AFK State Manager ──────────────────────────────────────────────
+  const idleManager = new IdleStateManager(60_000, 300_000);
+  const onUserActivity = () => idleManager.reportActivity();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pointerdown', onUserActivity, { passive: true });
+    window.addEventListener('keydown', onUserActivity, { passive: true });
+  }
+  unsubs.push(
+    idleManager.subscribe((state) => {
+      const isIdleOrAfk = state === 'IDLE' || state === 'AFK';
+      avatarController.chibiBillboard?.setDimmed(isIdleOrAfk);
+      if (state === 'AFK') {
+        InWorldSpeechBubbles.getInstance().showBubble(user.id, user.username, '💤 AFK');
+      }
+    })
+  );
 
   // ── 3D In-World Speech Bubbles (MiPlanet standard) ───────────────────────
   const speechBubbles = InWorldSpeechBubbles.getInstance();
@@ -256,6 +298,64 @@ export async function createRoomScene(
 
   // ── Remote Avatars ────────────────────────────────────────────────────────
   const remoteAvatars = new Map<string, RemoteAvatar>();
+
+  const cameraFollowCallback = () => {
+    if (isPublicRoom && avatarController.rootMesh) {
+      smoothCamera.setTarget({
+        x: avatarController.rootMesh.position.x,
+        y: avatarController.rootMesh.position.z,
+      });
+      const nextPos = smoothCamera.update(1.0);
+      camera.target.x = nextPos.x;
+      camera.target.z = nextPos.y;
+    }
+
+    idleManager.checkInactivity();
+
+    if (radarCanvas) {
+      const ctx = radarCanvas.getContext('2d');
+      if (ctx) {
+        const size = minimapRadar.radarSize;
+        ctx.clearRect(0, 0, size, size);
+        // Subtle radar crosshairs
+        ctx.strokeStyle = 'rgba(78, 205, 196, 0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(size / 2, 0);
+        ctx.lineTo(size / 2, size);
+        ctx.moveTo(0, size / 2);
+        ctx.lineTo(size, size / 2);
+        ctx.stroke();
+
+        // Local player blip
+        if (avatarController.rootMesh) {
+          const blip = minimapRadar.createBlip(
+            user.id,
+            'local_player',
+            avatarController.rootMesh.position.x + 15,
+            avatarController.rootMesh.position.z + 15
+          );
+          const { px, py } = minimapRadar.getPixelPosition(blip.x, blip.y);
+          ctx.fillStyle = blip.color;
+          ctx.beginPath();
+          ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Remote player blips
+        for (const [pid, remote] of remoteAvatars.entries()) {
+          const rPos = remote.rootMesh.position;
+          const blip = minimapRadar.createBlip(pid, 'other_player', rPos.x + 15, rPos.z + 15);
+          const { px, py } = minimapRadar.getPixelPosition(blip.x, blip.y);
+          ctx.fillStyle = blip.color;
+          ctx.beginPath();
+          ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  };
+  scene.registerBeforeRender(cameraFollowCallback);
 
   function addOrUpdateRemoteAvatar(p: PlayerState) {
     if (!p || p.id === user.id) return;
@@ -381,6 +481,32 @@ export async function createRoomScene(
   (window as unknown as Record<string, unknown>).__havenFurnitureManager = furnitureManager;
   await furnitureManager.loadRoomFurniture(roomId);
 
+  // Wire A* obstacle footprints from placed furniture into AvatarController
+  avatarController.setObstacleProvider(() => {
+    const obstacles = new Set<string>();
+    const halfSpan = 15;
+    const cellSize = 0.5;
+    const gridSize = Math.round((halfSpan * 2) / cellSize);
+    const toGrid = (val: number) =>
+      Math.max(0, Math.min(gridSize - 1, Math.round((val + halfSpan) / cellSize)));
+
+    for (const [, pf] of furnitureManager.allPlaced) {
+      if (!pf.mesh || pf.itemId.includes('rug')) continue;
+      pf.mesh.computeWorldMatrix(true);
+      const bb = pf.mesh.getBoundingInfo().boundingBox;
+      const minX = toGrid(bb.minimumWorld.x);
+      const maxX = toGrid(bb.maximumWorld.x);
+      const minZ = toGrid(bb.minimumWorld.z);
+      const maxZ = toGrid(bb.maximumWorld.z);
+      for (let gx = minX; gx <= maxX; gx++) {
+        for (let gz = minZ; gz <= maxZ; gz++) {
+          obstacles.add(`${gx},${gz}`);
+        }
+      }
+    }
+    return obstacles;
+  });
+
   const btnDecorate = document.getElementById('btn-decorate');
   let roomEditor: RoomEditor | null = null;
   let inputController: InputController | null = null;
@@ -429,7 +555,8 @@ export async function createRoomScene(
         .then((r) => r.json())
         .then((me) => {
           if (typeof me?.coinBalance === 'number') {
-            coinAmount.textContent = String(me.coinBalance);
+            coinAmount.dataset.rawCoins = String(me.coinBalance);
+            coinAmount.textContent = StreamerModeManager.maskSensitiveText(me.coinBalance);
           }
         })
         .catch(() => { /* non-critical */ });
@@ -666,6 +793,8 @@ export async function createRoomScene(
         }
       } else if (meshName.includes('pizza_station') || meshName === 'pizza-station') {
         document.getElementById('btn-pizza')?.click();
+      } else if (meshName.includes('tv_screen') || meshName.includes('whiteboard') || meshName.includes('menu_board')) {
+        CollaborativeWhiteboard.openModal(roomId);
       }
     }
   });
@@ -737,6 +866,7 @@ export async function createRoomScene(
     socketService.on<{
       playerId: string;
       userId?: string;
+      seq?: number;
       x: number;
       y: number;
       z?: number;
@@ -744,7 +874,20 @@ export async function createRoomScene(
       timestamp?: number;
     }>(SOCKET_EVENTS.PLAYER_POSITION, (pos) => {
       const pid = pos.playerId || pos.userId;
-      if (!pid || pid === user.id) return;
+      if (!pid) return;
+      if (pid === user.id) {
+        if (typeof pos.seq === 'number' && avatarController.rootMesh) {
+          const res = avatarController.reconciliation.reconcile(pos.seq, {
+            x: pos.x,
+            y: pos.z ?? 0,
+          });
+          if (res.reconciled) {
+            avatarController.rootMesh.position.x = res.correctedPosition.x;
+            avatarController.rootMesh.position.z = res.correctedPosition.y;
+          }
+        }
+        return;
+      }
       const remote = remoteAvatars.get(pid);
       if (remote) {
         remote.updatePosition(pos.x, pos.y, pos.z ?? 0, pos.rotY ?? 0, pos.timestamp);
@@ -755,6 +898,7 @@ export async function createRoomScene(
     socketService.on<{
       playerId: string;
       userId?: string;
+      seq?: number;
       x: number;
       y: number;
       z?: number;
@@ -919,7 +1063,8 @@ export async function createRoomScene(
       (data) => {
         const coinAmountEl = document.getElementById('coin-amount');
         if (coinAmountEl && typeof data.coins === 'number') {
-          coinAmountEl.textContent = String(data.coins);
+          coinAmountEl.dataset.rawCoins = String(data.coins);
+          coinAmountEl.textContent = StreamerModeManager.maskSensitiveText(data.coins);
         }
       }
     )
@@ -928,6 +1073,12 @@ export async function createRoomScene(
   // ── Disposal & Cleanup ────────────────────────────────────────────────────
   scene.onDisposeObservable.add(() => {
     window.removeEventListener('keydown', onKeyDown);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pointerdown', onUserActivity);
+      window.removeEventListener('keydown', onUserActivity);
+    }
+    radarCanvas?.remove();
+    radarCanvas = null;
     // Drop stale toasts so notifications from the previous room don't linger
     clearToasts();
     if (btnLoftSettings) {

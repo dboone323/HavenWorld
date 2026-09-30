@@ -84,3 +84,48 @@ export function applyRoomSurfaces(
     }
   }
 }
+
+/**
+ * Computes elevated Y position when stacking a furniture mesh on top of a surface mesh
+ * (e.g. placing a lamp or plant onto a coffee table, dining table, or media console).
+ */
+export function computeStackingHeight(
+  surfaceMesh: BABYLON.AbstractMesh | null | undefined,
+  placingMesh: BABYLON.AbstractMesh | null | undefined,
+  floorY: number = 0
+): number {
+  if (!surfaceMesh) {
+    if (placingMesh) {
+      const bb = placingMesh.getBoundingInfo().boundingBox;
+      return floorY + bb.extendSize.y;
+    }
+    return floorY;
+  }
+
+  const name = surfaceMesh.name.toLowerCase();
+  const isFloorOrRug =
+    name === 'floor' ||
+    name === 'editor_grid' ||
+    name === 'placeholder_ground' ||
+    name.startsWith('walkable') ||
+    name.includes('rug');
+
+  if (isFloorOrRug) {
+    if (placingMesh) {
+      const bb = placingMesh.getBoundingInfo().boundingBox;
+      return floorY + bb.extendSize.y;
+    }
+    return floorY;
+  }
+
+  surfaceMesh.computeWorldMatrix(true);
+  const surfaceBounds = surfaceMesh.getBoundingInfo().boundingBox;
+  const topY = surfaceBounds.maximumWorld.y;
+
+  if (placingMesh) {
+    const placingBb = placingMesh.getBoundingInfo().boundingBox;
+    return topY + placingBb.extendSize.y;
+  }
+
+  return topY;
+}

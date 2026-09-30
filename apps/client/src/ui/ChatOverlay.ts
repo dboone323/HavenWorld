@@ -3,6 +3,9 @@ import { SOCKET_EVENTS } from '@havenworld/shared';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
 import { escapeHtml } from '../utils/escapeHtml';
+import { TypingIndicatorManager } from './TypingIndicatorManager';
+import { StreamerModeManager } from './StreamerModeManager';
+import { InWorldSpeechBubbles } from './InWorldSpeechBubbles';
 
 const MAX_LOG_ENTRIES = 50;
 const RATE_ERR_DURATION = 4000;
@@ -15,12 +18,27 @@ export class ChatOverlay {
   private _onMessageCb?: (msg: ChatMessage) => void;
   private _handleSendBound: () => void;
   private _handleKeyDownBound: (e: KeyboardEvent) => void;
+  private _handleBlurBound: () => void;
+  public typingManager: TypingIndicatorManager;
 
   constructor(container?: HTMLElement | null, onMessage?: (msg: ChatMessage) => void) {
     this._container = container || (typeof document !== 'undefined' ? document.body : (null as any));
     this._onMessageCb = onMessage;
+    this.typingManager = new TypingIndicatorManager(1500);
     this._handleSendBound = this._handleSend.bind(this);
     this._handleKeyDownBound = this._handleKeyDown.bind(this);
+    this._handleBlurBound = () => this.typingManager.stopTyping();
+
+    const unsubTyping = this.typingManager.subscribe((isTyping) => {
+      const userId = authService.user?.id || 'local';
+      const username = authService.user?.username || 'Player';
+      if (isTyping) {
+        InWorldSpeechBubbles.getInstance().showBubble(userId, username, '...');
+      }
+      socketService.emit('chat:typing' as any, { isTyping });
+    });
+    this._unsubs.push(unsubTyping);
+
     if (typeof document !== 'undefined') {
       this._mount();
     }
@@ -55,6 +73,7 @@ export class ChatOverlay {
     }
     if (input) {
       input.addEventListener('keydown', this._handleKeyDownBound);
+      input.addEventListener('blur', this._handleBlurBound);
     }
 
     // Socket listeners
@@ -86,6 +105,7 @@ export class ChatOverlay {
     const text = input.value.trim();
     if (!text) return;
 
+    this.typingManager.stopTyping();
     socketService.emit(SOCKET_EVENTS.CHAT_SEND, { content: text, text });
     input.value = '';
   }
@@ -94,6 +114,8 @@ export class ChatOverlay {
     if (e.key === 'Enter') {
       e.preventDefault();
       this._handleSend();
+    } else if (e.key.length === 1 || e.key === 'Backspace') {
+      this.typingManager.handleKeystroke();
     }
   }
 
@@ -109,7 +131,11 @@ export class ChatOverlay {
     entry.classList.toggle('chat-log__entry--own', !!isOwn);
 
     const username = escapeHtml(msg.username || msg.senderName || 'Player');
-    const text = escapeHtml(msg.text || msg.content || '');
+    let rawText = msg.text || msg.content || '';
+    if ((msg as any).channel === 'whisper' || rawText.startsWith('[Whisper')) {
+      rawText = StreamerModeManager.sanitizeWhisper(rawText);
+    }
+    const text = escapeHtml(rawText);
 
     entry.innerHTML = `<span class="chat-log__username">${username}</span>: <span class="chat-log__text">${text}</span>`;
     log.appendChild(entry);
@@ -144,7 +170,10 @@ export class ChatOverlay {
     }
     if (input) {
       input.removeEventListener('keydown', this._handleKeyDownBound);
+      input.removeEventListener('blur', this._handleBlurBound);
     }
+
+    this.typingManager.stopTyping();
 
     for (const unsub of this._unsubs) unsub();
     this._unsubs = [];

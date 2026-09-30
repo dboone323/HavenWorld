@@ -1,6 +1,9 @@
 import { SOCKET_EVENTS, type MoodId } from '@havenworld/shared';
 import { API_URL } from '../config';
 import { authService } from '../services/auth';
+import { AccessibilityManager, type ColorblindMode, type UiScale } from './AccessibilityManager';
+import { StreamerModeManager } from './StreamerModeManager';
+import { DraggablePanel } from './DraggablePanel';
 
 type PrivacyMode = 'PUBLIC' | 'FRIENDS_ONLY' | 'PASSWORD_PROTECTED' | 'LOCKED';
 
@@ -15,7 +18,7 @@ interface LoftSettingsOptions {
 
 /**
  * LoftSettingsPanel — owner-only panel for managing loft privacy, ambient mood,
- * guestbook settings, and decorator permissions.
+ * guestbook settings, decorator permissions, accessibility, and streamer mode.
  */
 export class LoftSettingsPanel {
   private panel: HTMLElement | null = null;
@@ -28,6 +31,9 @@ export class LoftSettingsPanel {
   show(): void {
     if (this.panel) return;
 
+    const a11y = AccessibilityManager.getInstance();
+    const isStreamer = StreamerModeManager.getIsEnabled();
+
     const overlay = document.createElement('div');
     overlay.style.cssText = `
       position: fixed; inset: 0; background: rgba(0,0,0,0.55);
@@ -38,14 +44,14 @@ export class LoftSettingsPanel {
     const panel = document.createElement('div');
     panel.style.cssText = `
       background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 16px; width: 360px; max-height: 80vh; overflow-y: auto;
+      border-radius: 16px; width: 380px; max-height: 85vh; overflow-y: auto;
       color: #fff; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
     `;
 
     // ── Header ────────────────────────────────────────────────────────────────
     panel.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-        <h2 style="margin:0;font-size:1.1rem;">⚙️ Loft Settings</h2>
+        <h2 style="margin:0;font-size:1.1rem;">⚙️ Loft & Accessibility Settings</h2>
         <button id="loft-settings-close" style="background:none;border:none;color:#aaa;font-size:1.3rem;cursor:pointer;">✕</button>
       </div>
 
@@ -88,6 +94,39 @@ export class LoftSettingsPanel {
           margin-top:10px;width:100%;background:rgba(102,126,234,0.8);
           border:none;border-radius:8px;color:#fff;padding:9px;cursor:pointer;font-size:0.875rem;
         ">Apply Mood</button>
+      </section>
+
+      <!-- Accessibility & Streamer Mode -->
+      <section style="margin-bottom:20px;">
+        <h3 style="margin:0 0 10px;font-size:0.85rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.05em;">Accessibility & Streamer</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:0.85rem;">UI Scale</span>
+            <select id="a11y-scale-select" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff;padding:4px 8px;font-size:0.85rem;">
+              <option value="1" ${a11y.settings.uiScale === 1.0 ? 'selected' : ''}>100%</option>
+              <option value="1.25" ${a11y.settings.uiScale === 1.25 ? 'selected' : ''}>125%</option>
+              <option value="1.5" ${a11y.settings.uiScale === 1.5 ? 'selected' : ''}>150%</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:0.85rem;">Colorblind Filter</span>
+            <select id="a11y-colorblind-select" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff;padding:4px 8px;font-size:0.85rem;">
+              <option value="none" ${a11y.settings.colorblindMode === 'none' ? 'selected' : ''}>None</option>
+              <option value="protanopia" ${a11y.settings.colorblindMode === 'protanopia' ? 'selected' : ''}>Protanopia</option>
+              <option value="deuteranopia" ${a11y.settings.colorblindMode === 'deuteranopia' ? 'selected' : ''}>Deuteranopia</option>
+              <option value="tritanopia" ${a11y.settings.colorblindMode === 'tritanopia' ? 'selected' : ''}>Tritanopia</option>
+              <option value="high_contrast" ${a11y.settings.colorblindMode === 'high_contrast' ? 'selected' : ''}>High Contrast</option>
+            </select>
+          </div>
+          <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+            <span style="font-size:0.85rem;">Dyslexia-Friendly Font</span>
+            <input id="a11y-dyslexia-chk" type="checkbox" ${a11y.settings.dyslexiaFont ? 'checked' : ''} />
+          </label>
+          <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+            <span style="font-size:0.85rem;">🎥 Streamer Mode (Mask Balance & Whispers)</span>
+            <input id="streamer-mode-chk" type="checkbox" ${isStreamer ? 'checked' : ''} />
+          </label>
+        </div>
       </section>
 
       <!-- Decorator -->
@@ -134,6 +173,24 @@ export class LoftSettingsPanel {
       this.opts.onMoodChange?.(mood);
     });
 
+    // Accessibility & Streamer Mode event bindings
+    panel.querySelector('#a11y-scale-select')?.addEventListener('change', (e) => {
+      const scale = parseFloat((e.target as HTMLSelectElement).value) as UiScale;
+      a11y.setUiScale(scale);
+    });
+    panel.querySelector('#a11y-colorblind-select')?.addEventListener('change', (e) => {
+      const mode = (e.target as HTMLSelectElement).value as ColorblindMode;
+      a11y.setColorblindMode(mode);
+    });
+    panel.querySelector('#a11y-dyslexia-chk')?.addEventListener('change', (e) => {
+      a11y.setDyslexiaFont((e.target as HTMLInputElement).checked);
+    });
+    panel.querySelector('#streamer-mode-chk')?.addEventListener('change', (e) => {
+      const enabled = (e.target as HTMLInputElement).checked;
+      StreamerModeManager.setEnabled(enabled);
+      window.dispatchEvent(new CustomEvent('haven:streamer-mode', { detail: { enabled } }));
+    });
+
     // Decorator grant/revoke — resolved via user lookup
     const resolveTargetUserId = async (username: string): Promise<string | null> => {
       const token = authService.token || (await authService.getToken());
@@ -165,6 +222,7 @@ export class LoftSettingsPanel {
 
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+    DraggablePanel.makeDraggable(panel);
     this.panel = overlay;
   }
 

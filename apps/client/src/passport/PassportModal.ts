@@ -2,6 +2,7 @@ import { authService } from '../services/auth';
 import type { PassportData } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
 import { escapeHtml } from '../utils/escapeHtml';
+import { DraggablePanel } from '../ui/DraggablePanel';
 
 export const STAMP_NAMES = [
   'First Step',
@@ -132,6 +133,7 @@ export class PassportModal {
 
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
+    DraggablePanel.makeDraggable(panel);
 
     panel.querySelector('#btn-close-passport')?.addEventListener('click', () => this.close());
     this.overlay.addEventListener('click', (e) => {

@@ -4,7 +4,7 @@ import { FurnitureManager, type PlacedFurniture } from './FurnitureManager';
 import { SERVER_URL, assetUrl } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from '../ui/ToastNotification';
-import { applyRoomSurfaces } from './SurfaceManager';
+import { applyRoomSurfaces, computeStackingHeight } from './SurfaceManager';
 import { audioEngine } from '../audio/AudioEngine';
 
 export interface FurniturePlacement {
@@ -318,22 +318,7 @@ export class RoomEditor {
     );
     if (pick?.hit && pick.pickedPoint) {
       const snapped = this.snapToGrid(pick.pickedPoint);
-      // Stacking elevation: calculate surface top if hovering over furniture/table/rug
-      if (
-        pick.pickedMesh &&
-        pick.pickedMesh.name !== 'Floor' &&
-        pick.pickedMesh.name !== 'editor_grid' &&
-        !pick.pickedMesh.name.includes('rug')
-      ) {
-        const bounds = pick.pickedMesh.getBoundingInfo().boundingBox;
-        const topY = bounds.maximumWorld.y;
-        if (this.ghostMesh) {
-          const ghostBb = this.ghostMesh.getBoundingInfo().boundingBox;
-          snapped.y = topY + ghostBb.extendSize.y;
-        } else {
-          snapped.y = topY;
-        }
-      }
+      snapped.y = computeStackingHeight(pick.pickedMesh, this.ghostMesh, this.floorY);
       this.ghostMesh.position = snapped;
     }
   }
