@@ -11,6 +11,7 @@ import { ShopModal } from './ui/ShopModal';
 import { MarketplacePanel } from './ui/MarketplacePanel';
 import { ClubPanel } from './ui/ClubPanel';
 import { LeaderboardPanel } from './ui/LeaderboardPanel';
+import { DoorbellPrompt } from './ui/DoorbellPrompt';
 import { PassportModal } from './passport/PassportModal';
 import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
@@ -146,6 +147,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-leaderboard')?.addEventListener('click', () => {
     LeaderboardPanel.open().catch(console.error);
   });
+
+  // §3f — private loft rejected on join: offer the doorbell instead of a dead end
+  socketService.on<{ code?: string; message?: string; roomId?: string }>(
+    SOCKET_EVENTS.AUTH_ERROR,
+    (err) => {
+      if (err?.code === 'FORBIDDEN_PRIVATE_LOFT' && err.roomId) {
+        DoorbellPrompt.show(err.roomId);
+      }
+    }
+  );
 
   // ── In-game navigation buttons ──────────────────────────────────────────
   // Fast travel to Haven Park

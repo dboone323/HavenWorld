@@ -119,3 +119,19 @@ export function buildPublicSpaceProps(scene: Scene, roomId: string): AbstractMes
 
   return meshes;
 }
+
+/**
+ * Personal-loft props: the cash register used by the loft shop (§3n).
+ * The room owner sees a stocking form; guests see a browse-and-buy form.
+ */
+export function buildLoftProps(scene: Scene): AbstractMesh[] {
+  const meshes: AbstractMesh[] = [];
+  addProp(
+    scene, meshes, 'loft-shop-register',
+    MeshBuilder.CreateBox('loft-shop-register', { width: 0.9, depth: 0.6, height: 1.1 }, scene),
+    makeMaterial(scene, 'loft-shop-register-mat', '#b8860b'),
+    { x: 7, z: -7 }, 1.1, '🧾', 'Shop Register'
+  );
+  return meshes;
+}
+

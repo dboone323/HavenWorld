@@ -192,6 +192,8 @@ export const SOCKET_EVENTS = {
   ARCADE_STATE: 'arcade:state',
 
   // Loft shop registers (owner-stocked cash registers)
+  LOFT_SHOP_LIST:     'loft_shop:list',
+  LOFT_SHOP_LISTINGS: 'loft_shop:listings',
   LOFT_SHOP_STOCK:    'loft_shop:stock',
   LOFT_SHOP_LISTING:  'loft_shop:listing',
   LOFT_SHOP_PURCHASE: 'loft_shop:purchase',

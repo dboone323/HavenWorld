@@ -18,12 +18,14 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   document.getElementById('avatar-panel')?.classList.add('hidden');
   document.getElementById('lobby-panel')?.classList.remove('hidden');
 
-  let activeTab: 'public' | 'lofts' = 'public';
+  let activeTab: 'public' | 'lofts' | 'trending' = 'public';
   let publicRooms: RoomData[] = [];
   let communityLofts: RoomData[] = [];
+  let trendingLofts: Array<{ roomId: string; name: string; ownerName: string; upvotes: number }> = [];
 
   const tabPublic = document.getElementById('tab-rooms-public');
   const tabLofts = document.getElementById('tab-rooms-lofts');
+  const tabTrending = document.getElementById('tab-rooms-trending');
   const closeBtn = document.getElementById('btn-close-lobby');
   const logoutBtn = document.getElementById('btn-lobby-logout');
 
@@ -32,6 +34,12 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     if (!grid) return;
 
     grid.innerHTML = '';
+
+    if (activeTab === 'trending') {
+      renderTrending(grid);
+      return;
+    }
+
     const items = activeTab === 'public' ? publicRooms : communityLofts;
 
     if (items.length === 0) {
@@ -42,6 +50,45 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     for (const room of items) {
       const card = buildRoomCard(room);
       grid.appendChild(card);
+    }
+  }
+
+  function renderTrending(grid: HTMLElement): void {
+    if (trendingLofts.length === 0) {
+      grid.innerHTML = '<p class="loading-text">No upvoted lofts yet. Visit a friend and hit the thumbs-up!</p>';
+      return;
+    }
+    for (const loft of trendingLofts) {
+      const card = document.createElement('div');
+      card.className = 'room-card';
+      card.innerHTML = `
+        <div class="room-card__name">🔥 ${escapeHtml(loft.name)}</div>
+        <div class="room-card__info">
+          <span class="room-card__players">👍 ${loft.upvotes}</span>
+          <span class="room-card__map">by ${escapeHtml(loft.ownerName)}</span>
+        </div>
+        <button class="btn btn--teal room-card__join">Visit</button>
+      `;
+      const enter = () => {
+        document.getElementById('lobby-panel')?.classList.add('hidden');
+        SceneManager.getInstance().switchTo('room', { roomId: loft.roomId }).catch(console.error);
+      };
+      card.querySelector('.room-card__join')?.addEventListener('click', (e) => { e.stopPropagation(); enter(); });
+      card.addEventListener('click', enter);
+      grid.appendChild(card);
+    }
+  }
+
+  async function fetchTrending(): Promise<void> {
+    try {
+      const token = authService.token || (await authService.getToken()) || '';
+      const res = await fetch(`${SERVER_URL}/api/rooms/trending`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (res.ok) trendingLofts = await res.json();
+    } catch (err) {
+      console.error('[LobbyScene] Error fetching trending lofts:', err);
     }
   }
 
@@ -120,6 +167,7 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     activeTab = 'public';
     tabPublic?.classList.add('tab--active');
     tabLofts?.classList.remove('tab--active');
+    tabTrending?.classList.remove('tab--active');
     renderList();
   };
 
@@ -127,6 +175,18 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     activeTab = 'lofts';
     tabLofts?.classList.add('tab--active');
     tabPublic?.classList.remove('tab--active');
+    tabTrending?.classList.remove('tab--active');
+    renderList();
+  };
+
+  const onTabTrending = async () => {
+    activeTab = 'trending';
+    tabTrending?.classList.add('tab--active');
+    tabPublic?.classList.remove('tab--active');
+    tabLofts?.classList.remove('tab--active');
+    const grid = document.getElementById('room-grid');
+    if (grid && trendingLofts.length === 0) grid.innerHTML = '<p class="loading-text">Loading trending lofts…</p>';
+    await fetchTrending();
     renderList();
   };
 
@@ -144,6 +204,7 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
 
   tabPublic?.addEventListener('click', onTabPublic);
   tabLofts?.addEventListener('click', onTabLofts);
+  tabTrending?.addEventListener('click', () => { onTabTrending().catch(console.error); });
   closeBtn?.addEventListener('click', onClose);
   logoutBtn?.addEventListener('click', onLogout);
 

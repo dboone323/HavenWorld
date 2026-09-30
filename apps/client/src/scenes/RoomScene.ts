@@ -9,6 +9,8 @@ import {
   DirectionalLight,
   ShadowGenerator,
   PointerEventTypes,
+  ParticleSystem,
+  DynamicTexture,
 } from '@babylonjs/core';
 import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
@@ -28,12 +30,13 @@ import { ArcadeModal } from '../ui/ArcadeModal';
 import { BulletinModal } from '../ui/BulletinModal';
 import { JukeboxModal } from '../ui/JukeboxModal';
 import { NpcDialoguePanel } from '../ui/NpcDialoguePanel';
-import { buildPublicSpaceProps } from '../world/PublicSpaceProps';
+import { LoftShopModal } from '../ui/LoftShopModal';
+import { buildPublicSpaceProps, buildLoftProps } from '../world/PublicSpaceProps';
 import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
-import { API_URL, assetUrl } from '../config';
+import { API_URL, SERVER_URL, assetUrl } from '../config';
 import { DailyLoginModal } from '../ui/DailyLoginModal';
 import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
 import { showToast, clearToasts } from '../ui/ToastNotification';
@@ -187,8 +190,36 @@ export async function createRoomScene(
 
   // Phase 3 — interactive props (arcade, corkboard, jukebox, NPCs, gathering
   // nodes) for the public spaces, whether the room came from GLB or prefab.
+  document.getElementById('btn-loft-upvote')?.classList.add('hidden');
   if (['room-town-square', 'room-park', 'room-cafe'].includes(roomId)) {
     roomMeshes.push(...buildPublicSpaceProps(scene, roomId));
+  } else if (!roomId.startsWith('room-')) {
+    roomMeshes.push(...buildLoftProps(scene));
+
+    // §3k — "Love this loft" upvote for visiting guests (not on your own loft)
+    const upvoteBtn = document.getElementById('btn-loft-upvote');
+    if (upvoteBtn && !isOwner) {
+      upvoteBtn.classList.remove('hidden');
+      upvoteBtn.addEventListener('click', async () => {
+        try {
+          const token = authService.token || (await authService.getToken()) || '';
+          const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/upvote`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: 'include',
+          });
+          if (res.ok) {
+            showToast({ icon: '👍', title: 'Loved this loft!', subtitle: 'Thanks for spreading the joy' });
+            upvoteBtn.classList.add('hidden');
+          } else {
+            const data = await res.json().catch(() => ({ error: 'Already upvoted recently' }));
+            showToast({ icon: '⚠️', title: 'Loft rating', subtitle: data.error ?? 'Failed' });
+          }
+        } catch {
+          showToast({ icon: '⚠️', title: 'Loft rating', subtitle: 'Network error' });
+        }
+      }, { once: false });
+    }
   }
 
   // Setup shadow receivers
@@ -820,6 +851,8 @@ export async function createRoomScene(
         NpcDialoguePanel.open(meshName.slice('npc-'.length));
       } else if (meshName.startsWith('gather-')) {
         socketService.emit(SOCKET_EVENTS.GATHER_NODE, { nodeId: meshName.slice('gather-'.length) });
+      } else if (meshName === 'loft-shop-register') {
+        LoftShopModal.show(roomId, isOwner);
       }
     }
   });
@@ -1108,6 +1141,21 @@ export async function createRoomScene(
   };
   let lastWeather: WeatherId | null = null;
 
+  // §3j — precipitation particles for outdoor spaces (rain streaks / drifting snow)
+  let weatherParticles: ParticleSystem | null = null;
+  let weatherDotTexture: DynamicTexture | null = null;
+  const getWeatherDotTexture = (): DynamicTexture => {
+    if (weatherDotTexture) return weatherDotTexture;
+    weatherDotTexture = new DynamicTexture('weather-dot', { width: 32, height: 32 }, scene, false);
+    const ctx = weatherDotTexture.getContext() as CanvasRenderingContext2D;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(16, 16, 13, 0, Math.PI * 2);
+    ctx.fill();
+    weatherDotTexture.update(false);
+    return weatherDotTexture;
+  };
+
   const applyWeather = (weather: WeatherId, intensity: number): void => {
     const preset = WEATHER_PRESETS[weather];
     if (!preset) return;
@@ -1116,6 +1164,44 @@ export async function createRoomScene(
     scene.fogColor = preset.fog;
     scene.fogDensity = weather === 'SUNNY' ? preset.density : preset.density * (0.5 + i);
     ambientLight.intensity = preset.ambient - (preset.ambient > 0.7 ? 0 : i * 0.15);
+
+    weatherParticles?.dispose();
+    weatherParticles = null;
+    const isOutdoor = roomId === 'room-park' || roomId === 'room-town-square';
+    if (isOutdoor && (weather === 'RAIN' || weather === 'SNOW')) {
+      const rain = weather === 'RAIN';
+      const ps = new ParticleSystem(`weather_${weather}`, rain ? 700 : 350, scene);
+      ps.particleTexture = getWeatherDotTexture();
+      ps.emitter = new Vector3(0, 9, 0);
+      ps.minEmitBox = new Vector3(-14, 0, -14);
+      ps.maxEmitBox = new Vector3(14, 2, 14);
+      if (rain) {
+        ps.color1 = new Color4(0.65, 0.75, 0.95, 0.75);
+        ps.color2 = new Color4(0.85, 0.9, 1, 0.6);
+        ps.colorDead = new Color4(0.6, 0.7, 0.9, 0);
+        ps.direction1 = new Vector3(-0.7, -9, 0);
+        ps.direction2 = new Vector3(-0.2, -13, 0.6);
+        ps.minSize = 0.04;
+        ps.maxSize = 0.12;
+        ps.minLifeTime = 0.6;
+        ps.maxLifeTime = 1.1;
+        ps.emitRate = Math.round(520 * (0.4 + i));
+      } else {
+        ps.color1 = new Color4(1, 1, 1, 0.9);
+        ps.color2 = new Color4(0.85, 0.92, 1, 0.8);
+        ps.colorDead = new Color4(1, 1, 1, 0);
+        ps.direction1 = new Vector3(-0.5, -1.1, -0.25);
+        ps.direction2 = new Vector3(0.5, -2.1, 0.25);
+        ps.minSize = 0.07;
+        ps.maxSize = 0.2;
+        ps.minLifeTime = 2.5;
+        ps.maxLifeTime = 6;
+        ps.emitRate = Math.round(150 * (0.4 + i));
+      }
+      ps.gravity = new Vector3(0, rain ? -4 : -0.4, 0);
+      ps.start();
+      weatherParticles = ps;
+    }
     if (lastWeather !== weather) {
       lastWeather = weather;
       showToast({ icon: preset.icon, title: `Weather: ${weather}`, durationMs: 3000 });

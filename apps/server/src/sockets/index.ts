@@ -22,7 +22,7 @@ import {
   AvatarUpdateSchema,
   JukeboxPlaySchema, DiceRollSchema, HarvestSchema,
   ArcadeStartSchema, ArcadeMoveSchema,
-  LoftStockSchema, LoftPurchaseSchema,
+  LoftStockSchema, LoftShopListQuerySchema, LoftPurchaseSchema,
   ParcelSendSchema, NpcTalkSchema,
 } from './socketSchemas';
 import { FishingService } from '../services/FishingService';
@@ -233,6 +233,7 @@ export function registerSocketHandlers(io: Server): void {
             socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
               code: 'FORBIDDEN_PRIVATE_LOFT',
               message: 'This personal loft is private.',
+              roomId,
             });
             return;
           }
@@ -1192,6 +1193,12 @@ export function registerSocketHandlers(io: Server): void {
       } catch (err: any) {
         socket.emit(SOCKET_EVENTS.ERROR, { code: 'JUKEBOX_ERROR', message: err?.message });
       }
+    });
+
+    socket.on(SOCKET_EVENTS.LOFT_SHOP_LIST, (rawData: unknown) => {
+      const parsed = LoftShopListQuerySchema.safeParse(rawData);
+      if (!parsed.success) return;
+      socket.emit(SOCKET_EVENTS.LOFT_SHOP_LISTINGS, LoftShopService.getListingsForRoom(parsed.data.roomId));
     });
 
     // Randomizer: crypto-verified dice roll, result lands in room chat

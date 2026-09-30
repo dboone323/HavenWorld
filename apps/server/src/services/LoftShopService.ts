@@ -12,6 +12,11 @@ export interface LoftShopListing {
 export class LoftShopService {
   private static listings = new Map<string, LoftShopListing>();
 
+  /** All active register listings for a room (for guests who arrive later). */
+  static getListingsForRoom(roomId: string): LoftShopListing[] {
+    return Array.from(this.listings.values()).filter((l) => l.roomId === roomId);
+  }
+
   /**
    * Stocks a cash register item in a personal loft for sale to visiting guests
    */

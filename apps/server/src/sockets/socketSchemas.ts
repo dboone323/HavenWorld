@@ -266,6 +266,10 @@ export const LoftStockSchema = z.object({
   priceCoins: z.number().int().min(1).max(1_000_000),
 });
 
+export const LoftShopListQuerySchema = z.object({
+  roomId: z.string().min(1).max(128),
+});
+
 export const LoftPurchaseSchema = z.object({
   listingId: z.string().min(1).max(64),
 });
