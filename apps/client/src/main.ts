@@ -8,6 +8,9 @@ import { AvatarCustomizer } from './ui/AvatarCustomizer';
 import { EmoteWheel } from './ui/EmoteWheel';
 import { QuestHUD } from './ui/QuestHUD';
 import { ShopModal } from './ui/ShopModal';
+import { MarketplacePanel } from './ui/MarketplacePanel';
+import { ClubPanel } from './ui/ClubPanel';
+import { LeaderboardPanel } from './ui/LeaderboardPanel';
 import { PassportModal } from './passport/PassportModal';
 import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
@@ -130,6 +133,18 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-pizza')?.addEventListener('click', () => {
     pizzaScene.open();
+  });
+
+  document.getElementById('btn-marketplace')?.addEventListener('click', () => {
+    MarketplacePanel.open().catch(console.error);
+  });
+
+  document.getElementById('btn-clubs')?.addEventListener('click', () => {
+    ClubPanel.open().catch(console.error);
+  });
+
+  document.getElementById('btn-leaderboard')?.addEventListener('click', () => {
+    LeaderboardPanel.open().catch(console.error);
   });
 
   // ── In-game navigation buttons ──────────────────────────────────────────
