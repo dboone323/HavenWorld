@@ -55,7 +55,8 @@ export async function truncateAllTables(): Promise<void> {
  * Seeds minimal data required for tests: default rooms and starter items.
  */
 export async function seedMinimalData(): Promise<void> {
-  // Create system user if needed for rooms
+  // Create system user if needed for rooms.
+  // Use upsert so parallel Jest workers don't race on the insert.
   const systemUser = await prisma.user.upsert({
     where: { username: 'havenworld_system' },
     create: {
@@ -69,48 +70,43 @@ export async function seedMinimalData(): Promise<void> {
     update: {},
   });
 
-  // Seed default rooms
-  await prisma.room.upsert({
-    where: { id: 'room-town-square' },
-    create: {
-      id: 'room-town-square',
-      name: 'Town Square',
-      privacy: 'PUBLIC',
-      isPublic: true,
-      maxOccupants: 50,
-      theme: 'town_square',
-      ownerId: systemUser.id,
-    },
-    update: {},
+  // Seed default rooms using createMany + skipDuplicates so that parallel
+  // Jest project teardowns that both call seedMinimalData() do not race into
+  // a "Unique constraint failed on (id)" error. The first writer inserts;
+  // any subsequent writer silently skips the existing rows.
+  await prisma.room.createMany({
+    skipDuplicates: true,
+    data: [
+      {
+        id: 'room-town-square',
+        name: 'Town Square',
+        privacy: 'PUBLIC',
+        isPublic: true,
+        maxOccupants: 50,
+        theme: 'town_square',
+        ownerId: systemUser.id,
+      },
+      {
+        id: 'room-park',
+        name: 'Haven Park',
+        privacy: 'PUBLIC',
+        isPublic: true,
+        maxOccupants: 50,
+        theme: 'park',
+        ownerId: systemUser.id,
+      },
+      {
+        id: 'room-fishing-dock',
+        name: 'Fishing Dock',
+        privacy: 'PUBLIC',
+        isPublic: true,
+        maxOccupants: 20,
+        theme: 'fishing_dock',
+        ownerId: systemUser.id,
+      },
+    ],
   });
 
-  await prisma.room.upsert({
-    where: { id: 'room-park' },
-    create: {
-      id: 'room-park',
-      name: 'Haven Park',
-      privacy: 'PUBLIC',
-      isPublic: true,
-      maxOccupants: 50,
-      theme: 'park',
-      ownerId: systemUser.id,
-    },
-    update: {},
-  });
-
-  await prisma.room.upsert({
-    where: { id: 'room-fishing-dock' },
-    create: {
-      id: 'room-fishing-dock',
-      name: 'Fishing Dock',
-      privacy: 'PUBLIC',
-      isPublic: true,
-      maxOccupants: 20,
-      theme: 'fishing_dock',
-      ownerId: systemUser.id,
-    },
-    update: {},
-  });
 
   // Seed starter items
   const defaultFreeItems: Array<{ id: string; name: string; category: any; spriteKey: string }> = [

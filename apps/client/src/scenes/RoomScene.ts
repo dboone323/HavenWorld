@@ -516,19 +516,60 @@ export async function createRoomScene(
   const galleryHandler = () => GalleryPanel.show();
   btnGallery?.addEventListener('click', galleryHandler);
 
-  let localPet: PetController | null = null;
-  // Listen for pet adoption event to spawn pet live
+  // ── Pet Management — spawn existing pets on room entry + live adoptions ────
+  const localPets = new Map<string, PetController>();
+
+  async function spawnLocalPets(): Promise<void> {
+    try {
+      const token = await authService.getToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/users/me/pets`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const pets = await res.json() as Array<{
+        id: string;
+        name: string;
+        petType: string;
+        happiness: number;
+        hunger: number;
+      }>;
+      for (const pet of pets) {
+        if (localPets.has(pet.id)) continue; // already spawned
+        if (avatarController.rootMesh) {
+          const controller = new PetController(
+            scene,
+            { id: pet.id, name: pet.name, petType: pet.petType as any, happiness: pet.happiness, hunger: pet.hunger },
+            avatarController.rootMesh,
+          );
+          localPets.set(pet.id, controller);
+        }
+      }
+    } catch (err) {
+      console.warn('[RoomScene] Could not load pets on room entry:', err);
+    }
+  }
+
+  // Spawn existing pets immediately on room join
+  spawnLocalPets().catch(console.warn);
+
+  // Listen for new adoption events to spawn pet live without a page reload
   unsubs.push(
     socketService.on<{ id: string; petType: any; name: string; happiness: number; hunger: number }>(
       SOCKET_EVENTS.PET_ADOPTED,
       (pet) => {
-        if (localPet) localPet.dispose();
+        // Dispose previous pet with same id if any
+        const existing = localPets.get(pet.id);
+        if (existing) { existing.dispose(); localPets.delete(pet.id); }
         if (avatarController.rootMesh) {
-          localPet = new PetController(scene, pet, avatarController.rootMesh);
+          const controller = new PetController(scene, pet, avatarController.rootMesh);
+          localPets.set(pet.id, controller);
         }
       }
     )
   );
+
 
   // ── Phase 3: Loft Ambient Moods ──────────────────────────────────────────
   const moodSystem = new MoodSystem(scene);
@@ -740,12 +781,22 @@ export async function createRoomScene(
       z: number;
       rotY: number;
       isSitting: boolean;
+      direction?: 'down' | 'up' | 'left' | 'right';
+      sitFrame?: 0 | 1;
     }>(SOCKET_EVENTS.PLAYER_SIT, (data) => {
       const pid = data.playerId || data.userId;
       if (!pid || pid === user.id) return;
       const remote = remoteAvatars.get(pid);
       if (remote) {
-        remote.setSitting(data.isSitting, data.x, data.y, data.z, data.rotY);
+        remote.setSitting(
+          data.isSitting,
+          data.x,
+          data.y,
+          data.z,
+          data.rotY,
+          data.direction ?? 'down',
+          data.sitFrame ?? 0,
+        );
       }
     })
   );
@@ -905,7 +956,8 @@ export async function createRoomScene(
     if (btnGallery) {
       btnGallery.removeEventListener('click', galleryHandler);
     }
-    localPet?.dispose();
+    for (const petCtrl of localPets.values()) petCtrl.dispose();
+    localPets.clear();
     scene.unregisterBeforeRender(cameraFollowCallback);
     scene.unregisterBeforeRender(footstepCallback);
     if (pointerObserver) {

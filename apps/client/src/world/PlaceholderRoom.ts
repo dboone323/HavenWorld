@@ -169,9 +169,11 @@ export function createPlaceholderRoom(scene: Scene): AbstractMesh[] {
   sofaBase.position.set(-1.2, 0.23, 5.8);
   sofaBase.material = sofaMat;
   sofaBase.isPickable = true;
-  sofaBase.metadata = { interactable: 'sit' };
+  // Sofa faces toward camera (south/down direction in isometric view)
+  sofaBase.metadata = { interactable: 'sit', seatDirection: 'down', sitFrame: 0 };
   Tags.AddTagsTo(sofaBase, 'interactable sit');
   meshes.push(sofaBase);
+
 
   const sofaBack = MeshBuilder.CreateBox('sofa_back', { width: 3.6, depth: 0.35, height: 0.75 }, scene);
   sofaBack.position.set(-1.2, 0.65, 6.35);

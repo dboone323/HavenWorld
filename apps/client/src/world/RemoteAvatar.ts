@@ -242,7 +242,15 @@ export class RemoteAvatar {
     }
   }
 
-  public setSitting(isSitting: boolean, x?: number, y?: number, z?: number, rotY?: number): void {
+  public setSitting(
+    isSitting: boolean,
+    x?: number,
+    y?: number,
+    z?: number,
+    rotY?: number,
+    direction: 'down' | 'up' | 'left' | 'right' = 'down',
+    sitFrame: 0 | 1 = 0,
+  ): void {
     this._isSitting = isSitting;
     if (x !== undefined && y !== undefined && z !== undefined) {
       this.updatePosition(x, y, z, rotY);
@@ -252,7 +260,7 @@ export class RemoteAvatar {
       this._meshes[0].position.y = isSitting ? 0.45 : 0.85;
     }
     if (isSitting) {
-      this._chibiBillboard?.setAction('sit', 'down', 0);
+      this._chibiBillboard?.setAction('sit', direction, sitFrame);
     } else {
       this._chibiBillboard?.setAction('idle', this._chibiDirection, 0);
     }

@@ -692,11 +692,29 @@ export function registerSocketHandlers(io: Server): void {
             'outfitBack',
             'outfitHand',
           ];
+          // Sentinel / starter item IDs that are valid defaults but are NOT stored
+          // in the per-user inventory table. Always skip these in the inventory count.
+          const SKIP_INVENTORY_CHECK = new Set([
+            'none',
+            'underwear',
+            'shirt-white',
+            'pants-blue',
+            'shoes-white',
+            'shirt-default',
+            'pants-default',
+            '',
+          ]);
+
           const requestedItemIds = itemFields
             .map((f) => avatarData[f])
-            .filter((v): v is string => typeof v === 'string');
+            .filter(
+              (v): v is string =>
+                typeof v === 'string' &&
+                v !== null &&
+                !SKIP_INVENTORY_CHECK.has(v),
+            );
 
-          // Verify items exist in inventory
+          // Verify items exist in inventory (only for non-default equipped items)
           if (requestedItemIds.length > 0) {
             const count = await prisma.inventory.count({
               where: {
@@ -712,6 +730,7 @@ export function registerSocketHandlers(io: Server): void {
               return;
             }
           }
+
 
           // Save new avatar config to database
           await prisma.avatar.update({

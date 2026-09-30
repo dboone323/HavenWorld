@@ -326,13 +326,16 @@ function buildCafe(scene: Scene): PrefabResult {
     tableLeg.material = woodMat;
     meshes.push(tableLeg);
 
-    // Two chairs per table
+    // Two chairs per table — chairs on opposite sides face each other
     for (const side of [-1, 1]) {
       const chair = MeshBuilder.CreateBox(`cafe_chair_${i}_${side}`, { width: 0.45, depth: 0.5, height: 0.85 }, scene);
       chair.position.set(tp.x + side * 0.65, 0.425, tp.z + side * 0.55);
       chair.material = woodMat;
       chair.isPickable = true;
-      chair.metadata = { interactable: 'sit' };
+      // side=-1: chair is to the left of the table, avatar faces right ('right')
+      // side=+1: chair is to the right of the table, avatar faces left ('left')
+      const seatDir = side === -1 ? 'right' : 'left';
+      chair.metadata = { interactable: 'sit', seatDirection: seatDir, sitFrame: 0 };
       Tags.AddTagsTo(chair, 'interactable sit');
       meshes.push(chair);
       interactable.push(chair);

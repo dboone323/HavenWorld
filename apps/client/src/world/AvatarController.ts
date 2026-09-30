@@ -202,20 +202,72 @@ export class AvatarController {
     this.crossFadeTo('walk');
   }
 
+  /**
+   * Converts a seat mesh's world rotation.y (in radians) to the canonical
+   * Chibi direction ('down' | 'up' | 'left' | 'right') and sit-frame variant
+   * (0 = facing-left variant, 1 = facing-right variant).
+   *
+   * Seat meshes face the direction a seated avatar should look toward.
+   * The atlas mapping is:
+   *   'down' frame 0  = (row=1, col=1) front-left seated
+   *   'down' frame 1  = (row=1, col=2) front-right seated
+   *   'up'   frame 0  = (row=2, col=4) back-left seated
+   *   'up'   frame 1  = (row=2, col=5) back-right seated
+   *   'left' frame 0  = (row=1, col=1) (reuse front-left)
+   *   'right' frame 0 = (row=1, col=2) (reuse front-right)
+   */
+  private _seatDirectionFromRotation(rotY: number): { direction: 'down' | 'up' | 'left' | 'right'; sitFrame: 0 | 1 } {
+    // Normalise to [0, 2π)
+    const TWO_PI = Math.PI * 2;
+    const angle = ((rotY % TWO_PI) + TWO_PI) % TWO_PI;
+    // Quantise to nearest 90° quadrant
+    const quadrant = Math.round(angle / (Math.PI / 2)) % 4; // 0=down, 1=right, 2=up, 3=left
+    switch (quadrant) {
+      case 0: return { direction: 'down',  sitFrame: 0 };  // facing camera (front-left)
+      case 1: return { direction: 'right', sitFrame: 0 };  // facing right
+      case 2: return { direction: 'up',    sitFrame: 0 };  // away from camera (back-left)
+      case 3: return { direction: 'left',  sitFrame: 0 };  // facing left
+      default: return { direction: 'down', sitFrame: 0 };
+    }
+  }
+
   public sitOn(seatMesh: BABYLON.AbstractMesh): void {
     if (!this.rootMesh) return;
     seatMesh.computeWorldMatrix(true);
     const seatPos = seatMesh.getAbsolutePosition();
-    this.playSocialAnim('sit');
+
+    // Derive facing direction from the seat mesh's world rotation —
+    // metadata.seatDirection (set by PlaceholderRoom / RoomPrefabs) takes
+    // precedence over raw rotation.y so hand-placed seats can override the
+    // auto-detected quadrant.
+    const metaDir = seatMesh.metadata?.seatDirection as string | undefined;
+    const metaFrame = seatMesh.metadata?.sitFrame as number | undefined;
+    let direction: 'down' | 'up' | 'left' | 'right';
+    let sitFrame: 0 | 1;
+    if (metaDir === 'down' || metaDir === 'up' || metaDir === 'left' || metaDir === 'right') {
+      direction = metaDir;
+      sitFrame = (metaFrame === 1 ? 1 : 0) as 0 | 1;
+    } else {
+      const worldRotY = seatMesh.rotationQuaternion
+        ? BABYLON.Quaternion.FromRotationMatrix(seatMesh.getWorldMatrix()).toEulerAngles().y
+        : seatMesh.rotation.y;
+      ({ direction, sitFrame } = this._seatDirectionFromRotation(worldRotY));
+    }
+
     this.rootMesh.position.x = seatPos.x;
     this.rootMesh.position.z = seatPos.z;
     this.rootMesh.position.y = (seatPos.y || 0) + 0.12;
     this.rootMesh.rotationQuaternion = null;
-    if (seatMesh.rotation) {
-      this.rootMesh.rotation.y = seatMesh.rotation.y;
-    }
-    this.chibiBillboard?.setAction('sit', 'down', 0);
+    this.rootMesh.rotation.y = seatMesh.rotation.y;
+
+    this.chibiBillboard?.setAction('sit', direction, sitFrame);
     this.chibiBillboard?.updatePosition(this.rootMesh.position, true);
+
+    this.targetPosition = null;
+    this.onArrivalCallback = null;
+    this.isMoving = false;
+    this.currentAnimName = 'sit';
+    this.crossFadeTo('sit', true);
 
     const roomId =
       (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
@@ -228,6 +280,8 @@ export class AvatarController {
       z: this.rootMesh.position.z,
       rotY: this.rootMesh.rotation.y,
       isSitting: true,
+      direction,
+      sitFrame,
     });
   }
 
@@ -240,6 +294,7 @@ export class AvatarController {
       if (this.rootMesh) {
         this.rootMesh.position.y = -0.32;
       }
+      // Default to 'down' direction when called without a specific seat mesh
       this.chibiBillboard?.setAction('sit', 'down', 0);
     } else {
       this.chibiBillboard?.setAction('idle', this.chibiDirection, 0);
