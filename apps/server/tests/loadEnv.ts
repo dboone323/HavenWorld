@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // Load .env.test for test suite
-dotenv.config({ path: path.resolve(__dirname, '../.env.test') });
+dotenv.config({ path: path.resolve(__dirname, '../.env.test'), quiet: true });
 
 // Fallback defaults for safety
 process.env.NODE_ENV = 'test';

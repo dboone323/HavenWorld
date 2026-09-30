@@ -1,4 +1,4 @@
-import { verifyStartupSecurityAssertions } from '../security';
+import { verifyStartupSecurityAssertions, isAllowedOrigin } from '../security';
 
 /**
  * Regression cover for the startup guards in middleware/security.ts.
@@ -55,3 +55,28 @@ describe('verifyStartupSecurityAssertions', () => {
     expect(() => verifyStartupSecurityAssertions()).toThrow(/64 hex/);
   });
 });
+
+describe('isAllowedOrigin', () => {
+  it('allows canonical Cloudflare Pages production origins', () => {
+    expect(isAllowedOrigin('https://havenworld-game.pages.dev')).toBe(true);
+    expect(isAllowedOrigin('https://havenworld.pages.dev')).toBe(true);
+  });
+
+  it('allows Cloudflare Pages deployment preview subdomains', () => {
+    expect(isAllowedOrigin('https://216c2a4a.havenworld-game.pages.dev')).toBe(true);
+    expect(isAllowedOrigin('https://eadab224.havenworld-game.pages.dev')).toBe(true);
+    expect(isAllowedOrigin('https://pr-12.havenworld.pages.dev')).toBe(true);
+  });
+
+  it('allows requests without an origin header', () => {
+    expect(isAllowedOrigin(undefined)).toBe(true);
+  });
+
+  it('rejects untrusted origins and lookalike domains', () => {
+    expect(isAllowedOrigin('https://evil.example.com')).toBe(false);
+    expect(isAllowedOrigin('http://216c2a4a.havenworld-game.pages.dev')).toBe(false);
+    expect(isAllowedOrigin('https://havenworld-game.pages.dev.evil.com')).toBe(false);
+    expect(isAllowedOrigin('https://sub.sub.havenworld-game.pages.dev')).toBe(false);
+  });
+});
+

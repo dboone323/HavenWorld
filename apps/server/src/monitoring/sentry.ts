@@ -35,8 +35,12 @@ function scrubObject(obj: Record<string, unknown>): Record<string, unknown> {
   return scrubbed;
 }
 
+function getSentryDsn(): string | undefined {
+  return process.env.SENTRY_DSN || process.env.SENTRY_DSN_SERVER;
+}
+
 export function initSentry(): void {
-  const dsn = process.env.SENTRY_DSN;
+  const dsn = getSentryDsn();
   if (!dsn) {
     return;
   }
@@ -86,7 +90,7 @@ export function captureSecurityEvent(
     details,
   });
 
-  if (process.env.SENTRY_DSN) {
+  if (getSentryDsn()) {
     Sentry.captureMessage(`Security Event: ${eventType}`, {
       level: 'warning',
       tags: {
@@ -101,6 +105,6 @@ export function captureSecurityEvent(
 /** Report a caught-but-serious error (used by the process crash handlers in
  *  index.ts). No-ops when Sentry is not configured. */
 export function captureException(error: unknown): void {
-  if (!process.env.SENTRY_DSN) return;
+  if (!getSentryDsn()) return;
   Sentry.captureException(error);
 }

@@ -10,7 +10,7 @@ import { initSentry, captureException } from './monitoring/sentry';
 import {
   applySecurityMiddleware,
   verifyStartupSecurityAssertions,
-  ALLOWED_ORIGINS,
+  isAllowedOrigin,
 } from './middleware/security';
 import { csrfProtection } from './middleware/csrf';
 import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler';
@@ -68,9 +68,7 @@ if (process.env.NODE_ENV !== 'test') {
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-        callback(null, true);
-      } else if (process.env.NODE_ENV !== 'production') {
+      if (isAllowedOrigin(origin) || process.env.NODE_ENV !== 'production') {
         callback(null, true);
       } else {
         callback(new Error('CORS_ORIGIN_BLOCKED'));

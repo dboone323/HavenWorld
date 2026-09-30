@@ -7,9 +7,8 @@ const fs   = require('fs');
 const path = require('path');
 
 try {
-  const pkg   = require.resolve('@babylonjs/havok/package.json');
-  const dir   = path.dirname(pkg);
-  const src   = path.join(dir, 'lib', 'esm', 'HavokPhysics.wasm');
+  const entry = require.resolve('@babylonjs/havok');
+  const src   = path.resolve(path.dirname(entry), '..', 'esm', 'HavokPhysics.wasm');
   const dest  = path.join(__dirname, '..', 'public', 'HavokPhysics.wasm');
 
   if (fs.existsSync(src)) {

@@ -16,24 +16,24 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.27.1",
-    "@babylonjs/gui": "^9.27.1",
+    "@babylonjs/core": "^9.28.0",
+    "@babylonjs/gui": "^9.28.0",
     "@babylonjs/havok": "^1.3.14",
-    "@babylonjs/loaders": "^9.27.1",
-    "@babylonjs/materials": "^9.27.1",
+    "@babylonjs/loaders": "^9.28.0",
+    "@babylonjs/materials": "^9.28.0",
     "@havenworld/shared": "workspace:*",
-    "alpinejs": "^3.17.3",
-    "socket.io-client": "^4.8.3"
+    "alpinejs": "^3.17.4",
+    "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
-    "@babylonjs/inspector": "^9.27.1",
-    "@babylonjs/serializers": "^9.27.1",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/user-event": "^14.5.2",
-    "@types/node": "^22.0.0",
+    "@babylonjs/inspector": "^9.28.0",
+    "@babylonjs/serializers": "^9.28.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^25.0.1",
-    "typescript": "^5.6.3",
+    "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vite-plugin-static-copy": "^4.1.1",
     "vitest": "^4.1.11"

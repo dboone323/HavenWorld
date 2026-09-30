@@ -17,13 +17,23 @@ if (process.env.NODE_ENV !== 'production') {
   ALLOWED_ORIGINS.push('http://127.0.0.1:5173');
 }
 
+export const CLOUDFLARE_PREVIEW_ORIGIN_REGEX =
+  /^https:\/\/[a-z0-9-]+\.havenworld(-game)?\.pages\.dev$/i;
+
+export function isAllowedOrigin(origin?: string): boolean {
+  if (!origin) {
+    return true;
+  }
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    return true;
+  }
+  return CLOUDFLARE_PREVIEW_ORIGIN_REGEX.test(origin);
+}
+
 export const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     // Requests with no origin (server-to-server, curl, health monitors, same-origin)
-    if (!origin) {
-      return callback(null, true);
-    }
-    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
     callback(new Error(`CORS_ORIGIN_BLOCKED: ${origin}`));
