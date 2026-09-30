@@ -5,3 +5,4 @@ export * from './catalog.js';
 export * from './fishing.js';
 export * from './crafting.js';
 export * from './quests.js';
+export * from './worldContent.js';

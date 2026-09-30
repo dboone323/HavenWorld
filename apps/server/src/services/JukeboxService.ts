@@ -1,19 +1,9 @@
 import { getIO } from '../sockets';
-import { SOCKET_EVENTS } from '@havenworld/shared';
+import { SOCKET_EVENTS, JUKEBOX_CATALOG } from '@havenworld/shared';
+import type { JukeboxTrack } from '@havenworld/shared';
 
-export interface JukeboxTrack {
-  id: string;
-  title: string;
-  artist: string;
-  durationSeconds: number;
-}
-
-export const JUKEBOX_CATALOG: JukeboxTrack[] = [
-  { id: 'haven_nostalgia', title: 'Haven Nostalgia', artist: 'Chiptune Maestro', durationSeconds: 96 },
-  { id: 'cozy_fireplace', title: 'Cozy Hearthside', artist: 'Pixel Symphony', durationSeconds: 120 },
-  { id: 'neon_pulse', title: 'Neon Midnight Pulse', artist: 'RetroSynth', durationSeconds: 140 },
-  { id: 'starlight_waltz', title: 'Starlight Waltz', artist: 'Haven Harmonic', durationSeconds: 110 },
-];
+export type { JukeboxTrack } from '@havenworld/shared';
+export { JUKEBOX_CATALOG };
 
 export interface RoomJukeboxState {
   trackId: string;

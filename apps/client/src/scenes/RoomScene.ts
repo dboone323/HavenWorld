@@ -24,6 +24,11 @@ import { FishingController } from '../fishing/FishingController';
 import { MoodSystem } from '../rooms/MoodSystem';
 import { audioEngine } from '../audio/AudioEngine';
 import { GuestbookPanel } from '../ui/GuestbookPanel';
+import { ArcadeModal } from '../ui/ArcadeModal';
+import { BulletinModal } from '../ui/BulletinModal';
+import { JukeboxModal } from '../ui/JukeboxModal';
+import { NpcDialoguePanel } from '../ui/NpcDialoguePanel';
+import { buildPublicSpaceProps } from '../world/PublicSpaceProps';
 import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService } from '../services/socket';
@@ -178,6 +183,12 @@ export async function createRoomScene(
         'Falling back to procedural prefab.'
     );
     roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
+  }
+
+  // Phase 3 — interactive props (arcade, corkboard, jukebox, NPCs, gathering
+  // nodes) for the public spaces, whether the room came from GLB or prefab.
+  if (['room-town-square', 'room-park', 'room-cafe'].includes(roomId)) {
+    roomMeshes.push(...buildPublicSpaceProps(scene, roomId));
   }
 
   // Setup shadow receivers
@@ -795,6 +806,20 @@ export async function createRoomScene(
         document.getElementById('btn-pizza')?.click();
       } else if (meshName.includes('tv_screen') || meshName.includes('whiteboard') || meshName.includes('menu_board')) {
         CollaborativeWhiteboard.openModal(roomId);
+      } else if (meshName === 'arcade-cabinet') {
+        ArcadeModal.show({
+          selfId: authService.user?.id ?? '',
+          selfName: authService.user?.username ?? 'You',
+          players: [...remoteAvatars.values()].map((r) => ({ userId: r.userId, username: r.username })),
+        });
+      } else if (meshName === 'bulletin-board') {
+        BulletinModal.open().catch(console.error);
+      } else if (meshName === 'jukebox-machine') {
+        JukeboxModal.show(roomId);
+      } else if (meshName.startsWith('npc-')) {
+        NpcDialoguePanel.open(meshName.slice('npc-'.length));
+      } else if (meshName.startsWith('gather-')) {
+        socketService.emit(SOCKET_EVENTS.GATHER_NODE, { nodeId: meshName.slice('gather-'.length) });
       }
     }
   });

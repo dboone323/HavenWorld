@@ -1,50 +1,9 @@
 import { prisma } from '../prisma';
 import { redisClient } from '../redis';
-import { RawMaterial } from '@havenworld/shared';
+import { GATHERING_NODES } from '@havenworld/shared';
 
-export interface GatheringNode {
-  id: string;
-  name: string;
-  roomKey: string;
-  material: RawMaterial;
-  yieldQuantity: number;
-  cooldownSeconds: number;
-}
-
-export const GATHERING_NODES: Record<string, GatheringNode> = {
-  plaza_apple_tree: {
-    id: 'plaza_apple_tree',
-    name: 'Plaza Orchard Tree',
-    roomKey: 'town-square',
-    material: 'timber',
-    yieldQuantity: 2,
-    cooldownSeconds: 30,
-  },
-  fountain_wishing_well: {
-    id: 'fountain_wishing_well',
-    name: 'Fountain Wishing Well',
-    roomKey: 'town-square',
-    material: 'scrap_metal',
-    yieldQuantity: 2,
-    cooldownSeconds: 30,
-  },
-  garden_herb_patch: {
-    id: 'garden_herb_patch',
-    name: 'Garden Herb Patch',
-    roomKey: 'park',
-    material: 'fabric',
-    yieldQuantity: 2,
-    cooldownSeconds: 30,
-  },
-  crystal_fissure: {
-    id: 'crystal_fissure',
-    name: 'Subterranean Crystal Fissure',
-    roomKey: 'cafe',
-    material: 'crystal_shard',
-    yieldQuantity: 1,
-    cooldownSeconds: 45,
-  },
-};
+export type { GatheringNode } from '@havenworld/shared';
+export { GATHERING_NODES };
 
 export class GatheringService {
   private static memoryCooldowns = new Map<string, number>();
