@@ -1,4 +1,5 @@
 import { getIO } from '../sockets';
+import { SOCKET_EVENTS } from '@havenworld/shared';
 
 export type WorldWeather = 'SUNNY' | 'RAIN' | 'AURORA' | 'SNOW';
 
@@ -24,7 +25,7 @@ export class WeatherService {
     const state = this.getWeather();
     const io = getIO();
     if (io) {
-      io.emit('weather:update', state);
+      io.emit(SOCKET_EVENTS.WEATHER_UPDATE, state);
     }
     return state;
   }

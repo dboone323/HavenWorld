@@ -29,6 +29,7 @@ import workshopRoutes from './routes/workshop';
 import marketplaceRoutes from './routes/marketplace';
 import feedbackRoutes from './routes/feedback';
 import leaderboardRoutes from './routes/leaderboard';
+import bulletinRoutes from './routes/bulletin';
 import tutorialRoutes from './routes/tutorial';
 import testRoutes from './routes/testRoutes';
 import { PetManager } from './services/PetManager';
@@ -37,6 +38,9 @@ import { ShopService } from './services/ShopService';
 import { WorkshopService } from './services/WorkshopService';
 import { SeasonalEventService } from './services/SeasonalEventService';
 import { registerSocketHandlers } from './sockets';
+import { SOCKET_EVENTS } from '@havenworld/shared';
+import { DelayedMailService } from './services/DelayedMailService';
+import { WeatherService } from './services/WeatherService';
 import cron from 'node-cron';
 
 export const SERVER_CONFIG = {
@@ -122,6 +126,7 @@ app.use('/api/workshop', workshopRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/bulletin', bulletinRoutes);
 app.use('/api/tutorial', tutorialRoutes);
 
 if (process.env.NODE_ENV === 'test') {
@@ -184,6 +189,33 @@ async function start() {
       SeasonalEventService.convertExpiredEvents().catch((err) =>
         console.error('[Cron] Seasonal finalization failed:', err)
       );
+    });
+
+    // Phase 3B — Delayed mail parcel delivery sweep: every minute. Arrived
+    // parcels are credited by the service; recipients get a live toast.
+    cron.schedule('* * * * *', async () => {
+      try {
+        const arrived = await DelayedMailService.processArrivedMail();
+        for (const parcel of arrived) {
+          const sockets = await io.fetchSockets();
+          for (const s of sockets) {
+            const socketUser = s.data?.user as { userId?: string } | undefined;
+            if (socketUser?.userId === parcel.recipientId) {
+              s.emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Cron] Parcel delivery sweep failed:', err)
+      }
+    });
+
+    // Phase 3B — Ambient world weather drift: every 20 minutes the plaza
+    // atmosphere shifts on its own, so the world feels alive without admin input.
+    cron.schedule('*/20 * * * *', () => {
+      const weathers = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'] as const;
+      const pick = weathers[Math.floor(Math.random() * weathers.length)];
+      WeatherService.setWeather(pick, 0.3 + Math.random() * 0.5);
     });
 
     httpServer.listen(PORT, '0.0.0.0', () => {

@@ -21,6 +21,7 @@ import {
   hideContextLostOverlay,
 } from './ui/WebGLError';
 import { SOCKET_EVENTS } from '@havenworld/shared';
+import { showToast } from './ui/ToastNotification';
 import { SERVER_URL } from './config';
 import { AvatarContextMenu } from './ui/AvatarContextMenu';
 import { AccessibilityManager } from './ui/AccessibilityManager';
@@ -196,6 +197,58 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-quick-mood')?.addEventListener('click', () => {
     document.getElementById('btn-loft-settings')?.click();
   });
+
+  // ── Phase 3B: World-wide notifications (scene-independent) ─────────────────
+  // Global events / server alerts arrive as SERVER_ALERT broadcasts.
+  socketService.on<{
+    type?: string; title?: string; message?: string; description?: string; multiplier?: number;
+  }>(SOCKET_EVENTS.SERVER_ALERT, (alert) => {
+    const body = alert.description || alert.message || '';
+    const mult = typeof alert.multiplier === 'number' && alert.multiplier > 1
+      ? ` (x${alert.multiplier})`
+      : '';
+    showToast({
+      icon: '📢',
+      title: alert.title || 'Server Alert',
+      subtitle: `${body}${mult}`,
+      durationMs: 6000,
+    });
+  });
+
+  socketService.on<{ senderId?: string; message?: string; itemId?: string }>(
+    SOCKET_EVENTS.PARCEL_ARRIVED,
+    (p) => {
+      showToast({
+        icon: '📦',
+        title: 'A parcel has arrived!',
+        subtitle: p.message || (p.itemId ? `Contains: ${p.itemId}` : 'Check your inventory'),
+      });
+    }
+  );
+
+  socketService.on<{ secretName?: string; roomId?: string }>(
+    SOCKET_EVENTS.SECRET_ROOM_DISCOVERED,
+    (s) => {
+      showToast({
+        icon: '🗝️',
+        title: 'Secret Room Discovered!',
+        subtitle: s.secretName || 'A hidden door just opened somewhere…',
+        durationMs: 6000,
+      });
+    }
+  );
+
+  socketService.on<{ nodeName?: string; material?: string; quantity?: number }>(
+    SOCKET_EVENTS.GATHERING_RESULT,
+    (g) => {
+      showToast({
+        icon: '🌿',
+        title: `Gathered from ${g.nodeName || 'a node'}`,
+        subtitle: `+${g.quantity ?? 1} ${g.material ?? 'materials'}`,
+        durationMs: 3000,
+      });
+    }
+  );
 
   // ── Initial scene routing based on auth ──────────────────────────────────
   try {

@@ -163,6 +163,52 @@ export const SOCKET_EVENTS = {
 
   // ── Part 9B: Live Monitoring (§3) ────────────────────────────────────────
   SERVER_ALERT: 'system:alert',
+
+  // ── Phase 3B: Community & World Services ─────────────────────────────────
+  // Weather (atmosphere system)
+  WEATHER_GET:    'weather:get',
+  WEATHER_UPDATE: 'weather:update',
+
+  // Jukebox (room-synced chiptune player)
+  JUKEBOX_PLAY:         'jukebox:play',
+  JUKEBOX_TRACK_CHANGED: 'jukebox:track_changed',
+
+  // Global live events (admin-triggered world-wide modifiers; broadcast via SERVER_ALERT)
+  GLOBAL_EVENT_TRIGGERED: 'global_event:triggered',
+
+  // Secret rooms / easter eggs (chat passphrase discoveries)
+  SECRET_ROOM_DISCOVERED: 'secret_room:discovered',
+
+  // Randomizer (crypto-verified dice rolls, broadcast as SYSTEM chat)
+  ROLL_DICE: 'randomizer:roll',
+
+  // Resource gathering nodes (park / café / plaza harvest points)
+  GATHER_NODE:     'gathering:harvest',
+  GATHERING_RESULT: 'gathering:result',
+
+  // Arcade Connect-4 cabinets
+  ARCADE_START: 'arcade:start',
+  ARCADE_MOVE:  'arcade:move',
+  ARCADE_STATE: 'arcade:state',
+
+  // Loft shop registers (owner-stocked cash registers)
+  LOFT_SHOP_STOCK:    'loft_shop:stock',
+  LOFT_SHOP_LISTING:  'loft_shop:listing',
+  LOFT_SHOP_PURCHASE: 'loft_shop:purchase',
+  LOFT_SHOP_RESULT:   'loft_shop:result',
+
+  // Delayed mail parcels (time-release gifts)
+  PARCEL_SEND:    'mail:parcel_send',
+  PARCEL_SENT:    'mail:parcel_sent',
+  PARCEL_ARRIVED: 'mail:parcel_arrived',
+
+  // NPC dialogue trees
+  NPC_TALK:     'npc:talk',
+  NPC_DIALOGUE: 'npc:dialogue',
+
+  // Emote progression (server-authoritative unlock list)
+  EMOTE_LIST:  'emote:list',
+  EMOTE_STATE: 'emote:state',
 } as const;
 
 export type SocketEventType = typeof SOCKET_EVENTS[keyof typeof SOCKET_EVENTS];

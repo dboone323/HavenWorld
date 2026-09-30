@@ -814,6 +814,9 @@ export async function createRoomScene(
   // Join room on server
   socketService.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId });
 
+  // Phase 3B: pull the current world weather so the atmosphere applies on entry
+  socketService.emit(SOCKET_EVENTS.WEATHER_GET);
+
   // Initial room state (players list)
   unsubs.push(
     socketService.on<{ roomId: string; players: PlayerState[]; mood?: MoodId }>(
@@ -1066,6 +1069,46 @@ export async function createRoomScene(
           coinAmountEl.dataset.rawCoins = String(data.coins);
           coinAmountEl.textContent = StreamerModeManager.maskSensitiveText(data.coins);
         }
+      }
+    )
+  );
+
+  // ── Phase 3B: World Weather Atmosphere & Jukebox ───────────────────────────
+  type WeatherId = 'SUNNY' | 'RAIN' | 'AURORA' | 'SNOW';
+  const WEATHER_PRESETS: Record<WeatherId, { fog: Color3; density: number; ambient: number; icon: string }> = {
+    SUNNY:  { fog: new Color3(0.85, 0.90, 0.96), density: 0.002,          ambient: 0.95, icon: '☀️' },
+    RAIN:   { fog: new Color3(0.42, 0.47, 0.56), density: 0.014,          ambient: 0.55, icon: '🌧️' },
+    SNOW:   { fog: new Color3(0.92, 0.94, 0.99), density: 0.010,          ambient: 0.80, icon: '❄️' },
+    AURORA: { fog: new Color3(0.14, 0.10, 0.34), density: 0.005,          ambient: 0.65, icon: '🌌' },
+  };
+  let lastWeather: WeatherId | null = null;
+
+  const applyWeather = (weather: WeatherId, intensity: number): void => {
+    const preset = WEATHER_PRESETS[weather];
+    if (!preset) return;
+    const i = Math.max(0, Math.min(1, intensity));
+    scene.fogMode = Scene.FOGMODE_EXP2;
+    scene.fogColor = preset.fog;
+    scene.fogDensity = weather === 'SUNNY' ? preset.density : preset.density * (0.5 + i);
+    ambientLight.intensity = preset.ambient - (preset.ambient > 0.7 ? 0 : i * 0.15);
+    if (lastWeather !== weather) {
+      lastWeather = weather;
+      showToast({ icon: preset.icon, title: `Weather: ${weather}`, durationMs: 3000 });
+    }
+  };
+
+  unsubs.push(
+    socketService.on<{ currentWeather: WeatherId; intensity: number }>(
+      SOCKET_EVENTS.WEATHER_UPDATE,
+      (w) => applyWeather(w.currentWeather, w.intensity ?? 0.5)
+    )
+  );
+
+  unsubs.push(
+    socketService.on<{ roomId: string; trackId: string; title?: string }>(
+      SOCKET_EVENTS.JUKEBOX_TRACK_CHANGED,
+      (t) => {
+        showToast({ icon: '🎵', title: 'Jukebox', subtitle: `Now playing: ${t.title || t.trackId}` });
       }
     )
   );

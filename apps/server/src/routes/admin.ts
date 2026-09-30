@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { requireAdmin, logAdminAction } from '../middleware/adminAuth';
+import { WeatherService } from '../services/WeatherService';
+import { GlobalEventService } from '../services/GlobalEventService';
 import { prisma } from '../prisma';
 
 const router = Router();
@@ -323,5 +325,39 @@ router.get('/stats', requireRole(['ADMIN']), async (_req, res) => {
     alpha: { inviteCodesUsed: invitesUsed },
   });
 });
+
+// ── Phase 3B: World Weather & Global Events (admin live ops) ────────────────────
+router.post('/weather', requireRole(['ADMIN']), async (req, res) => {
+  const { weather, intensity } = req.body ?? {};
+  const valid = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'];
+  if (!valid.includes(weather)) {
+    return res.status(400).json({ error: `weather must be one of: ${valid.join(', ')}` });
+  }
+  const parsedIntensity = typeof intensity === 'number' ? intensity : 0.5;
+  const state = WeatherService.setWeather(weather as any, parsedIntensity);
+  console.log(`[Admin] ${logLabel(req as AuthRequest)} set world weather to ${weather} (${state.intensity})`);
+  res.json(state);
+});
+
+router.post('/global-event', requireRole(['ADMIN']), async (req, res) => {
+  const { type, title, description, durationMinutes, multiplier } = req.body ?? {};
+  const validTypes = ['METEOR_SHOWER', 'DOUBLE_COINS', 'FESTIVAL', 'ANNOUNCEMENT'];
+  if (!validTypes.includes(type) || typeof title !== 'string' || title.trim().length < 3) {
+    return res.status(400).json({ error: `type must be one of ${validTypes.join(', ')} and title is required` });
+  }
+  const event = GlobalEventService.triggerGlobalEvent(
+    type,
+    title.trim().slice(0, 80),
+    typeof description === 'string' ? description.slice(0, 300) : '',
+    Number.isFinite(durationMinutes) ? Math.min(Math.max(durationMinutes, 1), 1440) : 60,
+    Number.isFinite(multiplier) ? Math.min(Math.max(multiplier, 1), 5) : 1.0
+  );
+  console.log(`[Admin] ${logLabel(req as AuthRequest)} triggered global event: ${event.title}`);
+  res.json(event);
+});
+
+function logLabel(req: AuthRequest): string {
+  return req.user?.userId ?? 'admin';
+}
 
 export default router;

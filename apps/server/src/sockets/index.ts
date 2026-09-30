@@ -20,6 +20,10 @@ import {
   DMSendSchema, DMReadSchema,
   SitSchema,
   AvatarUpdateSchema,
+  JukeboxPlaySchema, DiceRollSchema, HarvestSchema,
+  ArcadeStartSchema, ArcadeMoveSchema,
+  LoftStockSchema, LoftPurchaseSchema,
+  ParcelSendSchema, NpcTalkSchema,
 } from './socketSchemas';
 import { FishingService } from '../services/FishingService';
 import { PrivacyManager } from '../services/PrivacyManager';
@@ -36,6 +40,16 @@ import { attachIdleTimeout } from './idleTimeout';
 import { SocketRateLimiter } from './rateLimiter';
 import { MovementValidator } from '../game/movement';
 import { captureSecurityEvent } from '../monitoring/sentry';
+import { WeatherService } from '../services/WeatherService';
+import { JukeboxService } from '../services/JukeboxService';
+import { RandomizerService } from '../services/RandomizerService';
+import { GatheringService } from '../services/GatheringService';
+import { ArcadeService } from '../services/ArcadeService';
+import { LoftShopService } from '../services/LoftShopService';
+import { DelayedMailService } from '../services/DelayedMailService';
+import { NpcDialogueService } from '../services/NpcDialogueService';
+import { EmoteProgressionService } from '../services/EmoteProgressionService';
+import { SecretRoomService } from '../services/SecretRoomService';
 
 // ── CSWSH Origin Check Middleware ───────────────────────────────────────────
 function socketOriginMiddleware(socket: Socket, next: (err?: Error) => void): void {
@@ -555,6 +569,15 @@ export function registerSocketHandlers(io: Server): void {
 
         // Broadcast to ALL players in the room INCLUDING sender immediately
         io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, message);
+
+        // Phase 3B: secret-room passphrase easter-egg discovery (async, non-blocking)
+        SecretRoomService.checkSecretTrigger(userId, roomId, filtered)
+          .then((secret) => {
+            if (secret.triggered) {
+              socket.emit(SOCKET_EVENTS.SECRET_ROOM_DISCOVERED, { ...secret, roomId });
+            }
+          })
+          .catch((err) => console.error('[Socket] Secret trigger check failed:', err));
 
         // Asynchronously persist to database for audit log without blocking event loop
         prisma.chatMessage.create({
@@ -1104,14 +1127,33 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── Phase 3: Emote Wheel (§14) ───────────────────────────────────────────
-    socket.on(SOCKET_EVENTS.EMOTE_TRIGGERED, (rawData: unknown) => {
+    socket.on(SOCKET_EVENTS.EMOTE_TRIGGERED, async (rawData: unknown) => {
       const parsed = EmoteSchema.safeParse(rawData);
       if (!parsed.success) return;
+      const emoteId = parsed.data.emoteId;
+
+      // Phase 3B: ADVANCED/MASTERY emotes require server-side unlock verification
+      if (['backflip', 'handstand', 'confetti'].includes(emoteId)) {
+        try {
+          const emotes = await EmoteProgressionService.getPlayerEmotes(userId);
+          const info = emotes.find((e) => e.id === emoteId);
+          if (!info?.unlocked) {
+            socket.emit(SOCKET_EVENTS.ERROR, {
+              code: 'EMOTE_LOCKED',
+              message: info?.requirementDescription || 'Emote not yet unlocked',
+            });
+            return;
+          }
+        } catch {
+          // Fail open: a telemetry lookup hiccup shouldn't block expression
+        }
+      }
+
       const p = roomManager.getPlayer(userId);
       if (p?.roomId) {
         io.to(p.roomId).emit(SOCKET_EVENTS.AVATAR_EMOTE, {
           userId,
-          emoteId: parsed.data.emoteId,
+          emoteId,
         });
       }
     });
@@ -1124,6 +1166,174 @@ export function registerSocketHandlers(io: Server): void {
         await ClubService.sendClubMessage(userId, parsed.data.clubId, parsed.data.content);
       } catch (err: any) {
         socket.emit('error', { message: err?.message || 'Club message error' });
+      }
+    });
+
+    // ── Phase 3B: Community & World Services ───────────────────────────
+    // Weather: client requests the current atmosphere on scene entry
+    socket.on(SOCKET_EVENTS.WEATHER_GET, () => {
+      socket.emit(SOCKET_EVENTS.WEATHER_UPDATE, WeatherService.getWeather());
+    });
+
+    // Jukebox: play a catalog track for everyone in the room
+    socket.on(SOCKET_EVENTS.JUKEBOX_PLAY, (rawData: unknown) => {
+      const parsed = JukeboxPlaySchema.safeParse(rawData);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+        return;
+      }
+      const currentRoom = roomManager.getPlayerRoom(socket.id);
+      if (!currentRoom || currentRoom !== parsed.data.roomId) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'NOT_IN_ROOM', message: 'You must be in the room to use the jukebox.' });
+        return;
+      }
+      try {
+        JukeboxService.playTrack(parsed.data.roomId, parsed.data.trackId);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'JUKEBOX_ERROR', message: err?.message });
+      }
+    });
+
+    // Randomizer: crypto-verified dice roll, result lands in room chat
+    socket.on(SOCKET_EVENTS.ROLL_DICE, async (rawData: unknown) => {
+      const parsed = DiceRollSchema.safeParse(rawData ?? {});
+      if (!parsed.success) return;
+      const currentRoom = roomManager.getPlayerRoom(socket.id);
+      if (!currentRoom) return;
+      try {
+        await RandomizerService.rollDice(userId, currentRoom, parsed.data.sides);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ROLL_ERROR', message: err?.message });
+      }
+    });
+
+    // Gathering: harvest a resource node in a public space (cooldown enforced server-side)
+    socket.on(SOCKET_EVENTS.GATHER_NODE, async (rawData: unknown) => {
+      const parsed = HarvestSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      try {
+        const result = await GatheringService.harvestNode(userId, parsed.data.nodeId);
+        socket.emit(SOCKET_EVENTS.GATHERING_RESULT, {
+          nodeId: result.nodeId,
+          nodeName: result.nodeName,
+          material: result.material,
+          quantity: result.quantity,
+          cooldownSeconds: result.cooldownSeconds,
+        });
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'GATHER_ERROR', message: err?.message });
+      }
+    });
+
+    // Arcade Connect-4: start a match with another player in the same room
+    socket.on(SOCKET_EVENTS.ARCADE_START, (rawData: unknown) => {
+      const parsed = ArcadeStartSchema.safeParse(rawData);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+        return;
+      }
+      const myRoom = roomManager.getPlayerRoom(socket.id);
+      const opponent = roomManager.getPlayer(parsed.data.opponentId);
+      if (!myRoom || !opponent?.roomId || opponent.roomId !== myRoom) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'OPPONENT_NOT_IN_ROOM', message: 'Your opponent must be in the same room.' });
+        return;
+      }
+      try {
+        const match = ArcadeService.startMatch(userId, parsed.data.opponentId, parsed.data.cabinetId);
+        io.to(myRoom).emit(SOCKET_EVENTS.ARCADE_STATE, match);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: err?.message });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.ARCADE_MOVE, (rawData: unknown) => {
+      const parsed = ArcadeMoveSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      try {
+        const match = ArcadeService.makeMove(parsed.data.matchId, userId, parsed.data.col);
+        const room = roomManager.getPlayer(userId)?.roomId;
+        if (room) io.to(room).emit(SOCKET_EVENTS.ARCADE_STATE, match);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: err?.message });
+      }
+    });
+
+    // Loft shop: owner stocks a register; visiting guests purchase from it
+    socket.on(SOCKET_EVENTS.LOFT_SHOP_STOCK, async (rawData: unknown) => {
+      const parsed = LoftStockSchema.safeParse(rawData);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+        return;
+      }
+      try {
+        const listing = await LoftShopService.stockRegister(
+          userId, parsed.data.roomId, parsed.data.itemId, parsed.data.priceCoins
+        );
+        io.to(parsed.data.roomId).emit(SOCKET_EVENTS.LOFT_SHOP_LISTING, listing);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'SHOP_ERROR', message: err?.message });
+      }
+    });
+
+    socket.on(SOCKET_EVENTS.LOFT_SHOP_PURCHASE, async (rawData: unknown) => {
+      const parsed = LoftPurchaseSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      try {
+        const receipt = await LoftShopService.purchaseFromRegister(userId, parsed.data.listingId);
+        socket.emit(SOCKET_EVENTS.LOFT_SHOP_RESULT, receipt);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'SHOP_ERROR', message: err?.message });
+      }
+    });
+
+    // Delayed mail: schedule a time-release parcel gift for a friend
+    socket.on(SOCKET_EVENTS.PARCEL_SEND, async (rawData: unknown) => {
+      const parsed = ParcelSendSchema.safeParse(rawData);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD' });
+        return;
+      }
+      try {
+        const parcel = await DelayedMailService.sendDelayedParcel(
+          userId,
+          parsed.data.recipientId,
+          parsed.data.itemId,
+          parsed.data.message,
+          parsed.data.delayMinutes
+        );
+        socket.emit(SOCKET_EVENTS.PARCEL_SENT, parcel);
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'MAIL_ERROR', message: err?.message });
+      }
+    });
+
+    // NPC dialogue trees: server-validated node navigation
+    socket.on(SOCKET_EVENTS.NPC_TALK, (rawData: unknown) => {
+      const parsed = NpcTalkSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      try {
+        if (typeof parsed.data.choiceIndex === 'number') {
+          const result = NpcDialogueService.selectOption(
+            parsed.data.npcId, parsed.data.nodeId, parsed.data.choiceIndex
+          );
+          socket.emit(SOCKET_EVENTS.NPC_DIALOGUE, result);
+        } else {
+          socket.emit(SOCKET_EVENTS.NPC_DIALOGUE, {
+            node: NpcDialogueService.getDialogue(parsed.data.npcId, parsed.data.nodeId),
+          });
+        }
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'NPC_ERROR', message: err?.message });
+      }
+    });
+
+    // Emote progression: serve the server-authoritative unlock list to the wheel
+    socket.on(SOCKET_EVENTS.EMOTE_LIST, async () => {
+      try {
+        const emotes = await EmoteProgressionService.getPlayerEmotes(userId);
+        socket.emit(SOCKET_EVENTS.EMOTE_STATE, { emotes });
+      } catch (err: any) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'EMOTE_ERROR', message: err?.message });
       }
     });
 

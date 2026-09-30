@@ -235,3 +235,51 @@ export const AvatarUpdateSchema = z.object({
   createdAt: z.union([safeString(64), z.date()]).optional(),
 }).strip();
 
+// ── Phase 3B: Community & World Services ─────────────────────────────────────
+
+export const JukeboxPlaySchema = z.object({
+  roomId: z.string().min(1).max(128),
+  trackId: z.string().min(1).max(64),
+});
+
+export const DiceRollSchema = z.object({
+  sides: z.number().int().min(2).max(100).optional().default(20),
+});
+
+export const HarvestSchema = z.object({
+  nodeId: z.string().min(1).max(64),
+});
+
+export const ArcadeStartSchema = z.object({
+  opponentId: uuid,
+  cabinetId: z.string().min(1).max(64),
+});
+
+export const ArcadeMoveSchema = z.object({
+  matchId: z.string().min(1).max(64),
+  col: z.number().int().min(0).max(6),
+});
+
+export const LoftStockSchema = z.object({
+  roomId: z.string().min(1).max(128),
+  itemId: uuid,
+  priceCoins: z.number().int().min(1).max(1_000_000),
+});
+
+export const LoftPurchaseSchema = z.object({
+  listingId: z.string().min(1).max(64),
+});
+
+export const ParcelSendSchema = z.object({
+  recipientId: uuid,
+  itemId: uuid,
+  message: z.string().max(200).optional().default(''),
+  delayMinutes: z.number().int().min(1).max(7 * 24 * 60).optional().default(60),
+});
+
+export const NpcTalkSchema = z.object({
+  npcId: z.string().min(1).max(64),
+  nodeId: z.string().min(1).max(64).optional().default('start'),
+  choiceIndex: z.number().int().min(0).max(5).optional(),
+});
+

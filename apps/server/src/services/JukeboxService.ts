@@ -1,4 +1,5 @@
 import { getIO } from '../sockets';
+import { SOCKET_EVENTS } from '@havenworld/shared';
 
 export interface JukeboxTrack {
   id: string;
@@ -42,7 +43,7 @@ export class JukeboxService {
 
     const io = getIO();
     if (io) {
-      io.to(roomId).emit('jukebox:track_changed', {
+      io.to(roomId).emit(SOCKET_EVENTS.JUKEBOX_TRACK_CHANGED, {
         roomId,
         trackId: track.id,
         title: track.title,

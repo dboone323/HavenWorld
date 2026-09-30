@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { prisma } from '../prisma';
 import { roomManager } from '../services/RoomManager';
+import { LoftRatingService } from '../services/LoftRatingService';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 
@@ -201,6 +202,28 @@ router.put('/:id/surfaces', requireAuth, async (req: AuthRequest, res) => {
   }
 
   return res.json({ success: true, surfaces: updated });
+});
+
+// ── Phase 3B: Trending Lofts & Upvotes (community ratings) ────────────────
+// NOTE: must stay registered above the '/:id' param route so "trending" isn't
+// swallowed as a roomId.
+router.get('/trending', requireAuth, async (req, res) => {
+  const raw = parseInt(String(req.query.limit ?? '10'), 10);
+  const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 25) : 10;
+
+  const trending = await LoftRatingService.getTrendingLofts(limit);
+  res.json(trending);
+});
+
+router.post('/:id/upvote', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  try {
+    const result = await LoftRatingService.upvoteRoom(req.user!.userId, roomId);
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to upvote loft';
+    res.status(400).json({ error: message });
+  }
 });
 
 // GET /api/rooms/:id — single room details including furniture
