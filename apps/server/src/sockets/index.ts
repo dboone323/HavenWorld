@@ -1314,6 +1314,11 @@ export function registerSocketHandlers(io: Server): void {
       }
     });
 
+    // Mailbox: parcel inbox snapshot for the mailbox widget (§3q)
+    socket.on(SOCKET_EVENTS.PARCEL_LIST, () => {
+      socket.emit(SOCKET_EVENTS.PARCEL_INBOX, DelayedMailService.getInboxFor(userId));
+    });
+
     // NPC dialogue trees: server-validated node navigation
     socket.on(SOCKET_EVENTS.NPC_TALK, (rawData: unknown) => {
       const parsed = NpcTalkSchema.safeParse(rawData);

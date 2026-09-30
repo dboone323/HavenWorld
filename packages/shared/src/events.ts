@@ -203,6 +203,8 @@ export const SOCKET_EVENTS = {
   PARCEL_SEND:    'mail:parcel_send',
   PARCEL_SENT:    'mail:parcel_sent',
   PARCEL_ARRIVED: 'mail:parcel_arrived',
+  PARCEL_LIST:    'mail:parcel_list',
+  PARCEL_INBOX:   'mail:parcel_inbox',
 
   // NPC dialogue trees
   NPC_TALK:     'npc:talk',

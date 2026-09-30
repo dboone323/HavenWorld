@@ -41,6 +41,28 @@ export class DelayedMailService {
   }
 
   /**
+   * Mailbox view for a user: parcels in transit to them, parcels they sent,
+   * and the last 10 parcels delivered to them (roadmap §3q mailbox widget).
+   */
+  static getInboxFor(userId: string): {
+    incoming: DelayedParcel[];
+    outgoing: DelayedParcel[];
+    received: DelayedParcel[];
+  } {
+    const incoming: DelayedParcel[] = [];
+    const outgoing: DelayedParcel[] = [];
+    const received: DelayedParcel[] = [];
+
+    for (const parcel of this.parcelQueue.values()) {
+      if (parcel.recipientId === userId && !parcel.delivered) incoming.push(parcel);
+      if (parcel.senderId === userId) outgoing.push(parcel);
+      if (parcel.recipientId === userId && parcel.delivered) received.push(parcel);
+    }
+
+    return { incoming, outgoing, received: received.slice(-10) };
+  }
+
+  /**
    * Processes all parcels whose delivery timestamp has arrived
    */
   static async processArrivedMail(now: number = Date.now()): Promise<DelayedParcel[]> {

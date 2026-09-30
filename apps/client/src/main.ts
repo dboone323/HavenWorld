@@ -12,6 +12,9 @@ import { MarketplacePanel } from './ui/MarketplacePanel';
 import { ClubPanel } from './ui/ClubPanel';
 import { LeaderboardPanel } from './ui/LeaderboardPanel';
 import { DoorbellPrompt } from './ui/DoorbellPrompt';
+import { TutorialOverlay } from './ui/TutorialOverlay';
+import { FeedbackPanel } from './ui/FeedbackPanel';
+import { MailboxPanel } from './ui/MailboxPanel';
 import { PassportModal } from './passport/PassportModal';
 import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
@@ -147,6 +150,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-leaderboard')?.addEventListener('click', () => {
     LeaderboardPanel.open().catch(console.error);
   });
+
+  document.getElementById('btn-tutorial')?.addEventListener('click', () => {
+    TutorialOverlay.open().catch(console.error);
+  });
+
+  document.getElementById('btn-feedback')?.addEventListener('click', () => {
+    FeedbackPanel.show();
+  });
+
+  document.getElementById('btn-mailbox')?.addEventListener('click', () => {
+    MailboxPanel.show();
+  });
+
+  // §3d — first-run onboarding nudge (once per session, dismissible)
+  window.setTimeout(() => { TutorialOverlay.maybeAutoOpen().catch(console.error); }, 4000);
 
   // §3f — private loft rejected on join: offer the doorbell instead of a dead end
   socketService.on<{ code?: string; message?: string; roomId?: string }>(
