@@ -35,6 +35,7 @@ export class QuestHUD {
   private onAuthLogout = (): void => {
     this.quests = [];
     this.status = 'idle';
+    this.container?.classList.add('hidden');
     this.render();
   };
 
@@ -42,10 +43,11 @@ export class QuestHUD {
     this.injectSpinnerStyles();
     this.container = document.createElement('div');
     this.container.id = 'quest-hud';
+    this.container.className = 'hidden';
     this.container.style.cssText = `
       position: fixed;
-      top: 66px;
-      right: 80px;
+      top: 68px;
+      right: 198px;
       width: 220px;
       /* The HUD must never swallow clicks meant for the dock buttons beneath it.
          Interactive rows opt back in with pointer-events: auto. */

@@ -61,11 +61,12 @@ describe('Phase 3B socket schemas: Arcade schemas', () => {
 });
 
 describe('Phase 3B socket schemas: Loft shop schemas', () => {
-  it('stocks only whole positive coin prices on UUID items', () => {
+  it('stocks only whole positive coin prices on valid item IDs (UUID or slug)', () => {
     expect(LoftStockSchema.safeParse({ roomId: 'loft-1', itemId: VALID_UUID, priceCoins: 25 }).success).toBe(true);
+    expect(LoftStockSchema.safeParse({ roomId: 'loft-1', itemId: 'item_chair_wood', priceCoins: 25 }).success).toBe(true);
     expect(LoftStockSchema.safeParse({ roomId: 'loft-1', itemId: VALID_UUID, priceCoins: 0 }).success).toBe(false);
     expect(LoftStockSchema.safeParse({ roomId: 'loft-1', itemId: VALID_UUID, priceCoins: 10.5 }).success).toBe(false);
-    expect(LoftStockSchema.safeParse({ roomId: 'loft-1', itemId: 'not-a-uuid', priceCoins: 25 }).success).toBe(false);
+    expect(LoftStockSchema.safeParse({ roomId: 'loft-1', itemId: '', priceCoins: 25 }).success).toBe(false);
   });
 
   it('purchases require a listing id', () => {

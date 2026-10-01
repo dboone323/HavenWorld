@@ -46,8 +46,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     req.path === '/login' ||
     req.path === '/register' ||
     req.path === '/refresh' ||
-    req.path === '/resend-verification' ||
-    req.path === '/logout'
+    req.path === '/resend-verification'
   ) {
     return next();
   }

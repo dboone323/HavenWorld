@@ -22,7 +22,7 @@ export class MarketplaceService {
     }
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Verify seller owns the item
+      // 1. Verify seller owns the item and it is tradeable
       const inventory = await tx.inventory.findUnique({
         where: {
           userId_itemId: {
@@ -30,10 +30,33 @@ export class MarketplaceService {
             itemId,
           },
         },
+        include: { item: true },
       });
 
       if (!inventory || inventory.quantity <= 0) {
         throw new Error('ITEM_NOT_OWNED: You do not own this item.');
+      }
+
+      if (!inventory.item.isTradeable) {
+        throw new Error('ITEM_NOT_TRADEABLE: This item cannot be listed on the marketplace.');
+      }
+
+      if (inventory.quantity === 1) {
+        const avatar = await tx.avatar.findUnique({ where: { userId: sellerId } });
+        if (avatar) {
+          const equipped = [
+            avatar.outfitHead,
+            avatar.outfitFace,
+            avatar.outfitBody,
+            avatar.outfitLegs,
+            avatar.outfitFeet,
+            avatar.outfitBack,
+            avatar.outfitHand,
+          ];
+          if (equipped.includes(itemId)) {
+            throw new Error('ITEM_EQUIPPED: Cannot list an equipped item. Please unequip it first.');
+          }
+        }
       }
 
       // 2. Escrow: Deduct 1 from inventory or delete row if last item

@@ -101,6 +101,13 @@ async function generateFurniture() {
         { name: 'leaves', size: { width: 0.5, height: 0.4, depth: 0.5 }, pos: new Vector3(0, 0.75, 0) },
       ],
     },
+    painting: {
+      color: new Color3(0.25, 0.55, 0.78),
+      parts: [
+        { name: 'frame', size: { width: 0.9, height: 0.65, depth: 0.05 }, pos: new Vector3(0, 1.35, 0) },
+        { name: 'canvas', size: { width: 0.8, height: 0.55, depth: 0.06 }, pos: new Vector3(0, 1.35, 0.01) },
+      ],
+    },
   };
 
   for (const [name, config] of Object.entries(furnitureConfigs)) {

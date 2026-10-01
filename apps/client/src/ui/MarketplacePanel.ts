@@ -11,6 +11,20 @@ interface MarketListing {
   createdAt: string;
 }
 
+interface OwnedInventoryEntry {
+  id: string;
+  itemId: string;
+  name?: string;
+  quantity: number;
+  equipped?: boolean;
+}
+
+function formatItemLabel(itemId: string): string {
+  return itemId
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 /**
  * Player-to-player marketplace panel (roadmap §3a).
  * Browse / list / buy / cancel against GET|POST|DELETE /api/marketplace —
@@ -18,6 +32,7 @@ interface MarketListing {
  */
 export class MarketplacePanel {
   private static overlay: HTMLElement | null = null;
+  private static ownedItems: OwnedInventoryEntry[] = [];
 
   static async open(): Promise<void> {
     if (this.overlay) return;
@@ -42,7 +57,16 @@ export class MarketplacePanel {
     this.overlay = overlay;
 
     this.render(panel, null);
-    const data = await this.request<{ total: number; listings: MarketListing[] }>('GET', '/api/marketplace?limit=30');
+    const [data, invRes] = await Promise.all([
+      this.request<{ total: number; listings: MarketListing[] }>('GET', '/api/marketplace?limit=30'),
+      fetch(`${SERVER_URL}/api/users/me/inventory`, {
+        headers: this.authHeaders(),
+        credentials: 'include',
+      }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    if (invRes && Array.isArray(invRes.inventory)) {
+      this.ownedItems = invRes.inventory.filter((e: OwnedInventoryEntry) => e.quantity > 0 && !e.equipped);
+    }
     if (this.overlay) this.render(panel, data);
   }
 
@@ -74,17 +98,24 @@ export class MarketplacePanel {
     const me = authService.user?.id;
     const rows = !data || data.listings.length === 0
       ? '<p style="font-size:13px;opacity:0.65">No active listings. Be the first to sell something!</p>'
-      : data.listings.map((l) => `
+      : data.listings.map((l) => {
+          const prettyName = formatItemLabel(l.itemId);
+          return `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:8px;
             background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px">
-            <span style="flex:1;font-size:14px"><strong>${escapeHtml(l.itemId)}</strong>
+            <span style="flex:1;font-size:14px"><strong>${escapeHtml(prettyName)}</strong>
               <span style="display:block;font-size:12px;opacity:0.65">by ${escapeHtml(l.seller.username)}</span></span>
             <span style="font-size:14px;color:#f0ad4e">🪙 ${l.priceCoins.toLocaleString()}</span>
             ${l.seller.id === me
               ? `<button data-cancel="${l.id}" style="padding:6px 10px;border-radius:8px;border:1px solid rgba(255,107,107,0.6);background:rgba(255,107,107,0.15);color:#fff;cursor:pointer;font-size:12px">Cancel</button>`
-              : `<button data-buy="${l.id}" data-buy-price="${l.priceCoins}" data-buy-item="${escapeHtml(l.itemId)}"
+              : `<button data-buy="${l.id}" data-buy-price="${l.priceCoins}" data-buy-item="${escapeHtml(prettyName)}"
                   style="padding:6px 12px;border-radius:8px;border:none;background:#4ecdc4;color:#12122b;font-weight:600;cursor:pointer;font-size:12px">Buy</button>`}
-          </div>`).join('');
+          </div>`;
+        }).join('');
+
+    const datalistOptions = this.ownedItems
+      .map((item) => `<option value="${escapeHtml(item.itemId)}">${escapeHtml(item.name || formatItemLabel(item.itemId))} (x${item.quantity})</option>`)
+      .join('');
 
     panel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -94,8 +125,9 @@ export class MarketplacePanel {
       ${rows}
       <details style="margin-top:12px">
         <summary style="cursor:pointer;font-size:14px;color:#4ecdc4">📦 List an item from your inventory</summary>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <input id="mp-item" placeholder="Item ID (e.g. retro_lamp)" style="flex:1;padding:8px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff"/>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <input id="mp-item" list="mp-owned-items" placeholder="Select or enter item ID" style="flex:1;min-width:180px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff"/>
+          <datalist id="mp-owned-items">${datalistOptions}</datalist>
           <input id="mp-price" type="number" min="1" placeholder="Price 🪙" style="width:110px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff"/>
           <button data-action="list" style="padding:8px 14px;border-radius:8px;border:none;background:#f0ad4e;color:#12122b;font-weight:600;cursor:pointer">List</button>
         </div>
@@ -105,16 +137,19 @@ export class MarketplacePanel {
     panel.querySelectorAll<HTMLElement>('[data-buy]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const ok = await this.request('POST', `/api/marketplace/${btn.dataset.buy}/buy`);
-        void ok;
-        showToast({ icon: '🛒', title: 'Purchase complete!', subtitle: `${btn.dataset.buyItem} delivered to inventory` });
+        if (ok) {
+          showToast({ icon: '🛒', title: 'Purchase complete!', subtitle: `${btn.dataset.buyItem} delivered to inventory` });
+        }
         const data2 = await this.request<{ total: number; listings: MarketListing[] }>('GET', '/api/marketplace?limit=30');
         if (this.overlay) this.render(panel, data2);
       });
     });
     panel.querySelectorAll<HTMLElement>('[data-cancel]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        await this.request('DELETE', `/api/marketplace/${btn.dataset.cancel}`);
-        showToast({ icon: '📦', title: 'Listing cancelled', subtitle: 'Item returned to your inventory' });
+        const ok = await this.request('DELETE', `/api/marketplace/${btn.dataset.cancel}`);
+        if (ok) {
+          showToast({ icon: '📦', title: 'Listing cancelled', subtitle: 'Item returned to your inventory' });
+        }
         const data2 = await this.request<{ total: number; listings: MarketListing[] }>('GET', '/api/marketplace?limit=30');
         if (this.overlay) this.render(panel, data2);
       });
@@ -127,7 +162,7 @@ export class MarketplacePanel {
         return;
       }
       const created = await this.request('POST', '/api/marketplace', { itemId, priceCoins });
-      if (created) showToast({ icon: '🏷️', title: 'Item listed!', subtitle: `${itemId} for 🪙 ${priceCoins.toLocaleString()}` });
+      if (created) showToast({ icon: '🏷️', title: 'Item listed!', subtitle: `${formatItemLabel(itemId)} for 🪙 ${priceCoins.toLocaleString()}` });
       const data2 = await this.request<{ total: number; listings: MarketListing[] }>('GET', '/api/marketplace?limit=30');
       if (this.overlay) this.render(panel, data2);
     });

@@ -21,22 +21,31 @@ export class SeasonalEventService {
    * Advances player's seasonal progress and tier
    */
   static async addProgress(userId: string, eventId: string, currencyAmount: number) {
-    return await prisma.seasonalProgress.upsert({
-      where: {
-        userId_eventId: { userId, eventId },
-      },
-      create: {
-        userId,
-        eventId,
-        currency: currencyAmount,
-        tier: Math.floor(currencyAmount / 100),
-      },
-      update: {
-        currency: { increment: currencyAmount },
-        tier: {
-          set: Math.floor(currencyAmount / 100),
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.seasonalProgress.findUnique({
+        where: { userId_eventId: { userId, eventId } },
+      });
+      const newCurrency = (existing?.currency ?? 0) + currencyAmount;
+      const newTier = Math.floor(newCurrency / 100);
+
+      if (!existing) {
+        return await tx.seasonalProgress.create({
+          data: {
+            userId,
+            eventId,
+            currency: newCurrency,
+            tier: newTier,
+          },
+        });
+      }
+
+      return await tx.seasonalProgress.update({
+        where: { id: existing.id },
+        data: {
+          currency: newCurrency,
+          tier: newTier,
         },
-      },
+      });
     });
   }
 

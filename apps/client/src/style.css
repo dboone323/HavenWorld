@@ -879,5 +879,89 @@ input:checked + .slider:before {
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* ── Dark Panel Ghost Button Contrast (#lobby-panel) ─────────────────────── */
+#lobby-panel .btn--ghost {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.28);
+}
 
+#lobby-panel .btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
+}
 
+/* ── Mobile Responsive HUD Layout (≤ 640px) ──────────────────────────────── */
+@media (max-width: 640px) {
+  .hud-room-info {
+    top: 10px;
+    left: 10px;
+    max-width: calc(100vw - 150px);
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .room-title {
+    font-size: 0.78rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hud-status-stack {
+    top: 10px;
+    right: 10px;
+    gap: 6px;
+  }
+
+  .currency-pill {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+
+  .hud-dock {
+    top: 52%;
+    padding: 6px;
+    gap: 6px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .hud-dock--left {
+    left: 6px;
+  }
+
+  .hud-dock--right {
+    right: 6px;
+  }
+
+  .dock-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+    border-radius: 10px;
+  }
+
+  #haven-minimap-radar {
+    top: 56px !important;
+    right: 56px !important;
+    width: 82px !important;
+    height: 82px !important;
+  }
+
+  #quest-hud {
+    top: 56px !important;
+    right: 144px !important;
+    width: 170px !important;
+    padding: 8px !important;
+    font-size: 0.72rem !important;
+  }
+
+  #chat-panel {
+    left: 52px;
+    right: 52px;
+    width: auto;
+    bottom: 10px;
+    max-height: 160px;
+  }
+}

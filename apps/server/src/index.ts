@@ -203,16 +203,10 @@ async function start() {
       try {
         const arrived = await DelayedMailService.processArrivedMail();
         for (const parcel of arrived) {
-          const sockets = await io.fetchSockets();
-          for (const s of sockets) {
-            const socketUser = s.data?.user as { userId?: string } | undefined;
-            if (socketUser?.userId === parcel.recipientId) {
-              s.emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
-            }
-          }
+          io.to(`user:${parcel.recipientId}`).emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
         }
       } catch (err) {
-        console.error('[Cron] Parcel delivery sweep failed:', err)
+        console.error('[Cron] Parcel delivery sweep failed:', err);
       }
     });
 

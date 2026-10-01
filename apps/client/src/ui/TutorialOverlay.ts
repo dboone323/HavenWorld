@@ -25,10 +25,12 @@ export class TutorialOverlay {
 
   static async maybeAutoOpen(): Promise<void> {
     if (this.autoShown) return;
+    const token = authService.token || (await authService.getToken());
+    if (!token) return;
     this.autoShown = true;
     try {
       const status = await this.fetchStatus();
-      if (status && !status.completed && status.step <= STEPS.length) {
+      if (status && !status.completed && status.step < STEPS.length) {
         this.render(status);
       }
     } catch {
@@ -52,6 +54,7 @@ export class TutorialOverlay {
 
   private static async fetchStatus(): Promise<TutorialStatus | null> {
     const token = authService.token || (await authService.getToken()) || '';
+    if (!token) return null;
     const res = await fetch(`${SERVER_URL}/api/tutorial/status`, {
       headers: { Authorization: `Bearer ${token}` },
       credentials: 'include',
@@ -61,7 +64,7 @@ export class TutorialOverlay {
 
   private static render(status: TutorialStatus): void {
     this.dismiss();
-    const index = Math.max(0, Math.min(STEPS.length - 1, status.step - 1));
+    const index = Math.max(0, Math.min(STEPS.length - 1, status.step));
     const step = STEPS[index];
 
     const overlay = document.createElement('div');
@@ -98,16 +101,20 @@ export class TutorialOverlay {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           credentials: 'include',
-          body: JSON.stringify({ step: status.step + 1 }),
+          body: JSON.stringify({ step: index + 1 }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({ error: 'Could not save progress' }));
           showToast({ icon: '⚠️', title: 'Tutorial', subtitle: data.error ?? 'Failed' });
           return;
         }
-        const next = (await res.json().catch(() => null)) as TutorialStatus | null;
+        const next = (await res.json().catch(() => null)) as (TutorialStatus & { newBalance?: number }) | null;
         if (next?.completed) {
-          showToast({ icon: '🎓', title: 'Tutorial complete!', subtitle: 'Welcome to Haven for real 🎉' });
+          if (typeof next.newBalance === 'number') {
+            const coinEl = document.getElementById('coin-amount');
+            if (coinEl) coinEl.textContent = next.newBalance.toLocaleString();
+          }
+          showToast({ icon: '🎓', title: 'Tutorial complete!', subtitle: 'Welcome to Haven for real 🎉 (+100 🪙)' });
           this.dismiss();
         } else {
           this.dismiss();

@@ -35,7 +35,7 @@ import { WorkshopService } from '../services/WorkshopService';
 import { ClubService } from '../services/ClubService';
 import { QuestService } from '../services/QuestService';
 import { AchievementService } from '../services/AchievementService';
-import { ALLOWED_ORIGINS } from '../middleware/security';
+import { ALLOWED_ORIGINS, isAllowedOrigin } from '../middleware/security';
 import { attachIdleTimeout } from './idleTimeout';
 import { SocketRateLimiter } from './rateLimiter';
 import { MovementValidator } from '../game/movement';
@@ -57,7 +57,7 @@ function socketOriginMiddleware(socket: Socket, next: (err?: Error) => void): vo
   if (!origin && process.env.NODE_ENV !== 'production') {
     return next();
   }
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || isAllowedOrigin(origin))) {
     return next();
   }
   next(new Error('ORIGIN_FORBIDDEN'));
@@ -173,13 +173,26 @@ export function registerSocketHandlers(io: Server): void {
     console.log(`[Socket] Connected: ${username} (${socket.id})`);
     socket.join(`user:${userId}`);
 
+    // Subscribe socket to player's club channel if they belong to a club
+    prisma.clubMember
+      .findUnique({ where: { userId }, select: { clubId: true } })
+      .then((membership) => {
+        if (membership?.clubId) {
+          socket.join(`club:${membership.clubId}`);
+        }
+      })
+      .catch(() => {});
+
     // Attach 10-minute idle timeout
     attachIdleTimeout(socket);
 
-    // Global rate limiting tracker
-    socket.onAny((eventName) => {
-      if (eventName === 'disconnect') return;
-      SocketRateLimiter.checkLimit(socket, eventName);
+    // Blocking packet middleware for rate limiting (halts handler execution when exceeded)
+    socket.use(([eventName], next) => {
+      if (eventName === 'disconnect') return next();
+      if (!SocketRateLimiter.checkLimit(socket, eventName)) {
+        return;
+      }
+      next();
     });
 
     // ── auth:join ─────────────────────────────────────────────────────────────
@@ -189,7 +202,7 @@ export function registerSocketHandlers(io: Server): void {
         socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_PAYLOAD', details: parsed.error.flatten() });
         return;
       }
-      const { roomId } = parsed.data;
+      const { roomId, password } = parsed.data;
       try {
         // Check ban status
         const dbUser = await prisma.user.findUnique({
@@ -260,7 +273,16 @@ export function registerSocketHandlers(io: Server): void {
         // Build spawn position and verify room access
         const dbRoom = await prisma.room.findUnique({
           where: { id: roomId },
-          select: { width: true, height: true, name: true, accessMode: true, ownerId: true, moodPreset: true },
+          select: {
+            width: true,
+            height: true,
+            name: true,
+            accessMode: true,
+            privacy: true,
+            maxOccupants: true,
+            ownerId: true,
+            moodPreset: true,
+          },
         });
 
         if (!dbRoom) {
@@ -271,31 +293,39 @@ export function registerSocketHandlers(io: Server): void {
           return;
         }
 
-        if (dbRoom.accessMode === 'PRIVATE' && dbRoom.ownerId !== userId) {
-          const access = await prisma.loftAccess.findUnique({
-            where: {
-              roomId_userId: { roomId, userId },
-            },
+        const access = await PrivacyManager.checkAccess(userId, roomId, password);
+        if (!access.allowed) {
+          socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
+            code: access.reason || 'FORBIDDEN_PRIVATE_LOFT',
+            message: access.awayMessage || 'This personal loft is private.',
+            roomId,
           });
-          if (!access) {
-            socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
-              code: 'FORBIDDEN_PRIVATE_LOFT',
-              message: 'This personal loft is private.',
-              roomId,
-            });
-            return;
-          }
+          return;
+        }
+
+        // Enforce room capacity for non-owners
+        const currentOccupants = roomManager.getOccupantCount(roomId);
+        if (dbRoom.ownerId !== userId && dbRoom.maxOccupants && currentOccupants >= dbRoom.maxOccupants) {
+          socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
+            code: 'ROOM_FULL',
+            message: 'This room has reached its maximum occupant capacity.',
+            roomId,
+          });
+          return;
         }
 
         // Spawn at the room center in the 3D client's meter coordinate space,
         // with a small deterministic offset per occupant so players don't stack.
-        // (The old tile*32 pixel math placed remote avatars hundreds of meters
-        // outside the visible room, so players couldn't see each other.)
-        const occupantIndex = roomManager.getOccupantCount(roomId);
+        // In Haven Park ('room-park'), offset Z by +3.5m so players spawn in front of the central fountain.
+        const occupantIndex = currentOccupants;
         const spawnX = (occupantIndex % 4 - 1.5) * 1.2;
-        const spawnZ = Math.floor(occupantIndex / 4) * 1.2;
+        const baseZ = roomId === 'room-park' ? 3.5 : 0;
+        const spawnZ = baseZ + Math.floor(occupantIndex / 4) * 1.2;
 
         MovementValidator.initializePlayer(userId, { x: spawnX, y: 0, z: spawnZ });
+
+        // Ensure player's adopted pets are loaded into PetManager AI loop
+        void PetManager.ensureOwnerPetsLoaded(userId, spawnX, spawnZ).catch(() => {});
 
         const player: PlayerState = {
           id: userId,
@@ -324,7 +354,9 @@ export function registerSocketHandlers(io: Server): void {
         roomManager.joinRoom(roomId, socket.id, player);
 
         // Track online status in Redis
-        await redis.sAdd('online_users', userId);
+        if (redis.isOpen) {
+          await redis.sAdd('online_users', userId).catch(() => {});
+        }
 
         // Part 9B analytics: session id ties this visit together for session-length stats
         void AnalyticsService.trackEvent('PLAYER_JOIN_WORLD', {
@@ -353,7 +385,7 @@ export function registerSocketHandlers(io: Server): void {
           avatarData,
         });
 
-        // Notify online friends
+        // Notify online friends via user:<friendId> rooms
         const friendships = await prisma.friend.findMany({
           where: {
             OR: [{ requesterId: userId }, { addresseeId: userId }],
@@ -364,17 +396,11 @@ export function registerSocketHandlers(io: Server): void {
           f.requesterId === userId ? f.addresseeId : f.requesterId
         );
 
-        if (friendIds.length > 0) {
-          const allSockets = await io.fetchSockets();
-          for (const friendId of friendIds) {
-            const friendSocket = allSockets.find(
-              (s) => s.data.user?.userId === friendId
-            );
-            friendSocket?.emit(SOCKET_EVENTS.FRIEND_ONLINE, {
-              userId,
-              username,
-            });
-          }
+        for (const friendId of friendIds) {
+          io.to(`user:${friendId}`).emit(SOCKET_EVENTS.FRIEND_ONLINE, {
+            userId,
+            username,
+          });
         }
 
         // Surface unread DMs on join
@@ -860,9 +886,23 @@ export function registerSocketHandlers(io: Server): void {
         }
         const { roomId, placement } = parsed.data;
         try {
-          const room = await prisma.room.findUnique({ where: { id: roomId } });
-          if (!room || room.ownerId !== userId) {
+          const room = await prisma.room.findUnique({
+            where: { id: roomId },
+            include: { decorators: true },
+          });
+          const canDecorate =
+            room &&
+            (room.ownerId === userId || room.decorators.some((d) => d.userId === userId));
+          if (!canDecorate) {
             socket.emit('error', { message: 'Not authorized to place furniture in this room' });
+            return;
+          }
+
+          const owned = await prisma.inventory.findUnique({
+            where: { userId_itemId: { userId, itemId: placement.itemId } },
+          });
+          if (!owned || owned.quantity < 1) {
+            socket.emit('error', { message: 'You do not own this furniture item in your inventory' });
             return;
           }
 
@@ -880,6 +920,20 @@ export function registerSocketHandlers(io: Server): void {
               scaleZ: placement.scaleZ ?? 1,
             },
             include: { item: true },
+          });
+
+          roomManager.addFurniture(roomId, {
+            id: created.id,
+            itemId: created.itemId,
+            spriteKey: created.item.spriteKey,
+            x: created.x,
+            y: created.y,
+            z: created.z,
+            rotation: created.rotation,
+            layer: created.layer,
+            type: created.item.spriteKey,
+            depth: created.y,
+            ownerId: created.placedBy,
           });
 
           io.to(roomId).emit(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, {
@@ -904,15 +958,22 @@ export function registerSocketHandlers(io: Server): void {
         }
         const { roomId, furnitureId } = parsed.data;
         try {
-          const item = await prisma.roomFurniture.findUnique({
-            where: { id: furnitureId },
-          });
-          if (!item || item.placedBy !== userId) {
+          const [item, room] = await Promise.all([
+            prisma.roomFurniture.findUnique({ where: { id: furnitureId } }),
+            prisma.room.findUnique({ where: { id: roomId }, include: { decorators: true } }),
+          ]);
+          const canRemove =
+            item &&
+            (item.placedBy === userId ||
+              room?.ownerId === userId ||
+              room?.decorators.some((d) => d.userId === userId));
+          if (!canRemove) {
             socket.emit('error', { message: 'Not authorized to remove this item' });
             return;
           }
 
           await prisma.roomFurniture.delete({ where: { id: furnitureId } });
+          roomManager.removeFurniture(roomId, furnitureId);
           io.to(roomId).emit(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, {
             roomId,
             action: 'remove',
@@ -1444,7 +1505,9 @@ export function registerSocketHandlers(io: Server): void {
         });
       }
 
-      await redis.sRem('online_users', userId).catch(() => {});
+      if (redis.isOpen) {
+        await redis.sRem('online_users', userId).catch(() => {});
+      }
 
       await prisma.user
         .update({
@@ -1464,17 +1527,11 @@ export function registerSocketHandlers(io: Server): void {
           f.requesterId === userId ? f.addresseeId : f.requesterId
         );
 
-        if (friendIds.length > 0) {
-          const allSockets = await io.fetchSockets();
-          for (const friendId of friendIds) {
-            const friendSocket = allSockets.find(
-              (s) => s.data.user?.userId === friendId
-            );
-            friendSocket?.emit(SOCKET_EVENTS.FRIEND_OFFLINE, {
-              userId,
-              username,
-            });
-          }
+        for (const friendId of friendIds) {
+          io.to(`user:${friendId}`).emit(SOCKET_EVENTS.FRIEND_OFFLINE, {
+            userId,
+            username,
+          });
         }
       } catch {
         /* non-critical */

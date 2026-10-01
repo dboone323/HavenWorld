@@ -216,9 +216,18 @@ describe('Track 7 Integration: Retention, Onboarding & Analytics', () => {
       expect(submitRes.body.title).toBe('Collision glitch near plaza tree');
       expect(submitRes.body.type).toBe('BUG');
 
-      const listRes = await request(app)
+      // Regular user cannot read staff feedback backlog
+      const forbiddenRes = await request(app)
         .get('/api/feedback')
         .set('Authorization', `Bearer ${token}`);
+      expect(forbiddenRes.status).toBe(403);
+
+      // Admin/staff can review feedback backlog
+      const admin = await createTestUser({ role: 'ADMIN' });
+      const adminToken = generateTestToken(admin.id, '15m', { role: 'ADMIN' });
+      const listRes = await request(app)
+        .get('/api/feedback')
+        .set('Authorization', `Bearer ${adminToken}`);
 
       expect(listRes.status).toBe(200);
       expect(listRes.body.length).toBeGreaterThan(0);

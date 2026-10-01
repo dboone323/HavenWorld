@@ -47,7 +47,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     );
     return res.status(201).json(listing);
   } catch (err: any) {
-    const isClientErr = err.message.includes('NOT_OWNED') || err.message.includes('INVALID_PRICE');
+    const isClientErr =
+      err.message.includes('NOT_OWNED') ||
+      err.message.includes('INVALID_PRICE') ||
+      err.message.includes('ITEM_NOT_TRADEABLE') ||
+      err.message.includes('ITEM_EQUIPPED');
     return res.status(isClientErr ? 400 : 500).json({ error: err.message });
   }
 });

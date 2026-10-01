@@ -311,6 +311,7 @@ router.get('/me/inventory', requireAuth, async (req: AuthRequest, res) => {
     });
     return res.json(
       furniture.map((f) => ({
+        id: f.id,
         itemId: f.item.id,
         name: f.item.name,
         assetUrl: f.item.assetUrl || `/assets/furniture/${f.item.spriteKey}.glb`,
@@ -322,6 +323,7 @@ router.get('/me/inventory', requireAuth, async (req: AuthRequest, res) => {
   const inventory = await inventoryService.getUserInventory(req.user!.userId);
   return res.json(
     inventory.map((entry) => ({
+      id: entry.id,
       itemId: entry.itemId,
       name: entry.item.name,
       category: entry.item.category,
@@ -333,6 +335,15 @@ router.get('/me/inventory', requireAuth, async (req: AuthRequest, res) => {
       isTradeable: entry.item.isTradeable,
     }))
   );
+});
+
+// GET /api/users/me/pets — user's adopted pet companions
+router.get('/me/pets', requireAuth, async (req: AuthRequest, res) => {
+  const pets = await prisma.pet.findMany({
+    where: { ownerId: req.user!.userId },
+    orderBy: { createdAt: 'asc' },
+  });
+  return res.json(pets);
 });
 
 // GET /api/users/me/room — user's personal room ID

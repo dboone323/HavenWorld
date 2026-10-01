@@ -16,13 +16,38 @@ export class WorkshopService {
    */
   static async recycleItem(userId: string, inventoryItemId: string) {
     return await prisma.$transaction(async (tx) => {
-      const inventory = await tx.inventory.findUnique({
+      let inventory = await tx.inventory.findUnique({
         where: { id: inventoryItemId },
         include: { item: true },
       });
 
+      if (!inventory) {
+        inventory = await tx.inventory.findUnique({
+          where: { userId_itemId: { userId, itemId: inventoryItemId } },
+          include: { item: true },
+        });
+      }
+
       if (!inventory || inventory.userId !== userId || inventory.quantity < 1) {
         throw new Error('Item not found in inventory');
+      }
+
+      if (inventory.quantity === 1) {
+        const avatar = await tx.avatar.findUnique({ where: { userId } });
+        if (avatar) {
+          const equipped = [
+            avatar.outfitHead,
+            avatar.outfitFace,
+            avatar.outfitBody,
+            avatar.outfitLegs,
+            avatar.outfitFeet,
+            avatar.outfitBack,
+            avatar.outfitHand,
+          ];
+          if (equipped.includes(inventory.itemId)) {
+            throw new Error('Cannot recycle an equipped item. Please unequip it first.');
+          }
+        }
       }
 
       // Determine material type

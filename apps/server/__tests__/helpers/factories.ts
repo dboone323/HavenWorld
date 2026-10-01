@@ -31,6 +31,7 @@ export async function createTestUser(
     emailVerified: boolean;
     isBanned: boolean;
     isAdmin: boolean;
+    role: 'PLAYER' | 'MODERATOR' | 'ADMIN';
     havenCoins: number;
     havenGems: number;
     emailVerifyToken: string | null;
@@ -45,7 +46,7 @@ export async function createTestUser(
       username: overrides.username || `user_${uniqueSuffix}`,
       passwordHash,
       emailVerified: overrides.emailVerified ?? true,
-      role: overrides.isAdmin ? 'ADMIN' : 'PLAYER',
+      role: overrides.role ?? (overrides.isAdmin ? 'ADMIN' : 'PLAYER'),
       status: overrides.isBanned ? 'BANNED' : 'ACTIVE',
       havenCoins: overrides.havenCoins ?? 1000,
       havenGems: overrides.havenGems ?? 50,
@@ -123,7 +124,7 @@ export async function createTestItem(
       price: overrides.price ?? 100,
       category: overrides.category || 'FURNITURE',
       spriteKey: overrides.spriteKey || `item_${uniqueSuffix}`,
-      isTradeable: overrides.isTradeable ?? false,
+      isTradeable: overrides.isTradeable ?? true,
     },
   });
 }

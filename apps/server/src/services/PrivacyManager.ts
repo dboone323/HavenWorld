@@ -19,11 +19,40 @@ export class PrivacyManager {
 
     if (!room) return { allowed: false, reason: 'ROOM_NOT_FOUND' };
 
-    // Owner always has access
-    if (room.ownerId === userId) return { allowed: true, mode: room.privacy };
+    // Owner or co-decorator always has access
+    if (room.ownerId === userId || room.decorators.some((d) => d.userId === userId)) {
+      return { allowed: true, mode: room.privacy };
+    }
 
-    // Public rooms admit everyone
-    if (room.privacy === 'PUBLIC') return { allowed: true, mode: 'PUBLIC' };
+    // Check explicit loftAccess or recent doorbell admission (within last 30 minutes)
+    const [explicitAccess, recentDoorbellAdmit] = await Promise.all([
+      prisma.loftAccess.findUnique({
+        where: { roomId_userId: { roomId, userId } },
+      }),
+      prisma.roomAccessLog.findFirst({
+        where: {
+          roomId,
+          visitorId: userId,
+          visitedAt: { gte: new Date(Date.now() - 30 * 60_000) },
+        },
+      }),
+    ]);
+    if (explicitAccess || recentDoorbellAdmit) {
+      return { allowed: true, mode: room.privacy };
+    }
+
+    // Public rooms admit everyone (unless legacy accessMode === 'PRIVATE' is set)
+    if (room.privacy === 'PUBLIC' && room.accessMode !== 'PRIVATE') {
+      return { allowed: true, mode: 'PUBLIC' };
+    }
+
+    if (room.accessMode === 'PRIVATE') {
+      return {
+        allowed: false,
+        reason: 'FORBIDDEN_PRIVATE_LOFT',
+        awayMessage: room.awayMessage || 'This personal loft is private.',
+      };
+    }
 
     // Locked rooms allow nobody except owner
     if (room.privacy === 'LOCKED') {
@@ -172,12 +201,17 @@ export class PrivacyManager {
     }
 
     if (admit) {
-      // Record in access log
+      // Record in access log and grant loftAccess
       await prisma.roomAccessLog.create({
         data: {
           roomId,
           visitorId,
         },
+      });
+      await prisma.loftAccess.upsert({
+        where: { roomId_userId: { roomId, userId: visitorId } },
+        create: { roomId, userId: visitorId },
+        update: {},
       });
 
       await AchievementService.checkAndAward(ownerId, 'DOORBELL_ADMIT');

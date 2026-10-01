@@ -18,8 +18,13 @@ export const STAMP_NAMES = [
   'Streaker',
   'Legendary Catch',
   'Club Founder',
-  'Haven VIP',
-  'Home Sweet Home',
+  'Pet Parent',
+  'Dragon Tamer',
+  'Trading Post',
+  'Generous Soul',
+  'Good Neighbor',
+  'Loyal Haven',
+  'Legend of Haven',
 ];
 
 export class PassportModal {
@@ -71,6 +76,7 @@ export class PassportModal {
     `;
 
     const earnedStamps = new Set(passport.stamps.map((s) => s.stamp));
+    const allStampNames = Array.from(new Set([...STAMP_NAMES, ...earnedStamps]));
     const joinDateStr = new Date(passport.joinDate).toLocaleDateString();
 
     const panel = document.createElement('div');
@@ -94,7 +100,7 @@ export class PassportModal {
           </div>
           <div>
             <h2 style="margin: 0; font-size: 1.4rem; color: #a5b4fc;">${escapeHtml(passport.username)}'s Passport</h2>
-            <div style="font-size: 0.8rem; color: #94a3b8;">Citizen since ${escapeHtml(joinDateStr)} · ${passport.stamps.length}/20 Stamps</div>
+            <div style="font-size: 0.8rem; color: #94a3b8;">Citizen since ${escapeHtml(joinDateStr)} · ${passport.stamps.length}/${allStampNames.length} Stamps</div>
           </div>
         </div>
         <button id="btn-close-passport" style="background: transparent; border: none; color: #aaa; font-size: 1.4rem; cursor: pointer;">✕</button>
@@ -119,7 +125,7 @@ export class PassportModal {
       <!-- 20-Stamp Grid (4x5) -->
       <div style="font-weight: bold; margin-bottom: 12px; color: #c7d2fe;">Achievement Stamps</div>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px;">
-        ${STAMP_NAMES.map((name) => {
+        ${allStampNames.map((name) => {
           const isEarned = earnedStamps.has(name);
           return `
             <div style="background: ${isEarned ? '#3730a3' : '#1e1b4b'}; border: 1px solid ${isEarned ? '#818cf8' : '#312e81'}; border-radius: 8px; padding: 10px; text-align: center; opacity: ${isEarned ? '1' : '0.45'}; transition: transform 120ms;">

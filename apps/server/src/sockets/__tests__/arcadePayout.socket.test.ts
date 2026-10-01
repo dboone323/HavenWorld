@@ -13,25 +13,9 @@ import {
 import { createTestUser, createTestRoom, defaultTestAvatar } from '../../../__tests__/helpers/factories';
 import { createAuthenticatedSocket, waitForEvent, closeAllSockets } from '../../../__tests__/helpers/socketHelpers';
 
-// The socket layer touches Redis only for online-user tracking (sAdd/sRem),
-// which the Connect-4 payout path does not depend on. Faking it keeps this
-// suite runnable with nothing but the test database.
-jest.mock('../../redis', () => ({
-  redis: {
-    sAdd: jest.fn().mockResolvedValue(1),
-    sRem: jest.fn().mockResolvedValue(1),
-    sMembers: jest.fn().mockResolvedValue([]),
-    sIsMember: jest.fn().mockResolvedValue(false),
-    isOpen: true,
-  },
-  connectRedis: jest.fn().mockResolvedValue(undefined),
-  redisClient: {},
-}));
-
 /**
  * Connect-4 over real sockets (GDD §6.3): two roommates play a full match and
- * the server pays the winner. Kept in the unit project so it runs anywhere the
- * test database does — unlike the integration project it needs no Redis.
+ * the server pays the winner using real Socket.io and real Prisma persistence.
  */
 describe('Arcade Connect-4 socket payouts', () => {
   let httpServer: ReturnType<typeof createServer>;

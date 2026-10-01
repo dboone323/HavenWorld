@@ -3,21 +3,30 @@
  * Resolves API and WebSocket URLs across development, test, and production environments.
  */
 
-export const SERVER_URL: string =
+export let SERVER_URL: string =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SERVER_URL) ||
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
   (typeof import.meta !== 'undefined' && import.meta.env?.PROD
     ? 'https://147-224-184-148.nip.io'
     : 'http://localhost:3000');
 
-export const API_URL: string = `${SERVER_URL}/api`;
+export let API_URL: string = `${SERVER_URL}/api`;
+
+export function setServerUrl(url: string): void {
+  SERVER_URL = url.replace(/\/$/, '');
+  API_URL = `${SERVER_URL}/api`;
+}
 
 /**
  * Optional CDN origin for 3D assets (Cloudflare R2 in production — Part 9A §3).
  * Empty in local development, where assets are served from the app's own /assets path.
  */
-export const ASSET_BASE_URL: string =
+export let ASSET_BASE_URL: string =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ASSET_BASE_URL) || '';
+
+export function setAssetBaseUrl(url: string): void {
+  ASSET_BASE_URL = url.replace(/\/$/, '');
+}
 
 /**
  * Prefixes a root-relative asset path with the CDN origin when one is configured.

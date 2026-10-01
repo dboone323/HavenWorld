@@ -27,6 +27,7 @@ export class TradeModal {
 
   private promptTimer: ReturnType<typeof setTimeout> | null = null;
   private promptInterval: ReturnType<typeof setInterval> | null = null;
+  private unsubs: Array<() => void> = [];
 
   constructor() {
     this.setupSocketListeners();
@@ -34,55 +35,75 @@ export class TradeModal {
 
   private setupSocketListeners(): void {
     // 1. Receiver-side trade invitation
-    socketService.on<{ tradeId: string; initiatorId: string; initiatorName: string }>(
-      SOCKET_EVENTS.TRADE_REQUESTED,
-      (data) => {
-        audioEngine.playDoorbell();
-        this.showIncomingPrompt(data.initiatorName);
-      }
+    this.unsubs.push(
+      socketService.on<{ tradeId: string; initiatorId: string; initiatorName: string }>(
+        SOCKET_EVENTS.TRADE_REQUESTED,
+        (data) => {
+          audioEngine.playDoorbell();
+          this.showIncomingPrompt(data.initiatorName);
+        }
+      )
     );
 
     // 2. Real-time trade state updates
-    socketService.on<TradeStateData>(SOCKET_EVENTS.TRADE_STATE_UPDATE, (state) => {
-      this.currentTrade = state;
-      this.dismissPrompt();
-      if (!this.overlay) {
-        this.open();
-      } else {
-        this.updateUI();
-      }
-    });
+    this.unsubs.push(
+      socketService.on<TradeStateData>(SOCKET_EVENTS.TRADE_STATE_UPDATE, (state) => {
+        this.currentTrade = state;
+        this.dismissPrompt();
+        if (!this.overlay) {
+          this.open();
+        } else {
+          this.updateUI();
+        }
+      })
+    );
 
     // 3. Trade countdown
-    socketService.on<{ seconds: number }>(SOCKET_EVENTS.TRADE_COUNTDOWN, (data) => {
-      const timerEl = document.getElementById('trade-countdown-timer');
-      if (timerEl) {
-        timerEl.textContent = `Confirming Swap: ${data.seconds}s`;
-        timerEl.style.color = '#eab308';
-      }
-    });
+    this.unsubs.push(
+      socketService.on<{ seconds: number }>(SOCKET_EVENTS.TRADE_COUNTDOWN, (data) => {
+        const timerEl = document.getElementById('trade-countdown-timer');
+        if (timerEl) {
+          timerEl.textContent = `Confirming Swap: ${data.seconds}s`;
+          timerEl.style.color = '#eab308';
+        }
+      })
+    );
 
     // 4. Trade completion
-    socketService.on(SOCKET_EVENTS.TRADE_COMPLETE, (data: { summary: string }) => {
-      audioEngine.playTradeComplete();
-      showToast({ icon: '🤝', title: 'Trade Successful!', subtitle: data.summary || 'Swap complete.' });
-      this.close();
-    });
+    this.unsubs.push(
+      socketService.on(SOCKET_EVENTS.TRADE_COMPLETE, (data: { summary: string }) => {
+        audioEngine.playTradeComplete();
+        showToast({ icon: '🤝', title: 'Trade Successful!', subtitle: data.summary || 'Swap complete.' });
+        this.close();
+      })
+    );
 
     // 5. Trade cancellation
-    socketService.on(SOCKET_EVENTS.TRADE_CANCELLED, (data: { reason: string }) => {
-      audioEngine.playError();
-      showToast({ icon: '❌', title: 'Trade Cancelled', subtitle: data.reason || 'Trade ended.' });
-      this.close();
-    });
+    this.unsubs.push(
+      socketService.on(SOCKET_EVENTS.TRADE_CANCELLED, (data: { reason: string }) => {
+        audioEngine.playError();
+        showToast({ icon: '❌', title: 'Trade Cancelled', subtitle: data.reason || 'Trade ended.' });
+        this.close();
+      })
+    );
 
     // 6. Generic errors
-    socketService.on<{ message?: string }>(SOCKET_EVENTS.ERROR, (err) => {
-      if (this.overlay && err?.message) {
-        audioEngine.playError();
-        showToast({ icon: '⚠️', title: 'Trade Notice', subtitle: err.message });
-      }
-    });
+    this.unsubs.push(
+      socketService.on<{ message?: string }>(SOCKET_EVENTS.ERROR, (err) => {
+        if (this.overlay && err?.message) {
+          audioEngine.playError();
+          showToast({ icon: '⚠️', title: 'Trade Notice', subtitle: err.message });
+        }
+      })
+    );
+  }
+
+  public dispose(): void {
+    for (const unsub of this.unsubs) {
+      unsub();
+    }
+    this.unsubs = [];
+    this.close();
   }
 
   private showIncomingPrompt(initiatorName: string): void {
@@ -299,9 +320,9 @@ export class TradeModal {
         <div id="trade-inventory-shelf" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px;">
           ${this.myInventory.length === 0 ? '<div style="color:#768897; font-size:0.85rem; padding:8px;">No tradeable items in inventory.</div>' : ''}
           ${this.myInventory.map((item) => `
-            <div class="inventory-trade-chip" data-item-id="${item.itemId}" data-name="${item.name}" style="background: #ffffff; border: 1px solid #c7d6df; border-radius: 10px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 0.85rem; font-weight: 600; color: #173044; transition: all 0.15s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.04);">
+            <div class="inventory-trade-chip" data-item-id="${escapeHtml(item.itemId)}" data-name="${escapeHtml(item.name)}" style="background: #ffffff; border: 1px solid #c7d6df; border-radius: 10px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 0.85rem; font-weight: 600; color: #173044; transition: all 0.15s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.04);">
               <span>🎁</span>
-              <span>${item.name}</span>
+              <span>${escapeHtml(item.name)}</span>
             </div>
           `).join('')}
         </div>

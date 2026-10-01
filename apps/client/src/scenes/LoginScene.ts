@@ -9,9 +9,11 @@ export async function createLoginScene(haven: HavenEngine): Promise<Scene> {
   document.getElementById('lobby-panel')?.classList.add('hidden');
   document.getElementById('game-container')?.classList.add('hidden');
   document.getElementById('room-nav')?.classList.add('hidden');
+  document.getElementById('room-info-pill')?.classList.add('hidden');
   document.getElementById('player-card')?.classList.add('hidden');
   document.getElementById('chat-panel')?.classList.add('hidden');
   document.getElementById('avatar-panel')?.classList.add('hidden');
+  document.getElementById('quest-hud')?.classList.add('hidden');
 
   scene.onDisposeObservable.add(() => {
     document.getElementById('login-panel')?.classList.add('hidden');

@@ -175,12 +175,16 @@ export class FurnitureManager {
   // ─── Picking ──────────────────────────────────────────────────────────────
   pickFurniture(pickInfo: BABYLON.PickingInfo): PlacedFurniture | null {
     if (!pickInfo.hit || !pickInfo.pickedMesh) return null;
+    const picked = pickInfo.pickedMesh;
+    const metaId = picked.metadata?.id || picked.parent?.metadata?.id;
+    if (typeof metaId === 'string' && this.placed.has(metaId)) {
+      return this.placed.get(metaId)!;
+    }
     for (const [, pf] of this.placed) {
       if (
-        pf.mesh === pickInfo.pickedMesh ||
-        pickInfo.pickedMesh.isDescendantOf(pf.mesh) ||
-        pickInfo.pickedMesh.name.includes(pf.id) ||
-        pickInfo.pickedMesh.name.includes(pf.itemId)
+        pf.mesh === picked ||
+        picked.isDescendantOf(pf.mesh) ||
+        picked.name.includes(pf.id)
       ) {
         return pf;
       }

@@ -122,9 +122,49 @@ describe('Phase 3B GlobalEventService', () => {
 });
 
 describe('Phase 3B DelayedMailService', () => {
-  it('schedules a parcel with a future delivery timestamp', async () => {
+  it('rejects self-parcels and unowned items, and schedules a parcel when sender owns the item', async () => {
+    const { prisma } = await import('../../prisma');
+    await expect(
+      DelayedMailService.sendDelayedParcel('same-user', 'same-user', 'item_rose', 'hi', 60)
+    ).rejects.toThrow(/yourself/i);
+
+    await expect(
+      DelayedMailService.sendDelayedParcel('nonexistent-sender', 'recipient-1', 'item_rose', 'hi', 60)
+    ).rejects.toThrow(/do not own/i);
+
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const sender = await prisma.user.create({
+      data: {
+        username: `mail_s_${suffix}`.slice(0, 20),
+        email: `mail_s_${suffix}@haven.test`,
+        passwordHash: 'hash',
+      },
+    });
+    const recipient = await prisma.user.create({
+      data: {
+        username: `mail_r_${suffix}`.slice(0, 20),
+        email: `mail_r_${suffix}@haven.test`,
+        passwordHash: 'hash',
+      },
+    });
+    const item = await prisma.item.create({
+      data: {
+        id: `item_rose_${suffix}`,
+        name: 'Rose',
+        description: 'A red rose',
+        category: 'DECORATION',
+        rarity: 'COMMON',
+        price: 10,
+        spriteKey: 'rose',
+        isTradeable: true,
+      },
+    });
+    await prisma.inventory.create({
+      data: { userId: sender.id, itemId: item.id, quantity: 1 },
+    });
+
     const before = Date.now();
-    const parcel = await DelayedMailService.sendDelayedParcel('sender-1', 'recipient-1', 'item_rose', '  be safe out there  ', 120);
+    const parcel = await DelayedMailService.sendDelayedParcel(sender.id, recipient.id, item.id, '  be safe out there  ', 120);
     expect(parcel.delivered).toBe(false);
     expect(parcel.message).toBe('be safe out there');
     expect(parcel.deliverAt).toBeGreaterThanOrEqual(before + 120 * 60_000);

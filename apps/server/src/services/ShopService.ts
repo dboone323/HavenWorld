@@ -129,6 +129,11 @@ export class ShopService {
           },
         });
 
+        await tx.user.update({
+          where: { id: userId },
+          data: { havenCoins: { increment: 10 } },
+        });
+
         // Award Day 1
         return {
           currentStreak: 1,
@@ -221,7 +226,26 @@ export class ShopService {
         throw new Error('You do not own this item to gift');
       }
 
+      if (!inventory.item.isTradeable) {
+        throw new Error('This item is not tradeable and cannot be gifted');
+      }
+
       if (inventory.quantity === 1) {
+        const avatar = await tx.avatar.findUnique({ where: { userId: senderId } });
+        if (avatar) {
+          const equipped = [
+            avatar.outfitHead,
+            avatar.outfitFace,
+            avatar.outfitBody,
+            avatar.outfitLegs,
+            avatar.outfitFeet,
+            avatar.outfitBack,
+            avatar.outfitHand,
+          ];
+          if (equipped.includes(itemId)) {
+            throw new Error('Cannot gift an equipped item. Please unequip it first.');
+          }
+        }
         await tx.inventory.delete({ where: { id: inventory.id } });
       } else {
         await tx.inventory.update({

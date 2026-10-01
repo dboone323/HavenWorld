@@ -340,8 +340,7 @@ export class RoomEditor {
           if (
             pf.mesh === mesh ||
             mesh.isDescendantOf(pf.mesh) ||
-            mesh.name.includes(pf.id) ||
-            mesh.name.includes(pf.itemId)
+            mesh.name.includes(pf.id)
           ) {
             return true;
           }
@@ -742,7 +741,7 @@ export class RoomEditor {
     panel.id = 'room-editor-inventory';
     panel.style.cssText = `
       position: fixed;
-      left: 1rem;
+      left: 74px;
       top: 50%;
       transform: translateY(-50%);
       background: rgba(20, 20, 40, 0.95);
@@ -1112,5 +1111,7 @@ export class RoomEditor {
 
   dispose(): void {
     this.exitEditMode();
+    this.editorHighlightLayer?.dispose();
+    this.editorHighlightLayer = null;
   }
 }

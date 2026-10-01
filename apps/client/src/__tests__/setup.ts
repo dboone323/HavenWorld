@@ -1,43 +1,53 @@
 // Clean up any DOM nodes rendered during the previous test
-import { afterEach, vi } from 'vitest';
+import { afterEach } from 'vitest';
 
 afterEach(() => {
   if (typeof document !== 'undefined') {
     document.body.innerHTML = '';
   }
-  vi.restoreAllMocks();
 });
 
-// jsdom does not implement ResizeObserver — stub it
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+// jsdom does not implement ResizeObserver — provide a real class implementation
+class ResizeObserverPolyfill {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = ResizeObserverPolyfill as unknown as typeof ResizeObserver;
+}
 
-// jsdom doesn't provide localStorage by default — stub for tests that use it
+// jsdom doesn't provide a complete localStorage implementation in all modes
 const store: Record<string, string> = {};
-const localStorageMock = {
+const localStorageImpl = {
   getItem: (key: string) => store[key] ?? null,
-  setItem: (key: string, value: string) => { store[key] = String(value); },
-  removeItem: (key: string) => { delete store[key]; },
-  clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+  setItem: (key: string, value: string) => {
+    store[key] = String(value);
+  },
+  removeItem: (key: string) => {
+    delete store[key];
+  },
+  clear: () => {
+    Object.keys(store).forEach((k) => delete store[k]);
+  },
   key: (index: number) => Object.keys(store)[index] ?? null,
-  get length() { return Object.keys(store).length; },
+  get length() {
+    return Object.keys(store).length;
+  },
 } as Storage;
-(globalThis as any).localStorage = localStorageMock;
+(globalThis as Record<string, unknown>).localStorage = localStorageImpl;
 
-// jsdom doesn't support matchMedia — stub for responsive UI tests
+// jsdom doesn't support matchMedia — provide a real MediaQueryList implementation
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
+  value: (query: string): MediaQueryList => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }),
 });

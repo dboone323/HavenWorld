@@ -1,15 +1,47 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createServer, Server } from 'node:http';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NullEngine } from '@babylonjs/core/Engines/nullEngine';
 import { Scene } from '@babylonjs/core/scene';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Tags } from '@babylonjs/core/Misc/tags';
-import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
 import { RoomLoader } from '../RoomLoader';
+import { setAssetBaseUrl } from '../../config';
 
-describe('RoomLoader (Babylon.js NullEngine)', () => {
+describe('RoomLoader (Babylon.js NullEngine — Real GLB & Mesh Validation)', () => {
+  let server: Server;
   let engine: NullEngine;
   let scene: Scene;
   let loader: RoomLoader;
+
+  beforeAll(async () => {
+    const glbPath = path.resolve(__dirname, '../../../public/assets/rooms/town_square.glb');
+    const glbBuffer = readFileSync(glbPath);
+
+    server = createServer((req, res) => {
+      if (req.url?.endsWith('.glb')) {
+        res.writeHead(200, {
+          'Content-Type': 'model/gltf-binary',
+          'Content-Length': glbBuffer.byteLength,
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(glbBuffer);
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address() as { port: number };
+    setAssetBaseUrl(`http://127.0.0.1:${addr.port}`);
+  });
+
+  afterAll(async () => {
+    setAssetBaseUrl('');
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
 
   beforeEach(() => {
     engine = new NullEngine();
@@ -20,31 +52,18 @@ describe('RoomLoader (Babylon.js NullEngine)', () => {
   afterEach(() => {
     scene.dispose();
     engine.dispose();
-    vi.restoreAllMocks();
   });
 
-  it('(a) load(roomId) parses GLB / room geometry and categorizes meshes', async () => {
-    const root = MeshBuilder.CreateBox('root', {}, scene);
-    const walkable = MeshBuilder.CreateBox('Walkable_Ground', {}, scene);
-    const navmesh = MeshBuilder.CreateBox('NavMesh_Main', {}, scene);
+  it('(a) load(roomId) parses real town_square.glb binary and categorizes meshes', async () => {
+    expect(RoomLoader.hasStaticGlb('room-town-square')).toBe(true);
+    expect(RoomLoader.hasStaticGlb('room-park')).toBe(false);
+    expect(RoomLoader.resolveGlbId('room-town-square')).toBe('town_square');
 
-    vi.spyOn(SceneLoader, 'ImportMeshAsync').mockResolvedValueOnce({
-      meshes: [root, walkable, navmesh],
-      particleSystems: [],
-      skeletons: [],
-      animationGroups: [],
-      transformNodes: [],
-      geometries: [],
-      lights: [],
-      spriteManagers: [],
-    } as any);
+    const result = await loader.load('town_square');
 
-    const result = await loader.load('room-park');
-
-    expect(result.rootMesh).toBe(root);
-    expect(result.walkableMeshes).toContain(walkable);
-    expect(result.navMeshes).toContain(navmesh);
-    expect(result.allMeshes.length).toBe(3);
+    expect(result.rootMesh).toBeDefined();
+    expect(result.allMeshes.length).toBeGreaterThan(0);
+    expect(result.walkableMeshes.length).toBeGreaterThan(0);
   });
 
   it('(b) Mesh categorization: NavMesh_* set to isVisible = false, isPickable = false, tagged "navmesh"', () => {

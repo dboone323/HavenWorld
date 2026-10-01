@@ -1,4 +1,3 @@
-import type { ArcadeSettlementOutbox } from '@prisma/client';
 import {
   ArcadeService,
   ARCADE_GAME_TYPE,
@@ -7,121 +6,19 @@ import {
   ARCADE_HOURLY_COIN_LIMIT,
   ARCADE_MATCH_RETENTION_MS,
 } from '../ArcadeService';
-
-jest.mock('../../prisma', () => ({
-  prisma: {
-    $transaction: jest.fn(),
-    minigameSession: { aggregate: jest.fn() },
-    arcadeSettlementOutbox: {
-      upsert: jest.fn().mockResolvedValue({}),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-  },
-}));
-
 import { prisma } from '../../prisma';
+import { createTestUser } from '../../../__tests__/helpers/factories';
 
-const mockTransaction = prisma.$transaction as jest.Mock;
-const mockHourlyAggregate = prisma.minigameSession.aggregate as jest.Mock;
-const mockOutboxUpsert = prisma.arcadeSettlementOutbox.upsert as jest.Mock;
-const mockOutboxUpdateMany = prisma.arcadeSettlementOutbox.updateMany as jest.Mock;
-const mockOutboxFindMany = prisma.arcadeSettlementOutbox.findMany as jest.Mock;
-
-type Cap = { id: string; earned: number };
-
-/** An outbox row shaped exactly as Prisma returns it. */
-function outboxRow(
-  overrides: Partial<ArcadeSettlementOutbox> & { matchId: string }
-): ArcadeSettlementOutbox {
-  const row: ArcadeSettlementOutbox = {
-    matchId: 'c4_row',
-    gameType: ARCADE_GAME_TYPE,
-    cabinetId: 'cab-1',
-    player1Id: 'u-win',
-    player2Id: 'u-lose',
-    winnerId: 'u-win',
-    isDraw: false,
-    startedAt: new Date('2026-09-30T00:00:00.000Z'),
-    finishedAt: new Date('2026-09-30T00:02:00.000Z'),
-    coinsAwarded: 0,
-    weeklyRemaining: ARCADE_WEEKLY_COIN_CAP,
-    settledAt: null,
-    attempts: 0,
-    lastError: null,
-  };
-  return { ...row, ...overrides };
-}
-
-/**
- * Interactive-transaction stub covering exactly the models ArcadeService
- * touches, so assertions can read the mutations it attempted.
- */
-function installTx(cap: Cap | null, opts: { alreadySettled?: boolean } = {}) {
-  const calls = {
-    capCreated: [] as Array<Record<string, unknown>>,
-    capUpdated: [] as Array<{ id: string; earned: number }>,
-    coinsIncremented: [] as number[],
-    sessions: [] as Array<Record<string, unknown>>,
-    outboxClaimed: [] as Array<{ matchId: string; coinsAwarded: number }>,
-  };
-
-  const tx = {
-    weeklyEarningsCap: {
-      findUnique: jest.fn(async () => cap),
-      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        calls.capCreated.push(data);
-        return { ...cap, id: 'cap-1', earned: 0, ...data };
-      }),
-      update: jest.fn(async ({ where, data }: { where: { id: string }; data: { earned: { increment: number } } }) => {
-        calls.capUpdated.push({ id: where.id, earned: data.earned.increment });
-        return {};
-      }),
-    },
-    user: {
-      update: jest.fn(async ({ data }: { data: { havenCoins: { increment: number } } }) => {
-        calls.coinsIncremented.push(data.havenCoins.increment);
-        return {};
-      }),
-    },
-    minigameSession: {
-      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        calls.sessions.push(data);
-        return {};
-      }),
-    },
-    arcadeSettlementOutbox: {
-      upsert: jest.fn(async () => ({})),
-      updateMany: jest.fn(
-        async ({
-          where,
-          data,
-        }: {
-          where: { matchId: string; settledAt: null };
-          data: { coinsAwarded: number; weeklyRemaining: number };
-        }) => {
-          calls.outboxClaimed.push({ matchId: where.matchId, coinsAwarded: data.coinsAwarded });
-          // count 0 models "someone already settled this" — the double-pay guard.
-          return { count: opts.alreadySettled ? 0 : 1 };
-        }
-      ),
-      findUnique: jest.fn(async ({ where }: { where: { matchId: string } }) =>
-        opts.alreadySettled
-          ? outboxRow({ matchId: where.matchId, settledAt: new Date(0), coinsAwarded: ARCADE_WIN_COINS })
-          : null
-      ),
-    },
-  };
-
-  // Run the callback the way Prisma does, and pass its value straight through.
-  mockTransaction.mockImplementation(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx));
-  return { tx, calls };
+function currentWeekStart(): Date {
+  const startOfWeek = new Date();
+  startOfWeek.setUTCHours(0, 0, 0, 0);
+  startOfWeek.setUTCDate(startOfWeek.getUTCDate() - startOfWeek.getUTCDay());
+  return startOfWeek;
 }
 
 /**
  * A full 6×7 board with 21 discs each and no four-in-a-row in any direction:
- * a 2×2 checkerboard tile. Built directly because settleMatch only reads the
- * finished state, and hand-checkmating a legal 42-ply game is brittle.
+ * a 2×2 checkerboard tile.
  */
 function drawnBoard(): number[][] {
   const rowA = [1, 1, 2, 2, 1, 1, 2];
@@ -130,8 +27,8 @@ function drawnBoard(): number[][] {
 }
 
 /** Four p1 drops in one column: the fastest legal Connect-4 finish. */
-function finishedMatch(kind: 'win' | 'draw', p1 = 'u-win', p2 = 'u-lose') {
-  const match = ArcadeService.startMatch(p1, p2, 'cab-1');
+function finishedMatch(kind: 'win' | 'draw', p1: string, p2: string, cabinetId = 'cab-1') {
+  const match = ArcadeService.startMatch(p1, p2, cabinetId);
   if (kind === 'draw') {
     match.board = drawnBoard();
     match.status = 'FINISHED';
@@ -157,435 +54,390 @@ function clearArcadeState() {
   internals.pendingSettlements.clear();
 }
 
-describe('ArcadeService.settleMatch', () => {
-  beforeEach(() => {
+describe('ArcadeService (Real Database Validation)', () => {
+  const createdUserIds: string[] = [];
+
+  async function makeUser(havenCoins = 500) {
+    const user = await createTestUser({ havenCoins });
+    createdUserIds.push(user.id);
+    return user;
+  }
+
+  beforeEach(async () => {
     clearArcadeState();
-    mockHourlyAggregate.mockResolvedValue({ _sum: { coinsEarned: 0 } });
-    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    await prisma.arcadeSettlementOutbox.deleteMany({});
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
-    jest.clearAllMocks();
+  afterEach(async () => {
+    clearArcadeState();
+    await prisma.arcadeSettlementOutbox.deleteMany({});
+    if (createdUserIds.length > 0) {
+      await prisma.minigameSession.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.weeklyEarningsCap.deleteMany({ where: { userId: { in: createdUserIds } } });
+    }
   });
 
-  it('reports a real win before settling', () => {
-    const match = finishedMatch('win');
-    expect(match.status).toBe('FINISHED');
-    expect(match.winnerId).toBe('u-win');
-    expect(match.isDraw).toBe(false);
+  afterAll(async () => {
+    await prisma.arcadeSettlementOutbox.deleteMany({});
+    if (createdUserIds.length > 0) {
+      await prisma.minigameSession.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.weeklyEarningsCap.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.room.deleteMany({ where: { ownerId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+    }
   });
 
-  it('pays the winner the full skill reward and logs the session', async () => {
-    const match = finishedMatch('win');
-    installTx({ id: 'cap-1', earned: 0 });
+  describe('ArcadeService.settleMatch', () => {
+    it('reports a real win before settling', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
+      expect(match.status).toBe('FINISHED');
+      expect(match.winnerId).toBe(winner.id);
+      expect(match.isDraw).toBe(false);
+    });
 
-    const result = await ArcadeService.settleMatch(match.id);
+    it('pays the winner the full skill reward and logs the session in the database', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
 
-    expect(result).toMatchObject({
-      matchId: match.id,
-      winnerId: 'u-win',
-      isDraw: false,
-      coinsAwarded: ARCADE_WIN_COINS,
-      weeklyRemaining: ARCADE_WEEKLY_COIN_CAP - ARCADE_WIN_COINS,
+      const result = await ArcadeService.settleMatch(match.id);
+
+      expect(result).toMatchObject({
+        matchId: match.id,
+        winnerId: winner.id,
+        isDraw: false,
+        coinsAwarded: ARCADE_WIN_COINS,
+        weeklyRemaining: ARCADE_WEEKLY_COIN_CAP - ARCADE_WIN_COINS,
+      });
+
+      const [dbWinner, sessions, cap] = await Promise.all([
+        prisma.user.findUniqueOrThrow({ where: { id: winner.id } }),
+        prisma.minigameSession.findMany({ where: { userId: winner.id, gameType: ARCADE_GAME_TYPE } }),
+        prisma.weeklyEarningsCap.findFirst({ where: { userId: winner.id, gameType: ARCADE_GAME_TYPE } }),
+      ]);
+
+      expect(dbWinner.havenCoins).toBe(500 + ARCADE_WIN_COINS);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].coinsEarned).toBe(ARCADE_WIN_COINS);
+      expect(cap?.earned).toBe(ARCADE_WIN_COINS);
+    });
+
+    it('settles a match exactly once — repeat calls return the cached payout', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
+
+      const first = await ArcadeService.settleMatch(match.id);
+      const second = await ArcadeService.settleMatch(match.id);
+      const third = await ArcadeService.settleMatch(match.id);
+
+      expect(second).toEqual(first);
+      expect(third).toEqual(first);
+
+      const dbWinner = await prisma.user.findUniqueOrThrow({ where: { id: winner.id } });
+      expect(dbWinner.havenCoins).toBe(500 + ARCADE_WIN_COINS);
+    });
+
+    it('clamps the payout to what is left in the weekly budget', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      await prisma.weeklyEarningsCap.create({
+        data: {
+          userId: winner.id,
+          gameType: ARCADE_GAME_TYPE,
+          earned: ARCADE_WEEKLY_COIN_CAP - 15,
+          weekOf: currentWeekStart(),
+        },
+      });
+
+      const match = finishedMatch('win', winner.id, loser.id);
+      const result = await ArcadeService.settleMatch(match.id);
+
+      expect(result.coinsAwarded).toBe(15);
+      expect(result.weeklyRemaining).toBe(0);
+
+      const dbWinner = await prisma.user.findUniqueOrThrow({ where: { id: winner.id } });
+      expect(dbWinner.havenCoins).toBe(515);
+    });
+
+    it('pays nothing once the weekly cap is spent, but still logs the match', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      await prisma.weeklyEarningsCap.create({
+        data: {
+          userId: winner.id,
+          gameType: ARCADE_GAME_TYPE,
+          earned: ARCADE_WEEKLY_COIN_CAP,
+          weekOf: currentWeekStart(),
+        },
+      });
+
+      const match = finishedMatch('win', winner.id, loser.id);
+      const result = await ArcadeService.settleMatch(match.id);
+
+      expect(result.coinsAwarded).toBe(0);
+      expect(result.weeklyRemaining).toBe(0);
+
+      const [dbWinner, sessions] = await Promise.all([
+        prisma.user.findUniqueOrThrow({ where: { id: winner.id } }),
+        prisma.minigameSession.findMany({ where: { userId: winner.id, gameType: ARCADE_GAME_TYPE } }),
+      ]);
+      expect(dbWinner.havenCoins).toBe(500);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].coinsEarned).toBe(0);
+    });
+
+    it('shares the rolling hourly minigame budget with other games (§6.2)', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      await prisma.minigameSession.create({
+        data: {
+          userId: winner.id,
+          gameType: 'PIZZA_CHEF',
+          coinsEarned: ARCADE_HOURLY_COIN_LIMIT - 25,
+          score: 500,
+          duration: 60,
+        },
+      });
+
+      const match = finishedMatch('win', winner.id, loser.id);
+      const result = await ArcadeService.settleMatch(match.id);
+
+      expect(result.coinsAwarded).toBe(25);
+      const dbWinner = await prisma.user.findUniqueOrThrow({ where: { id: winner.id } });
+      expect(dbWinner.havenCoins).toBe(525);
+    });
+
+    it('pays nobody on a draw and caches that answer too', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const match = finishedMatch('draw', p1.id, p2.id);
+      expect(match.isDraw).toBe(true);
+
+      const result = await ArcadeService.settleMatch(match.id);
+      const again = await ArcadeService.settleMatch(match.id);
+
+      expect(result).toMatchObject({
+        winnerId: null,
+        isDraw: true,
+        coinsAwarded: 0,
+        weeklyRemaining: ARCADE_WEEKLY_COIN_CAP,
+      });
+      expect(again).toEqual(result);
+
+      const outbox = await prisma.arcadeSettlementOutbox.findUnique({ where: { matchId: match.id } });
+      expect(outbox?.settledAt).not.toBeNull();
+      expect(outbox?.coinsAwarded).toBe(0);
+    });
+
+    it('refuses to settle a match that is still in progress', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const match = ArcadeService.startMatch(p1.id, p2.id, 'cab-1');
+
+      await expect(ArcadeService.settleMatch(match.id)).rejects.toThrow('Match is still in progress');
     });
   });
 
-  it('increments coins, the weekly cap, and one minigame session', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
+  describe('ArcadeService cabinet occupancy', () => {
+    it('refuses a second live match on the same cabinet', () => {
+      ArcadeService.startMatch('u-a', 'u-b', 'cab-1');
 
-    await ArcadeService.settleMatch(match.id);
+      expect(ArcadeService.busyCabinet('cab-1')).toBe(true);
+      expect(() => ArcadeService.startMatch('u-c', 'u-d', 'cab-1')).toThrow('already running a match');
+    });
 
-    expect(calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-    expect(calls.capUpdated).toEqual([{ id: 'cap-1', earned: ARCADE_WIN_COINS }]);
-    expect(calls.sessions).toHaveLength(1);
-    expect(calls.sessions[0]).toMatchObject({
-      userId: 'u-win',
-      gameType: ARCADE_GAME_TYPE,
-      coinsEarned: ARCADE_WIN_COINS,
+    it('frees the cabinet again once the match is decided', () => {
+      const match = finishedMatch('win', 'u-a', 'u-b', 'cab-1');
+
+      expect(match.status).toBe('FINISHED');
+      expect(ArcadeService.busyCabinet('cab-1')).toBe(false);
+      expect(() => ArcadeService.startMatch('u-c', 'u-d', 'cab-1')).not.toThrow();
+    });
+
+    it('keeps separate cabinets independent', () => {
+      ArcadeService.startMatch('u-a', 'u-b', 'cab-1');
+
+      expect(ArcadeService.activeMatchesForRoom('cab-1')).toHaveLength(1);
+      expect(ArcadeService.activeMatchesForRoom('cab-2')).toHaveLength(0);
+      expect(ArcadeService.busyCabinet('cab-2')).toBe(false);
     });
   });
 
-  it('creates the weekly cap record on a winner’s first payout', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx(null);
+  describe('ArcadeService settlement retries & retention (§6.3)', () => {
+    it('pays a finished match nobody ever settled and does not double-pay on subsequent sweeps', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
 
-    await ArcadeService.settleMatch(match.id);
+      ArcadeService.queueUnsettledFinishedMatches();
+      expect(ArcadeService.pendingSettlementCount()).toBe(1);
+      const settled = await ArcadeService.settlePendingMatches();
+      expect(settled).toHaveLength(1);
+      expect(settled[0]).toMatchObject({
+        matchId: match.id,
+        winnerId: winner.id,
+        coinsAwarded: ARCADE_WIN_COINS,
+      });
+      expect(ArcadeService.pendingSettlementCount()).toBe(0);
 
-    expect(calls.capCreated).toHaveLength(1);
-    expect(calls.capCreated[0]).toMatchObject({ userId: 'u-win', gameType: ARCADE_GAME_TYPE });
-  });
+      // Sweeping again must not pay the same win twice.
+      ArcadeService.queueUnsettledFinishedMatches();
+      await expect(ArcadeService.settlePendingMatches()).resolves.toHaveLength(0);
 
-  it('settles a match exactly once — repeat calls return the cached payout', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-
-    const first = await ArcadeService.settleMatch(match.id);
-    const second = await ArcadeService.settleMatch(match.id);
-    const third = await ArcadeService.settleMatch(match.id);
-
-    expect(second).toEqual(first);
-    expect(third).toEqual(first);
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-  });
-
-  it('clamps the payout to what is left in the weekly budget', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: ARCADE_WEEKLY_COIN_CAP - 15 });
-
-    const result = await ArcadeService.settleMatch(match.id);
-
-    expect(result.coinsAwarded).toBe(15);
-    expect(result.weeklyRemaining).toBe(0);
-    expect(calls.coinsIncremented).toEqual([15]);
-  });
-
-  it('pays nothing once the weekly cap is spent, but still logs the match', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: ARCADE_WEEKLY_COIN_CAP });
-
-    const result = await ArcadeService.settleMatch(match.id);
-
-    expect(result.coinsAwarded).toBe(0);
-    expect(result.weeklyRemaining).toBe(0);
-    expect(calls.coinsIncremented).toEqual([]);
-    expect(calls.capUpdated).toEqual([]);
-    expect(calls.sessions).toHaveLength(1);
-    expect(calls.sessions[0]).toMatchObject({ coinsEarned: 0 });
-  });
-
-  it('shares the rolling hourly minigame budget with other games (§6.2)', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-    mockHourlyAggregate.mockResolvedValue({
-      _sum: { coinsEarned: ARCADE_HOURLY_COIN_LIMIT - 25 },
+      const dbWinner = await prisma.user.findUniqueOrThrow({ where: { id: winner.id } });
+      expect(dbWinner.havenCoins).toBe(500 + ARCADE_WIN_COINS);
     });
 
-    const result = await ArcadeService.settleMatch(match.id);
+    it('leaves a failed payout queued and never prunes it while still owed', async () => {
+      // A match won by a not-yet-persisted user ID fails foreign key constraint on settle
+      const missingWinnerId = `unpersisted_${Date.now()}`;
+      const match = finishedMatch('win', missingWinnerId, 'u-lose');
 
-    expect(result.coinsAwarded).toBe(25);
-    expect(calls.coinsIncremented).toEqual([25]);
-  });
+      let settleError: unknown = null;
+      try {
+        await ArcadeService.settleMatch(match.id);
+      } catch (err) {
+        settleError = err;
+      }
+      expect(settleError).not.toBeNull();
+      ArcadeService.queueSettlementRetry(match.id);
+      expect(ArcadeService.pendingSettlementCount()).toBe(1);
 
-  it('pays nobody on a draw and caches that answer too', async () => {
-    const match = finishedMatch('draw');
-    expect(match.isDraw).toBe(true);
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
+      await expect(ArcadeService.settlePendingMatches()).resolves.toHaveLength(0);
+      expect(ArcadeService.pendingSettlementCount()).toBe(1);
 
-    const result = await ArcadeService.settleMatch(match.id);
-    const again = await ArcadeService.settleMatch(match.id);
-
-    expect(result).toMatchObject({
-      winnerId: null,
-      isDraw: true,
-      coinsAwarded: 0,
-      weeklyRemaining: ARCADE_WEEKLY_COIN_CAP,
+      // Even if old, an unpaid match is never pruned
+      match.createdAt -= ARCADE_MATCH_RETENTION_MS + 1;
+      expect(ArcadeService.pruneFinishedMatches()).toBe(0);
+      expect(ArcadeService.getMatch(match.id)).not.toBeNull();
     });
-    expect(again).toEqual(result);
-    // A draw writes exactly one thing: its outbox row is closed out so no later
-    // boot re-examines it. No coins, no cap movement, no session.
-    expect(calls.outboxClaimed).toEqual([{ matchId: match.id, coinsAwarded: 0 }]);
-    expect(calls.coinsIncremented).toEqual([]);
-    expect(calls.capUpdated).toEqual([]);
-    expect(calls.sessions).toHaveLength(0);
+
+    it('forgets a paid match only once it goes stale', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
+      await ArcadeService.settleMatch(match.id);
+
+      expect(ArcadeService.pruneFinishedMatches()).toBe(0);
+      expect(ArcadeService.getMatch(match.id)).not.toBeNull();
+
+      match.createdAt -= ARCADE_MATCH_RETENTION_MS + 1;
+      expect(ArcadeService.pruneFinishedMatches()).toBe(1);
+      expect(ArcadeService.getMatch(match.id)).toBeNull();
+
+      await expect(ArcadeService.settleMatch(match.id)).rejects.toThrow('Arcade match not found');
+    });
+
+    it('never queues or prunes a match that is still in progress', () => {
+      const live = ArcadeService.startMatch('u-live1', 'u-live2', 'cab-live');
+      live.createdAt -= ARCADE_MATCH_RETENTION_MS * 2;
+
+      ArcadeService.queueSettlementRetry(live.id);
+      ArcadeService.queueUnsettledFinishedMatches();
+      expect(ArcadeService.pendingSettlementCount()).toBe(0);
+      expect(ArcadeService.pruneFinishedMatches()).toBe(0);
+      expect(ArcadeService.busyCabinet('cab-live')).toBe(true);
+    });
   });
 
-  it('refuses to settle a match that is still in progress', async () => {
-    const match = ArcadeService.startMatch('u-win', 'u-lose', 'cab-1');
-    installTx({ id: 'cap-1', earned: 0 });
+  describe('ArcadeService durable payout outbox & startup recovery (§6.3)', () => {
+    it('writes the owed-payout row the moment the board is decided and replays on startup recovery', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
 
-    await expect(ArcadeService.settleMatch(match.id)).rejects.toThrow('Match is still in progress');
-    expect(mockTransaction).not.toHaveBeenCalled();
-  });
-});
+      await expect(ArcadeService.recordOwedPayout(match)).resolves.toBe(true);
 
-describe('ArcadeService cabinet occupancy', () => {
-  beforeEach(clearArcadeState);
-  afterEach(clearArcadeState);
-
-  it('refuses a second live match on the same cabinet', () => {
-    ArcadeService.startMatch('u-a', 'u-b', 'cab-1');
-
-    expect(ArcadeService.busyCabinet('cab-1')).toBe(true);
-    expect(() => ArcadeService.startMatch('u-c', 'u-d', 'cab-1')).toThrow('already running a match');
-  });
-
-  it('frees the cabinet again once the match is decided', () => {
-    const match = finishedMatch('win', 'u-a', 'u-b');
-
-    expect(match.status).toBe('FINISHED');
-    expect(ArcadeService.busyCabinet('cab-1')).toBe(false);
-    expect(() => ArcadeService.startMatch('u-c', 'u-d', 'cab-1')).not.toThrow();
-  });
-
-  it('keeps separate cabinets independent', () => {
-    ArcadeService.startMatch('u-a', 'u-b', 'cab-1');
-
-    expect(ArcadeService.activeMatchesForRoom('cab-1')).toHaveLength(1);
-    expect(ArcadeService.activeMatchesForRoom('cab-2')).toHaveLength(0);
-    expect(ArcadeService.busyCabinet('cab-2')).toBe(false);
-  });
-});
-
-describe('ArcadeService settlement retries (§6.3)', () => {
-  beforeEach(() => {
-    clearArcadeState();
-    mockHourlyAggregate.mockResolvedValue({ _sum: { coinsEarned: 0 } });
-  });
-  afterEach(clearArcadeState);
-
-  it('retries a payout whose first attempt failed at the database', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-    mockTransaction.mockImplementationOnce(() => Promise.reject(new Error('database unavailable')));
-
-    await expect(ArcadeService.settleMatch(match.id)).rejects.toThrow('database unavailable');
-    ArcadeService.queueSettlementRetry(match.id);
-    expect(ArcadeService.pendingSettlementCount()).toBe(1);
-
-    const settled = await ArcadeService.settlePendingMatches();
-    expect(settled).toHaveLength(1);
-    expect(settled[0]).toMatchObject({ matchId: match.id, winnerId: 'u-win', coinsAwarded: ARCADE_WIN_COINS });
-    expect(ArcadeService.pendingSettlementCount()).toBe(0);
-    // Exactly one credit — the failed attempt wrote nothing.
-    expect(calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-  });
-
-  it('leaves the payout queued while the database is still down', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-    mockTransaction.mockRejectedValue(new Error('database unavailable'));
-    ArcadeService.queueSettlementRetry(match.id);
-
-    await expect(ArcadeService.settlePendingMatches()).resolves.toHaveLength(0);
-    expect(ArcadeService.pendingSettlementCount()).toBe(1);
-    expect(calls.coinsIncremented).toEqual([]);
-
-    // Once the database recovers, the queued win is paid.
-    const recovered = installTx({ id: 'cap-1', earned: 0 });
-    const settled = await ArcadeService.settlePendingMatches();
-    expect(settled).toHaveLength(1);
-    expect(ArcadeService.pendingSettlementCount()).toBe(0);
-    expect(recovered.calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-  });
-
-  it('pays a finished match nobody ever settled', async () => {
-    // Mirrors a winner whose socket dropped before the settlement ran: the board
-    // is decided but no payout was ever attempted.
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-
-    ArcadeService.queueUnsettledFinishedMatches();
-    expect(ArcadeService.pendingSettlementCount()).toBe(1);
-    await expect(ArcadeService.settlePendingMatches()).resolves.toHaveLength(1);
-    expect(calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-
-    // Sweeping again must not pay the same win twice.
-    ArcadeService.queueUnsettledFinishedMatches();
-    await expect(ArcadeService.settlePendingMatches()).resolves.toHaveLength(0);
-    expect(calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-    expect(match.status).toBe('FINISHED');
-  });
-
-  it('never queues a match that is still in progress', () => {
-    const live = ArcadeService.startMatch('u-live1', 'u-live2', 'cab-live');
-
-    ArcadeService.queueSettlementRetry(live.id);
-    ArcadeService.queueUnsettledFinishedMatches();
-    expect(ArcadeService.pendingSettlementCount()).toBe(0);
-  });
-});
-
-describe('ArcadeService match retention (§6.3)', () => {
-  beforeEach(() => {
-    clearArcadeState();
-    mockHourlyAggregate.mockResolvedValue({ _sum: { coinsEarned: 0 } });
-  });
-  afterEach(() => {
-    clearArcadeState();
-    mockTransaction.mockReset();
-  });
-
-  it('forgets a paid match only once it goes stale', async () => {
-    const match = finishedMatch('win');
-    installTx({ id: 'cap-1', earned: 0 });
-    await ArcadeService.settleMatch(match.id);
-
-    // Still fresh: it must stay resident so a replayed move hits the cache.
-    expect(ArcadeService.pruneFinishedMatches()).toBe(0);
-    expect(ArcadeService.getMatch(match.id)).not.toBeNull();
-
-    match.createdAt -= ARCADE_MATCH_RETENTION_MS + 1;
-    expect(ArcadeService.pruneFinishedMatches()).toBe(1);
-    expect(ArcadeService.getMatch(match.id)).toBeNull();
-
-    // A forgotten match cannot come back and pay a second time.
-    await expect(ArcadeService.settleMatch(match.id)).rejects.toThrow('Arcade match not found');
-  });
-
-  it('never prunes a match that still owes a payout', async () => {
-    const owed = finishedMatch('win', 'u-owed1', 'u-owed2');
-    installTx({ id: 'cap-1', earned: 0 });
-    mockTransaction.mockRejectedValue(new Error('database unavailable'));
-    await ArcadeService.settleMatch(owed.id).catch(() => undefined);
-    ArcadeService.queueSettlementRetry(owed.id);
-    owed.createdAt -= ARCADE_MATCH_RETENTION_MS + 1;
-
-    expect(ArcadeService.pruneFinishedMatches()).toBe(0);
-    expect(ArcadeService.getMatch(owed.id)).not.toBeNull();
-    expect(ArcadeService.pendingSettlementCount()).toBe(1);
-  });
-
-  it('leaves a live match running on its cabinet', () => {
-    const live = ArcadeService.startMatch('u-live-a', 'u-live-b', 'cab-retention');
-    live.createdAt -= ARCADE_MATCH_RETENTION_MS * 2;
-
-    expect(ArcadeService.pruneFinishedMatches()).toBe(0);
-    expect(ArcadeService.busyCabinet('cab-retention')).toBe(true);
-  });
-});
-
-describe('ArcadeService durable payout outbox (§6.3)', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    clearArcadeState();
-    mockHourlyAggregate.mockResolvedValue({ _sum: { coinsEarned: 0 } });
-    mockOutboxFindMany.mockResolvedValue([]);
-    mockOutboxUpdateMany.mockResolvedValue({ count: 1 });
-    mockOutboxUpsert.mockResolvedValue({});
-  });
-  afterEach(() => {
-    clearArcadeState();
-    jest.restoreAllMocks();
-  });
-
-  it('writes the owed-payout row the moment the board is decided', async () => {
-    const match = finishedMatch('win');
-
-    await expect(ArcadeService.recordOwedPayout(match)).resolves.toBe(true);
-
-    expect(mockOutboxUpsert).toHaveBeenCalledTimes(1);
-    expect(mockOutboxUpsert.mock.calls[0][0]).toMatchObject({
-      where: { matchId: match.id },
-      create: {
+      const rowBefore = await prisma.arcadeSettlementOutbox.findUnique({
+        where: { matchId: match.id },
+      });
+      expect(rowBefore).toMatchObject({
         matchId: match.id,
         gameType: ARCADE_GAME_TYPE,
         cabinetId: 'cab-1',
-        player1Id: 'u-win',
-        player2Id: 'u-lose',
-        winnerId: 'u-win',
+        player1Id: winner.id,
+        player2Id: loser.id,
+        winnerId: winner.id,
         isDraw: false,
-      },
+        settledAt: null,
+      });
+
+      // Simulate server restart: clear in-memory state and recover from DB outbox
+      clearArcadeState();
+      const settled = await ArcadeService.recoverPendingSettlements();
+      expect(settled).toHaveLength(1);
+      expect(settled[0]).toMatchObject({
+        matchId: match.id,
+        winnerId: winner.id,
+        isDraw: false,
+        coinsAwarded: ARCADE_WIN_COINS,
+      });
+
+      const dbWinner = await prisma.user.findUniqueOrThrow({ where: { id: winner.id } });
+      expect(dbWinner.havenCoins).toBe(500 + ARCADE_WIN_COINS);
+
+      // Re-running startup recovery after settlement is a no-op
+      clearArcadeState();
+      await expect(ArcadeService.recoverPendingSettlements()).resolves.toEqual([]);
     });
-  });
 
-  it('refuses to record a debt for a match that is still live', async () => {
-    const live = ArcadeService.startMatch('u-a', 'u-b', 'cab-1');
+    it('refuses to record a debt for a match that is still live', async () => {
+      const live = ArcadeService.startMatch('u-a', 'u-b', 'cab-1');
+      await expect(ArcadeService.recordOwedPayout(live)).resolves.toBe(false);
+    });
 
-    await expect(ArcadeService.recordOwedPayout(live)).resolves.toBe(false);
-    expect(mockOutboxUpsert).not.toHaveBeenCalled();
-  });
+    it('replays stored numbers instead of paying twice when the outbox row was already settled', async () => {
+      const winner = await makeUser(500);
+      const loser = await makeUser(500);
+      const match = finishedMatch('win', winner.id, loser.id);
 
-  it('keeps playing when the database is down as the debt is written', async () => {
-    const match = finishedMatch('win');
-    mockOutboxUpsert.mockRejectedValue(new Error('database unavailable'));
-    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      // Pre-settle the outbox row in DB as if another process already claimed it
+      await prisma.arcadeSettlementOutbox.create({
+        data: {
+          matchId: match.id,
+          gameType: ARCADE_GAME_TYPE,
+          cabinetId: 'cab-1',
+          player1Id: winner.id,
+          player2Id: loser.id,
+          winnerId: winner.id,
+          isDraw: false,
+          startedAt: new Date(match.createdAt),
+          finishedAt: new Date(),
+          settledAt: new Date(),
+          coinsAwarded: ARCADE_WIN_COINS,
+          weeklyRemaining: ARCADE_WEEKLY_COIN_CAP - ARCADE_WIN_COINS,
+        },
+      });
 
-    await expect(ArcadeService.recordOwedPayout(match)).resolves.toBe(false);
-    expect(error).toHaveBeenCalled();
-  });
+      const result = await ArcadeService.settleMatch(match.id);
+      expect(result).toMatchObject({
+        matchId: match.id,
+        coinsAwarded: ARCADE_WIN_COINS,
+      });
 
-  it('replays stored numbers instead of paying twice when the row is claimed', async () => {
-    const match = finishedMatch('win');
-    const { calls } = installTx({ id: 'cap-1', earned: 0 }, { alreadySettled: true });
+      // Winner's balance was NOT incremented a second time
+      const dbWinner = await prisma.user.findUniqueOrThrow({ where: { id: winner.id } });
+      expect(dbWinner.havenCoins).toBe(500);
+    });
 
-    const result = await ArcadeService.settleMatch(match.id);
+    it('closes out an owed draw on startup recovery without crediting anyone', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const match = finishedMatch('draw', p1.id, p2.id);
 
-    // Another process won the claim: report its payout, write nothing.
-    expect(result).toMatchObject({ matchId: match.id, coinsAwarded: ARCADE_WIN_COINS });
-    expect(calls.outboxClaimed).toHaveLength(1);
-    expect(calls.coinsIncremented).toEqual([]);
-    expect(calls.capCreated).toHaveLength(0);
-    expect(calls.sessions).toHaveLength(0);
+      await expect(ArcadeService.recordOwedPayout(match)).resolves.toBe(true);
+      clearArcadeState();
+
+      const settled = await ArcadeService.recoverPendingSettlements();
+      expect(settled).toHaveLength(1);
+      expect(settled[0]).toMatchObject({
+        matchId: match.id,
+        isDraw: true,
+        coinsAwarded: 0,
+      });
+    });
   });
 });
-
-
-describe('ArcadeService startup recovery (§6.3)', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    clearArcadeState();
-    mockHourlyAggregate.mockResolvedValue({ _sum: { coinsEarned: 0 } });
-    mockOutboxFindMany.mockResolvedValue([]);
-    mockOutboxUpdateMany.mockResolvedValue({ count: 1 });
-    mockOutboxUpsert.mockResolvedValue({});
-  });
-  afterEach(() => {
-    clearArcadeState();
-    jest.restoreAllMocks();
-  });
-
-  it('pays a previous process’s debt with its match long gone', async () => {
-    mockOutboxFindMany.mockResolvedValue([outboxRow({ matchId: 'c4_crashed' })]);
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-
-    const settled = await ArcadeService.recoverPendingSettlements();
-
-    expect(settled).toHaveLength(1);
-    expect(settled[0]).toMatchObject({
-      matchId: 'c4_crashed',
-      winnerId: 'u-win',
-      isDraw: false,
-      coinsAwarded: ARCADE_WIN_COINS,
-    });
-    expect(calls.coinsIncremented).toEqual([ARCADE_WIN_COINS]);
-    // Duration comes from the row (00:00 → 00:02), not from a wall clock reset.
-    expect(calls.sessions[0]).toMatchObject({
-      userId: 'u-win',
-      coinsEarned: ARCADE_WIN_COINS,
-      duration: 120,
-    });
-    // The claim is written by the same transaction that paid, so there is no
-    // window where a payout is marked done and the coins never landed.
-    expect(calls.outboxClaimed).toEqual([{ matchId: 'c4_crashed', coinsAwarded: ARCADE_WIN_COINS }]);
-  });
-
-  it('closes out an owed draw without crediting anyone', async () => {
-    mockOutboxFindMany.mockResolvedValue([
-      outboxRow({ matchId: 'c4_draw', winnerId: null, isDraw: true }),
-    ]);
-    const { calls } = installTx({ id: 'cap-1', earned: 0 });
-
-    const settled = await ArcadeService.recoverPendingSettlements();
-
-    expect(settled[0]).toMatchObject({ matchId: 'c4_draw', isDraw: true, coinsAwarded: 0 });
-    expect(calls.outboxClaimed).toEqual([{ matchId: 'c4_draw', coinsAwarded: 0 }]);
-    expect(calls.coinsIncremented).toEqual([]);
-  });
-
-  it('never throws during boot, and one bad row cannot block the rest', async () => {
-    mockOutboxFindMany.mockResolvedValue([
-      outboxRow({ matchId: 'c4_a' }),
-      outboxRow({ matchId: 'c4_b' }),
-    ]);
-    installTx({ id: 'cap-1', earned: 0 });
-    mockTransaction.mockRejectedValue(new Error('database unavailable'));
-    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-
-    await expect(ArcadeService.recoverPendingSettlements()).resolves.toEqual([]);
-    expect(error).toHaveBeenCalledTimes(2);
-  });
-
-  it('boots quietly when nothing is owed, including if the query fails', async () => {
-    mockOutboxFindMany.mockResolvedValue([]);
-    await expect(ArcadeService.recoverPendingSettlements()).resolves.toEqual([]);
-    expect(mockTransaction).not.toHaveBeenCalled();
-
-    mockOutboxFindMany.mockRejectedValue(new Error('database unavailable'));
-    await expect(ArcadeService.recoverPendingSettlements()).resolves.toEqual([]);
-    expect(mockTransaction).not.toHaveBeenCalled();
-  });
-});
-

@@ -1,33 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SOCKET_EVENTS } from '@havenworld/shared';
+import type { SocketEventType } from '@havenworld/shared';
 import { GuestbookPanel } from '../GuestbookPanel';
-
-type Handler = (data: unknown) => void;
-
-const { handlers, emitSpy, unsubSpy } = vi.hoisted(() => {
-  const handlers = new Map<string, Set<(data: unknown) => void>>();
-  const emitSpy = vi.fn();
-  const unsubSpy = vi.fn();
-  return { handlers, emitSpy, unsubSpy };
-});
-
-vi.mock('../../services/socket', () => ({
-  socketService: {
-    emit: emitSpy,
-    on: (event: string, cb: Handler) => {
-      if (!handlers.has(event)) handlers.set(event, new Set());
-      handlers.get(event)!.add(cb);
-      return () => {
-        unsubSpy(event);
-        handlers.get(event)?.delete(cb);
-      };
-    },
-  },
-}));
-
-function fire(event: string, data: unknown): void {
-  for (const cb of [...(handlers.get(event) ?? [])]) cb(data);
-}
+import { socketService } from '../../services/socket';
 
 function entry(overrides: Record<string, unknown> = {}) {
   return {
@@ -42,42 +17,54 @@ function entry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('GuestbookPanel', () => {
+describe('GuestbookPanel (Real Functional Validation)', () => {
+  let emitted: Array<{ event: SocketEventType; payload: unknown }> = [];
+  let unsubCount = 0;
+  let offEmit: (() => void) | null = null;
+  let offUnsub: (() => void) | null = null;
+
   beforeEach(() => {
-    handlers.clear();
-    emitSpy.mockClear();
-    unsubSpy.mockClear();
+    socketService.disconnect();
+    emitted = [];
+    unsubCount = 0;
+    offEmit = socketService.onEmit((event, args) => {
+      emitted.push({ event, payload: args[0] });
+    });
+    offUnsub = socketService.onUnsubscribe(() => {
+      unsubCount += 1;
+    });
   });
 
   afterEach(() => {
     GuestbookPanel.dismiss();
     document.getElementById('guestbook-panel-overlay')?.remove();
-    handlers.clear();
-    emitSpy.mockClear();
-    unsubSpy.mockClear();
+    offEmit?.();
+    offUnsub?.();
+    offEmit = null;
+    offUnsub = null;
   });
 
   it('opens a single overlay and requests the first page over the socket', () => {
     GuestbookPanel.show('room-1');
 
     expect(document.querySelectorAll('#guestbook-panel-overlay')).toHaveLength(1);
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.GET_GUESTBOOK, {
-      roomId: 'room-1',
-      page: 1,
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.GET_GUESTBOOK,
+      payload: { roomId: 'room-1', page: 1 },
     });
 
     // Re-opening for another room must not stack overlays
     GuestbookPanel.show('room-2');
     expect(document.querySelectorAll('#guestbook-panel-overlay')).toHaveLength(1);
-    expect(emitSpy).toHaveBeenLastCalledWith(SOCKET_EVENTS.GET_GUESTBOOK, {
-      roomId: 'room-2',
-      page: 1,
+    expect(emitted[emitted.length - 1]).toEqual({
+      event: SOCKET_EVENTS.GET_GUESTBOOK,
+      payload: { roomId: 'room-2', page: 1 },
     });
   });
 
   it('renders entries with escaped markup (stored-XSS regression)', () => {
     GuestbookPanel.show('room-1');
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [
         entry({
           authorName: '<img src=x onerror=alert(1)>',
@@ -91,22 +78,18 @@ describe('GuestbookPanel', () => {
     });
 
     const overlay = document.getElementById('guestbook-panel-overlay')!;
-    // DOM-level: no live nodes from the payload
     expect(overlay.querySelector('script')).toBeNull();
     expect(overlay.querySelector('img')).toBeNull();
-    // Serialized: payload appears only in escaped form
     expect(overlay.innerHTML).not.toContain('<img src=x');
     expect(overlay.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(overlay.innerHTML).toContain('&lt;script&gt;alert(document.cookie)&lt;/script&gt;');
-    // Non-hex avatar value never reaches the inline style
     expect(overlay.innerHTML).not.toContain('javascript:');
-    // Pagination state rendered
     expect(document.getElementById('guestbook-page-label')?.textContent).toBe('Page 1 / 3');
   });
 
   it('shows an empty state when there are no entries', () => {
     GuestbookPanel.show('room-1');
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [],
       page: 1,
       totalPages: 1,
@@ -125,37 +108,39 @@ describe('GuestbookPanel', () => {
 
     input.value = '   Hello there!   ';
     signBtn.click();
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.SIGN_GUESTBOOK, {
-      roomId: 'room-1',
-      message: 'Hello there!',
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.SIGN_GUESTBOOK,
+      payload: { roomId: 'room-1', message: 'Hello there!' },
     });
     expect(input.value).toBe('');
 
     // Blank message is a no-op
-    emitSpy.mockClear();
+    emitted = [];
     input.value = '   ';
     signBtn.click();
-    expect(emitSpy).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
   });
 
   it('refreshes the page when GUESTBOOK_SIGNED arrives for this room only', () => {
     GuestbookPanel.show('room-1');
-    emitSpy.mockClear();
+    emitted = [];
 
-    fire(SOCKET_EVENTS.GUESTBOOK_SIGNED, { entry: entry() });
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.GET_GUESTBOOK, {
-      roomId: 'room-1',
-      page: 1,
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_SIGNED, { entry: entry() });
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.GET_GUESTBOOK,
+      payload: { roomId: 'room-1', page: 1 },
     });
 
-    emitSpy.mockClear();
-    fire(SOCKET_EVENTS.GUESTBOOK_SIGNED, { entry: entry({ roomId: 'other-room' }) });
-    expect(emitSpy).not.toHaveBeenCalled();
+    emitted = [];
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_SIGNED, {
+      entry: entry({ roomId: 'other-room' }),
+    });
+    expect(emitted).toHaveLength(0);
   });
 
   it('offers owner-only delete buttons that emit DELETE_GUESTBOOK_ENTRY', () => {
     GuestbookPanel.show('room-1', { canDelete: true });
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [entry()],
       page: 1,
       totalPages: 1,
@@ -166,20 +151,21 @@ describe('GuestbookPanel', () => {
     const del = overlay.querySelector('.guestbook-delete') as HTMLButtonElement;
     expect(del).not.toBeNull();
 
-    emitSpy.mockClear();
+    emitted = [];
     del.click();
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.DELETE_GUESTBOOK_ENTRY, {
-      entryId: 'entry-1',
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.DELETE_GUESTBOOK_ENTRY,
+      payload: { entryId: 'entry-1' },
     });
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.GET_GUESTBOOK, {
-      roomId: 'room-1',
-      page: 1,
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.GET_GUESTBOOK,
+      payload: { roomId: 'room-1', page: 1 },
     });
   });
 
   it('hides delete buttons for non-owners', () => {
     GuestbookPanel.show('room-1');
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [entry()],
       page: 1,
       totalPages: 1,
@@ -195,7 +181,7 @@ describe('GuestbookPanel', () => {
     const prev = document.getElementById('guestbook-prev') as HTMLButtonElement;
     const next = document.getElementById('guestbook-next') as HTMLButtonElement;
 
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [entry()],
       page: 1,
       totalPages: 3,
@@ -204,14 +190,14 @@ describe('GuestbookPanel', () => {
     expect(prev.disabled).toBe(true);
     expect(next.disabled).toBe(false);
 
-    emitSpy.mockClear();
+    emitted = [];
     next.click();
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.GET_GUESTBOOK, {
-      roomId: 'room-1',
-      page: 2,
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.GET_GUESTBOOK,
+      payload: { roomId: 'room-1', page: 2 },
     });
 
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [entry()],
       page: 3,
       totalPages: 3,
@@ -222,21 +208,21 @@ describe('GuestbookPanel', () => {
 
   it('unsubscribes socket listeners and removes the overlay on dismiss', () => {
     GuestbookPanel.show('room-1');
-    expect(unsubSpy).not.toHaveBeenCalled();
+    expect(unsubCount).toBe(0);
 
     GuestbookPanel.dismiss();
-    expect(unsubSpy).toHaveBeenCalledTimes(2);
+    expect(unsubCount).toBe(2);
     expect(document.getElementById('guestbook-panel-overlay')).toBeNull();
 
     // Late events after dismiss must not resurrect the panel
-    const calls = emitSpy.mock.calls.length;
-    fire(SOCKET_EVENTS.GUESTBOOK_PAGE, {
+    emitted = [];
+    socketService.dispatchIncoming(SOCKET_EVENTS.GUESTBOOK_PAGE, {
       entries: [entry()],
       page: 1,
       totalPages: 1,
       totalEntries: 1,
     });
-    expect(emitSpy.mock.calls.length).toBe(calls);
+    expect(emitted).toHaveLength(0);
     expect(document.getElementById('guestbook-panel-overlay')).toBeNull();
   });
 });

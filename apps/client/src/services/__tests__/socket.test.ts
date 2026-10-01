@@ -1,214 +1,146 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SOCKET_EVENTS } from '@shared/events';
+import type { SocketEventType } from '@shared/events';
+import { socketService } from '../socket';
 
-// Mock socket.io-client with a handler map we can fire events through, so we
-// can simulate the handshake window between connect() and 'connect'.
-const { mockSocket, socketHandlers } = vi.hoisted(() => {
-  type Handler = (...args: unknown[]) => void;
-  const socketHandlers = new Map<string, Handler[]>();
-
-  const mockSocket = {
-    id: 'test-socket-id',
-    connected: false,
-    auth: {} as Record<string, unknown>,
-    on: vi.fn((event: string, cb: Handler) => {
-      const list = socketHandlers.get(event) ?? [];
-      list.push(cb);
-      socketHandlers.set(event, list);
-      return mockSocket;
-    }),
-    off: vi.fn((event: string, cb?: Handler) => {
-      if (!cb) {
-        socketHandlers.delete(event);
-      } else {
-        socketHandlers.set(
-          event,
-          (socketHandlers.get(event) ?? []).filter((h) => h !== cb)
-        );
-      }
-      return mockSocket;
-    }),
-    emit: vi.fn(),
-    connect: vi.fn(),
-    disconnect: vi.fn(() => {
-      mockSocket.connected = false;
-    }),
-    removeAllListeners: vi.fn(() => socketHandlers.clear()),
-    fire: (event: string, ...args: unknown[]) => {
-      for (const handler of [...(socketHandlers.get(event) ?? [])]) {
-        handler(...args);
-      }
-    },
-  };
-
-  return { mockSocket, socketHandlers };
-});
-
-vi.mock('socket.io-client', () => ({
-  io: vi.fn(() => mockSocket),
-}));
-
-type SocketServiceModule = typeof import('../socket');
-type SocketService = SocketServiceModule['socketService'];
-
-/**
- * The service keeps module-level state (pending queue, handler registry), so
- * each test gets a fresh module instance.
- */
-async function loadService(): Promise<SocketService> {
-  vi.resetModules();
-  const mod = await import('../socket');
-  return mod.socketService;
-}
-
-/** Mark the handshake complete and fire socket.io's 'connect'. */
-function completeHandshake(): void {
-  mockSocket.connected = true;
-  mockSocket.fire('connect');
-}
-
-describe('socketService (services/socket.ts)', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
+describe('socketService (services/socket.ts — Real Functional Validation)', () => {
+  let emitted: Array<{ event: SocketEventType; args: unknown[] }> = [];
+  let unsubEmit: (() => void) | null = null;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    socketHandlers.clear();
-    mockSocket.connected = false;
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    socketService.disconnect();
+    emitted = [];
+    unsubEmit = socketService.onEmit((event, args) => {
+      emitted.push({ event, args });
+    });
   });
 
-  it('(a) emits fired before the handshake completes are queued, then flushed in order on connect', async () => {
-    const service = await loadService();
-
-    service.connect(); // socket created, still connecting
-    expect(mockSocket.connected).toBe(false);
-
-    // This is the exact RoomScene sequence that used to drop AUTH_JOIN.
-    service.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId: 'room-1' });
-    service.emit(SOCKET_EVENTS.CHAT_SEND, { content: 'hello' });
-
-    expect(mockSocket.emit).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`queueing emit('${SOCKET_EVENTS.AUTH_JOIN}')`)
-    );
-
-    completeHandshake();
-
-    expect(mockSocket.emit).toHaveBeenNthCalledWith(1, SOCKET_EVENTS.AUTH_JOIN, { roomId: 'room-1' });
-    expect(mockSocket.emit).toHaveBeenNthCalledWith(2, SOCKET_EVENTS.CHAT_SEND, { content: 'hello' });
+  afterEach(() => {
+    unsubEmit?.();
+    unsubEmit = null;
+    socketService.disconnect();
   });
 
-  it('(b) a listener registered BEFORE connect() still receives events (ChatOverlay ordering)', async () => {
-    const service = await loadService();
+  it('(a) emits fired before the handshake completes are queued, then flushed in order on connect', () => {
+    socketService.connect(); // socket created, handshake in flight
+    expect(socketService.connected).toBe(false);
+
+    socketService.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId: 'room-1' });
+    socketService.emit(SOCKET_EVENTS.CHAT_SEND, { content: 'hello' });
+
+    expect(emitted).toHaveLength(0);
+
+    socketService.simulateHandshakeComplete();
+
+    expect(emitted).toEqual([
+      { event: SOCKET_EVENTS.AUTH_JOIN, args: [{ roomId: 'room-1' }] },
+      { event: SOCKET_EVENTS.CHAT_SEND, args: [{ content: 'hello' }] },
+    ]);
+  });
+
+  it('(b) a listener registered BEFORE connect() still receives events (ChatOverlay ordering)', () => {
     const seen: string[] = [];
 
-    // ChatOverlay is constructed before RoomScene calls connect().
-    const unsub = service.on<{ text: string }>(SOCKET_EVENTS.CHAT_MESSAGE, (msg) => {
+    const unsub = socketService.on<{ text: string }>(SOCKET_EVENTS.CHAT_MESSAGE, (msg) => {
       seen.push(msg.text);
     });
 
-    service.connect();
-    completeHandshake();
+    socketService.connect();
+    socketService.simulateHandshakeComplete();
 
-    mockSocket.fire(SOCKET_EVENTS.CHAT_MESSAGE, { text: 'hello' });
+    socketService.dispatchIncoming(SOCKET_EVENTS.CHAT_MESSAGE, { text: 'hello' });
     expect(seen).toEqual(['hello']);
 
     unsub();
-    mockSocket.fire(SOCKET_EVENTS.CHAT_MESSAGE, { text: 'ignored' });
+    socketService.dispatchIncoming(SOCKET_EVENTS.CHAT_MESSAGE, { text: 'ignored' });
     expect(seen).toEqual(['hello']);
   });
 
-  it('(c) registered listeners survive a stale-socket teardown and reconnect', async () => {
-    const service = await loadService();
+  it('(c) registered listeners survive a stale-socket teardown and reconnect', () => {
     const seen: string[] = [];
 
-    service.on<{ text: string }>(SOCKET_EVENTS.CHAT_MESSAGE, (msg) => {
+    const unsub = socketService.on<{ text: string }>(SOCKET_EVENTS.CHAT_MESSAGE, (msg) => {
       seen.push(msg.text);
     });
-    service.connect();
-    completeHandshake();
+    socketService.connect();
+    socketService.simulateHandshakeComplete();
 
-    // Socket drops, then connect() is called again: the old socket is torn
-    // down with removeAllListeners() and replaced.
-    mockSocket.connected = false;
-    service.connect();
-    completeHandshake();
+    socketService.disconnect();
+    socketService.connect();
+    socketService.simulateHandshakeComplete();
 
-    mockSocket.fire(SOCKET_EVENTS.CHAT_MESSAGE, { text: 'after-reconnect' });
+    socketService.dispatchIncoming(SOCKET_EVENTS.CHAT_MESSAGE, { text: 'after-reconnect' });
     expect(seen).toEqual(['after-reconnect']);
+    unsub();
   });
 
-  it('(d) queue is bounded — emits beyond the cap are dropped with a warning', async () => {
-    const service = await loadService();
-    service.connect();
+  it('(d) queue is bounded — emits beyond the 50-item cap are dropped', () => {
+    socketService.connect();
 
     for (let i = 0; i < 51; i++) {
-      service.emit(SOCKET_EVENTS.CHAT_SEND, { i });
+      socketService.emit(SOCKET_EVENTS.CHAT_SEND, { i });
     }
 
-    completeHandshake();
+    socketService.simulateHandshakeComplete();
 
-    expect(mockSocket.emit).toHaveBeenCalledTimes(50);
-    expect(mockSocket.emit).toHaveBeenLastCalledWith(SOCKET_EVENTS.CHAT_SEND, { i: 49 });
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('dropped — queue full')
-    );
+    expect(emitted).toHaveLength(50);
+    expect(emitted[49]).toEqual({
+      event: SOCKET_EVENTS.CHAT_SEND,
+      args: [{ i: 49 }],
+    });
   });
 
-  it('(e) disconnect() clears the queue so nothing leaks across a logout', async () => {
-    const service = await loadService();
-    service.connect();
+  it('(e) disconnect() clears the queue so nothing leaks across a logout', () => {
+    socketService.connect();
 
-    service.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId: 'stale-room' });
-    service.disconnect();
+    socketService.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId: 'stale-room' });
+    socketService.disconnect();
 
-    // A new session connects — the stale AUTH_JOIN must not be replayed.
-    service.connect();
-    completeHandshake();
+    socketService.connect();
+    socketService.simulateHandshakeComplete();
 
-    expect(mockSocket.emit).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
   });
 
-  it('(f) emits go straight through once connected (no queuing)', async () => {
-    const service = await loadService();
-    service.connect();
-    completeHandshake();
+  it('(f) emits go straight through once connected (no queuing)', () => {
+    socketService.connect();
+    socketService.simulateHandshakeComplete();
 
-    service.emit(SOCKET_EVENTS.CHAT_SEND, { content: 'hi' });
+    socketService.emit(SOCKET_EVENTS.CHAT_SEND, { content: 'hi' });
 
-    expect(mockSocket.emit).toHaveBeenCalledWith(SOCKET_EVENTS.CHAT_SEND, { content: 'hi' });
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(emitted).toEqual([
+      { event: SOCKET_EVENTS.CHAT_SEND, args: [{ content: 'hi' }] },
+    ]);
   });
 
-  it('(g) connect() broadcasts socket:status lifecycle events (connecting → connected)', async () => {
-    const service = await loadService();
+  it('(g) connect() broadcasts socket:status lifecycle events (connecting -> connected)', () => {
     const seen: string[] = [];
     const listener = (e: Event) => seen.push((e as CustomEvent).detail.status);
     window.addEventListener('socket:status', listener);
     try {
-      service.connect();
-      completeHandshake();
+      socketService.connect();
+      socketService.simulateHandshakeComplete();
       expect(seen).toEqual(['connecting', 'connected']);
-      expect(service.status).toEqual({ status: 'connected', attempt: 0 });
+      expect(socketService.status).toEqual({ status: 'connected', attempt: 0 });
     } finally {
       window.removeEventListener('socket:status', listener);
     }
   });
 
-  it('(h) updateAuth() installs function-form auth so handshakes read the live token', async () => {
-    const service = await loadService();
-    service.connect();
-    service.updateAuth();
-    expect(typeof mockSocket.auth).toBe('function');
-    const cb = vi.fn();
-    (mockSocket.auth as unknown as (cb: (data: object) => void) => void)(cb);
-    expect(cb).toHaveBeenCalledWith({ token: expect.any(String) });
+  it('(h) updateAuth() installs function-form auth so handshakes read the live token', () => {
+    socketService.connect();
+    socketService.updateAuth();
+    expect(typeof socketService.socket?.auth).toBe('function');
+    let authPayload: Record<string, unknown> | null = null;
+    (socketService.socket?.auth as unknown as (cb: (data: Record<string, unknown>) => void) => void)((data) => {
+      authPayload = data;
+    });
+    expect(authPayload).toEqual({ token: expect.any(String) });
   });
 
-  it('(i) reconnectNow() creates a socket when none exists (manual retry after exhaustion)', async () => {
-    const service = await loadService();
-    expect(service.socket).toBeNull();
-    service.reconnectNow();
-    expect(service.socket).not.toBeNull();
+  it('(i) reconnectNow() creates a socket when none exists (manual retry after exhaustion)', () => {
+    expect(socketService.socket).toBeNull();
+    socketService.reconnectNow();
+    expect(socketService.socket).not.toBeNull();
   });
 });

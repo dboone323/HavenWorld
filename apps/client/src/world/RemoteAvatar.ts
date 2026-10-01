@@ -26,6 +26,8 @@ export class RemoteAvatar {
   private _chibiWalkFrame: number = 0;
   private _isSitting: boolean = false;
   private _nameTagMesh: AbstractMesh | null = null;
+  private _nameTagTexture: AdvancedDynamicTexture | null = null;
+  private _placeholderMat: StandardMaterial | null = null;
   private _speechBubbleMesh: AbstractMesh | null = null;
   private _speechBubbleTexture: AdvancedDynamicTexture | null = null;
   private _speechText: TextBlock | null = null;
@@ -87,6 +89,7 @@ export class RemoteAvatar {
     head.position.y = 1.95;
 
     const mat = new StandardMaterial(`remote_mat_${this.userId}`, this._scene);
+    this._placeholderMat = mat;
     // Canonical field is skinTone (the server sends it from the Avatar DB row);
     // skinColor is only a legacy fallback for older payloads.
     const skinHex = avatarData?.skinTone || avatarData?.skinColor;
@@ -132,6 +135,7 @@ export class RemoteAvatar {
     plane.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
 
     const texture = AdvancedDynamicTexture.CreateForMesh(plane, 512, 128);
+    this._nameTagTexture = texture;
     const label = new TextBlock(`remote_name_text_${this.userId}`, this.username);
     label.color = '#e2e8f0';
     label.fontSize = 44;
@@ -305,6 +309,10 @@ export class RemoteAvatar {
     this._chibiBillboard?.dispose();
     this._chibiBillboard = null;
     this._meshes.forEach((m) => m.dispose());
+    this._placeholderMat?.dispose();
+    this._placeholderMat = null;
+    this._nameTagTexture?.dispose();
+    this._nameTagTexture = null;
     this._nameTagMesh?.dispose();
     this._speechBubbleMesh?.dispose();
     this._speechBubbleTexture?.dispose();

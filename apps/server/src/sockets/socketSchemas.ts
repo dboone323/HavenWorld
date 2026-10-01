@@ -9,6 +9,7 @@ import { hasNoMarkup } from '../validation/schemas';
 
 // Reusable primitives
 const uuid = z.string().uuid();
+const itemIdSchema = z.string().min(1).max(100).trim();
 const safeString = (maxLen: number) =>
   z.string().min(1).max(maxLen).transform((s) => s.trim());
 // Pet names are display text re-rendered in styled UI → reject markup outright
@@ -21,6 +22,7 @@ const coord = z.number().finite().min(-10000).max(10000);
 // ── Room join ──────────────────────────────────────────────────────────────────
 export const JoinRoomSchema = z.object({
   roomId: z.string().min(1).max(128), // rooms use slug IDs, not necessarily UUIDs
+  password: z.string().max(64).optional(),
 });
 
 // ── Player movement ────────────────────────────────────────────────────────────
@@ -54,7 +56,7 @@ export const ChatSchema = z.object({
 export const FurniturePlaceSchema = z.object({
   roomId: z.string().min(1).max(128),
   placement: z.object({
-    itemId: uuid,
+    itemId: itemIdSchema,
     x: coord,
     y: coord,
     z: coord.optional().default(0),
@@ -129,9 +131,9 @@ export const TradeRequestSchema = z.object({
 
 export const OfferItemSchema = z.object({
   slotIndex: z.number().int().min(0).max(7),
-  inventoryItemId: uuid,
-  name: safeString(100),
-  assetUrl: z.string().url().max(500).optional(),
+  inventoryItemId: z.string().max(100).transform((s) => s.trim()),
+  name: z.string().max(100).transform((s) => s.trim()),
+  assetUrl: z.string().max(500).optional(),
 });
 
 export const OfferCoinsSchema = z.object({
@@ -172,7 +174,7 @@ export const PizzaOrderSchema = z.object({
 
 // ── Workshop crafting ─────────────────────────────────────────────────────────
 export const RecycleItemSchema = z.object({
-  inventoryItemId: uuid,
+  inventoryItemId: itemIdSchema,
 });
 
 export const StartCraftSchema = z.object({
@@ -262,7 +264,7 @@ export const ArcadeMoveSchema = z.object({
 
 export const LoftStockSchema = z.object({
   roomId: z.string().min(1).max(128),
-  itemId: uuid,
+  itemId: itemIdSchema,
   priceCoins: z.number().int().min(1).max(1_000_000),
 });
 
@@ -276,7 +278,7 @@ export const LoftPurchaseSchema = z.object({
 
 export const ParcelSendSchema = z.object({
   recipientId: uuid,
-  itemId: uuid,
+  itemId: itemIdSchema,
   message: z.string().max(200).optional().default(''),
   delayMinutes: z.number().int().min(1).max(7 * 24 * 60).optional().default(60),
 });

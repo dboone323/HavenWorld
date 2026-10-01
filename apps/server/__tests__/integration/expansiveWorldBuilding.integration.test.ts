@@ -217,10 +217,14 @@ describe('Track 9 Integration: Expansive World Building', () => {
   });
 
   describe('9.9: In-Game Post Office & Delayed Delivery', () => {
-    it('should schedule parcels and deliver them upon arrival timestamp', async () => {
+    it('should schedule parcels, deduct sender inventory, and deliver them upon arrival timestamp', async () => {
       const sender = await createTestUser();
       const recipient = await createTestUser();
       const item = await createTestItem({ price: 75 });
+
+      await prisma.inventory.create({
+        data: { userId: sender.id, itemId: item.id, quantity: 1 },
+      });
 
       // Send parcel with 30 min delay
       const parcel = await DelayedMailService.sendDelayedParcel(
@@ -231,6 +235,12 @@ describe('Track 9 Integration: Expansive World Building', () => {
         30
       );
       expect(parcel.delivered).toBe(false);
+
+      // Verify item was deducted from sender inventory immediately
+      const senderInvAfterSend = await prisma.inventory.findFirst({
+        where: { userId: sender.id, itemId: item.id },
+      });
+      expect(senderInvAfterSend).toBeNull();
 
       // Immediate check should deliver nothing (still in transit)
       const immediateArrivals = await DelayedMailService.processArrivedMail(Date.now());

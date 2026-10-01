@@ -36,13 +36,24 @@ function makeLabelPlane(scene: Scene, name: string, emoji: string, caption: stri
   const texture = new DynamicTexture(`${name}-tex`, { width: 256, height: 104 }, scene, true);
   const ctx = texture.getContext() as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, 256, 104);
-  ctx.font = '44px sans-serif';
+  ctx.font = '42px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(emoji, 128, 52);
-  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText(emoji, 128, 46);
+
+  // High-contrast dark pill background so label text is legible over light floors & grass
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(14, 62, 228, 34, 17);
+  } else {
+    ctx.rect(14, 62, 228, 34);
+  }
+  ctx.fill();
+
+  ctx.font = 'bold 20px sans-serif';
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(caption.slice(0, 22), 128, 92);
-  texture.update(false);
+  ctx.fillText(caption.slice(0, 22), 128, 86);
+  texture.update(true);
   texture.hasAlpha = true;
 
   const mat = new StandardMaterial(`${name}-mat`, scene);
@@ -50,6 +61,8 @@ function makeLabelPlane(scene: Scene, name: string, emoji: string, caption: stri
   mat.emissiveColor = new Color3(1, 1, 1);
   mat.opacityTexture = texture;
   mat.diffuseColor = new Color3(1, 1, 1);
+  mat.disableLighting = true;
+  mat.backFaceCulling = false;
   plane.material = mat;
   plane.isPickable = false;
   return plane;

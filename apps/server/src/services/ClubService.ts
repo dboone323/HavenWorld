@@ -54,6 +54,7 @@ export class ClubService {
         },
       });
 
+      getIO()?.in(`user:${ownerId}`).socketsJoin(`club:${club.id}`);
       return club;
     });
   }
@@ -73,13 +74,15 @@ export class ClubService {
     const existing = await prisma.clubMember.findUnique({ where: { userId: targetUserId } });
     if (existing) throw new Error('Player is already in a club');
 
-    return await prisma.clubMember.create({
+    const created = await prisma.clubMember.create({
       data: {
         clubId,
         userId: targetUserId,
         role: 'MEMBER',
       },
     });
+    getIO()?.in(`user:${targetUserId}`).socketsJoin(`club:${clubId}`);
+    return created;
   }
 
   /**
@@ -92,13 +95,15 @@ export class ClubService {
     const memberCount = await prisma.clubMember.count({ where: { clubId } });
     if (memberCount >= 50) throw new Error('Club is full (max 50 members)');
 
-    return await prisma.clubMember.create({
+    const created = await prisma.clubMember.create({
       data: {
         clubId,
         userId,
         role: 'MEMBER',
       },
     });
+    getIO()?.in(`user:${userId}`).socketsJoin(`club:${clubId}`);
+    return created;
   }
 
   /**
@@ -129,7 +134,9 @@ export class ClubService {
     if (!target || target.clubId !== clubId) throw new Error('Target is not in this club');
     if (target.role === 'OWNER') throw new Error('Cannot kick the club owner');
 
-    return await prisma.clubMember.delete({ where: { userId: targetUserId } });
+    const deleted = await prisma.clubMember.delete({ where: { userId: targetUserId } });
+    getIO()?.in(`user:${targetUserId}`).socketsLeave(`club:${clubId}`);
+    return deleted;
   }
 
   /**
@@ -163,6 +170,7 @@ export class ClubService {
 
     const io = getIO();
     if (io) {
+      io.in(`user:${userId}`).socketsJoin(`club:${clubId}`);
       io.to(`club:${clubId}`).emit(SOCKET_EVENTS.CLUB_CHAT_MESSAGE, messagePayload);
     }
 

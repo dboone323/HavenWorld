@@ -13,9 +13,11 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   document.getElementById('login-panel')?.classList.add('hidden');
   document.getElementById('game-container')?.classList.add('hidden');
   document.getElementById('room-nav')?.classList.add('hidden');
+  document.getElementById('room-info-pill')?.classList.add('hidden');
   document.getElementById('chat-panel')?.classList.add('hidden');
   document.getElementById('player-card')?.classList.add('hidden');
   document.getElementById('avatar-panel')?.classList.add('hidden');
+  document.getElementById('quest-hud')?.classList.add('hidden');
   document.getElementById('lobby-panel')?.classList.remove('hidden');
 
   let activeTab: 'public' | 'lofts' | 'trending' = 'public';
@@ -190,6 +192,10 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
     renderList();
   };
 
+  const onTabTrendingClick = () => {
+    onTabTrending().catch(console.error);
+  };
+
   const onClose = () => {
     document.getElementById('lobby-panel')?.classList.add('hidden');
     const user = authService.user;
@@ -204,7 +210,7 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
 
   tabPublic?.addEventListener('click', onTabPublic);
   tabLofts?.addEventListener('click', onTabLofts);
-  tabTrending?.addEventListener('click', () => { onTabTrending().catch(console.error); });
+  tabTrending?.addEventListener('click', onTabTrendingClick);
   closeBtn?.addEventListener('click', onClose);
   logoutBtn?.addEventListener('click', onLogout);
 
@@ -213,6 +219,7 @@ export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   scene.onDisposeObservable.add(() => {
     tabPublic?.removeEventListener('click', onTabPublic);
     tabLofts?.removeEventListener('click', onTabLofts);
+    tabTrending?.removeEventListener('click', onTabTrendingClick);
     closeBtn?.removeEventListener('click', onClose);
     logoutBtn?.removeEventListener('click', onLogout);
     document.getElementById('lobby-panel')?.classList.add('hidden');

@@ -1,37 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-// ToastNotification caches its container element and the shared setup file clears
-// document.body between tests, so DOM assertions would only work for whichever
-// test happens to create that container first. Assert the calls instead.
-vi.mock('../ToastNotification', () => ({ showToast: vi.fn() }));
-
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ArcadeModal } from '../ArcadeModal';
-import { showToast } from '../ToastNotification';
+import { clearToasts } from '../ToastNotification';
 import { socketService } from '../../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
-
-type Handler = (data: unknown) => void;
-
-/**
- * ArcadeModal listens through socketService.on, so capturing those handlers lets
- * a test replay exactly what the server sends — including a payout that arrives
- * late, the way the server's settlement-retry sweep delivers it (§6.3).
- */
-function captureSocket() {
-  const handlers = new Map<string, Set<Handler>>();
-  (vi.spyOn(socketService, 'on') as any).mockImplementation((event: string, handler: Handler) => {
-    if (!handlers.has(event)) handlers.set(event, new Set());
-    handlers.get(event)!.add(handler);
-    return () => { handlers.get(event)?.delete(handler); };
-  });
-  const emit = vi.spyOn(socketService, 'emit').mockImplementation(() => undefined);
-  return {
-    emit,
-    fire(event: string, data: unknown) {
-      handlers.get(event)?.forEach((handler) => handler(data));
-    },
-  };
-}
+import type { SocketEventType } from '@havenworld/shared';
 
 const emptyBoard = () => Array.from({ length: 6 }, () => Array(7).fill(0));
 
@@ -58,12 +30,10 @@ function wonBoard(): number[][] {
   return board;
 }
 
-/** Every toast shown so far, flattened to one string per toast. */
+/** Every real toast rendered in the DOM container, flattened to one string per toast. */
 function toasts(): string[] {
-  return vi.mocked(showToast).mock.calls.map((call) => {
-    const opts = call[0] as { icon?: string; title: string; subtitle?: string };
-    return [opts.icon, opts.title, opts.subtitle].filter(Boolean).join(' ');
-  });
+  const nodes = document.querySelectorAll('#haven-toast-container .haven-toast');
+  return Array.from(nodes).map((n) => n.textContent ?? '');
 }
 
 /** Text inside the arcade overlay only. */
@@ -72,46 +42,52 @@ const slots = () => document.querySelectorAll('#arcade-modal-overlay [data-col]'
 
 const SELF = { selfId: 'me', selfName: 'Me', players: [{ userId: 'roommate', username: 'Roommate' }] };
 
-describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
-  let socket: ReturnType<typeof captureSocket>;
+describe('ArcadeModal Connect-4 payout messaging (§6.3 — Real Functional Validation)', () => {
+  let emitted: Array<{ event: SocketEventType; payload: unknown }> = [];
+  let offEmit: (() => void) | null = null;
 
   beforeEach(() => {
+    socketService.disconnect();
     ArcadeModal.dismiss();
-    vi.mocked(showToast).mockClear();
-    socket = captureSocket();
+    clearToasts();
+    emitted = [];
+    offEmit = socketService.onEmit((event, args) => {
+      emitted.push({ event, payload: args[0] });
+    });
   });
 
   afterEach(() => {
     ArcadeModal.dismiss();
-    vi.restoreAllMocks();
+    clearToasts();
+    offEmit?.();
+    offEmit = null;
   });
 
   it('sends column drops for the server to judge', () => {
     ArcadeModal.show(SELF);
-    socket.fire(SOCKET_EVENTS.ARCADE_STATE, matchState());
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_STATE, matchState());
 
     const cell = document.querySelector<HTMLElement>('#arcade-modal-overlay [data-col="3"]');
     expect(cell).not.toBeNull();
     cell?.click();
 
-    expect(socket.emit).toHaveBeenCalledWith(SOCKET_EVENTS.ARCADE_MOVE, {
-      matchId: 'c4_ui_test',
-      col: 3,
+    expect(emitted).toContainEqual({
+      event: SOCKET_EVENTS.ARCADE_MOVE,
+      payload: { matchId: 'c4_ui_test', col: 3 },
     });
   });
 
   it('announces the coins the server paid, even when the result arrives after the win', () => {
     ArcadeModal.show(SELF);
-    socket.fire(SOCKET_EVENTS.ARCADE_STATE, matchState());
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_STATE, matchState());
 
-    // The board decides first; the settlement can land afterwards.
-    socket.fire(
+    socketService.dispatchIncoming(
       SOCKET_EVENTS.ARCADE_STATE,
       matchState({ status: 'FINISHED', winnerId: 'me', board: wonBoard() })
     );
     expect(toasts().some((t) => t.includes('You win!'))).toBe(true);
 
-    socket.fire(SOCKET_EVENTS.ARCADE_RESULT, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_RESULT, {
       matchId: 'c4_ui_test',
       winnerId: 'me',
       isDraw: false,
@@ -127,12 +103,12 @@ describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
 
   it('says the weekly budget is used up instead of paying out +0 coins', () => {
     ArcadeModal.show(SELF);
-    socket.fire(
+    socketService.dispatchIncoming(
       SOCKET_EVENTS.ARCADE_STATE,
       matchState({ status: 'FINISHED', winnerId: 'me', board: wonBoard() })
     );
 
-    socket.fire(SOCKET_EVENTS.ARCADE_RESULT, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_RESULT, {
       matchId: 'c4_ui_test',
       winnerId: 'me',
       isDraw: false,
@@ -141,15 +117,17 @@ describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
     });
 
     expect(toasts().some((t) => t.includes('Arcade budget used up'))).toBe(true);
-    // A clamped win must never be dressed up as a payout.
     expect(toasts().some((t) => t.includes('+0'))).toBe(false);
     expect(modalText()).not.toContain('HavenCoins earned');
   });
 
   it('pays nobody on a draw and does not mention the budget', () => {
     ArcadeModal.show(SELF);
-    socket.fire(SOCKET_EVENTS.ARCADE_STATE, matchState({ status: 'FINISHED', isDraw: true }));
-    socket.fire(SOCKET_EVENTS.ARCADE_RESULT, {
+    socketService.dispatchIncoming(
+      SOCKET_EVENTS.ARCADE_STATE,
+      matchState({ status: 'FINISHED', isDraw: true })
+    );
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_RESULT, {
       matchId: 'c4_ui_test',
       winnerId: null,
       isDraw: true,
@@ -166,7 +144,7 @@ describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
 
   it('reports a loss without claiming coins for the winner', () => {
     ArcadeModal.show(SELF);
-    socket.fire(
+    socketService.dispatchIncoming(
       SOCKET_EVENTS.ARCADE_STATE,
       matchState({
         status: 'FINISHED',
@@ -174,7 +152,7 @@ describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
         board: wonBoard().map((row) => row.map((cell) => (cell === 1 ? 2 : cell))),
       })
     );
-    socket.fire(SOCKET_EVENTS.ARCADE_RESULT, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_RESULT, {
       matchId: 'c4_ui_test',
       winnerId: 'roommate',
       isDraw: false,
@@ -190,11 +168,11 @@ describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
 
   it('clears a finished match on dismiss so the next cabinet starts blank', () => {
     ArcadeModal.show(SELF);
-    socket.fire(
+    socketService.dispatchIncoming(
       SOCKET_EVENTS.ARCADE_STATE,
       matchState({ status: 'FINISHED', winnerId: 'me', board: wonBoard() })
     );
-    socket.fire(SOCKET_EVENTS.ARCADE_RESULT, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_RESULT, {
       matchId: 'c4_ui_test',
       winnerId: 'me',
       isDraw: false,
@@ -206,13 +184,11 @@ describe('ArcadeModal Connect-4 payout messaging (§6.3)', () => {
     ArcadeModal.dismiss();
     ArcadeModal.show(SELF);
 
-    // No stale board, no stale payout — just the opponent picker.
     expect(modalText()).not.toContain('HavenCoins earned');
     expect(slots()).toBe(0);
     expect(modalText()).toContain('Roommate');
 
-    // A replayed broadcast from the previous match must not resurrect its payout.
-    socket.fire(SOCKET_EVENTS.ARCADE_RESULT, {
+    socketService.dispatchIncoming(SOCKET_EVENTS.ARCADE_RESULT, {
       matchId: 'c4_ui_test',
       winnerId: 'me',
       isDraw: false,

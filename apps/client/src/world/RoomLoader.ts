@@ -13,6 +13,19 @@ export interface RoomLoadResult {
 export class RoomLoader {
   private _scene: Scene;
 
+  private static readonly STATIC_GLB_ROOMS: Record<string, string> = {
+    town_square: 'town_square',
+    'room-town-square': 'town_square',
+  };
+
+  public static hasStaticGlb(roomId: string): boolean {
+    return Object.prototype.hasOwnProperty.call(RoomLoader.STATIC_GLB_ROOMS, roomId);
+  }
+
+  public static resolveGlbId(roomId: string): string {
+    return RoomLoader.STATIC_GLB_ROOMS[roomId] || roomId;
+  }
+
   constructor(scene: Scene) {
     this._scene = scene;
   }

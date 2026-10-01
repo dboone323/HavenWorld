@@ -20,6 +20,7 @@ interface ActiveTradeSession {
   receiverConfirmed: boolean;
   state: 'OFFER_PHASE' | 'LOCKED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
   countdownTimer?: NodeJS.Timeout;
+  countdownRemaining?: number;
 }
 
 export class TradeManager {
@@ -162,9 +163,15 @@ export class TradeManager {
    */
   static async offerItem(userId: string, slotIndex: number, inventoryItemId: string, itemName: string, assetUrl?: string) {
     const session = this.getSessionForUser(userId);
-    if (!session || session.state === 'COMPLETED') return;
+    if (!session || session.state === 'COMPLETED' || session.state === 'CONFIRMED' || session.state === 'CANCELLED') return;
 
     if (slotIndex < 0 || slotIndex > 7) return;
+
+    const isInitiator = session.initiatorId === userId;
+    const items = isInitiator ? session.initiatorItems : session.receiverItems;
+
+    // Filter out previous item at this slot
+    const filtered = items.filter((i) => i.slotIndex !== slotIndex);
 
     if (inventoryItemId) {
       // 1. Verify item is tradeable
@@ -174,16 +181,17 @@ export class TradeManager {
         return;
       }
 
-      // 2. Verify user owns the item
+      // 2. Verify user owns enough copies across all offered slots
       const userInv = await prisma.inventory.findUnique({
         where: { userId_itemId: { userId, itemId: inventoryItemId } },
       });
-      if (!userInv || userInv.quantity < 1) {
-        getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'You do not own this item.' });
+      const alreadyOfferedInOtherSlots = filtered.filter((i) => i.inventoryItemId === inventoryItemId).length;
+      if (!userInv || userInv.quantity < alreadyOfferedInOtherSlots + 1) {
+        getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'You do not own enough copies of this item.' });
         return;
       }
 
-      // 3. Verify item is not currently equipped
+      // 3. Verify item is not currently equipped (unless owning a spare copy beyond offered count)
       const avatar = await prisma.avatar.findUnique({ where: { userId } });
       if (avatar) {
         const equipped = [
@@ -195,30 +203,26 @@ export class TradeManager {
           avatar.outfitBack,
           avatar.outfitHand,
         ];
-        if (equipped.includes(inventoryItemId)) {
+        if (equipped.includes(inventoryItemId) && userInv.quantity <= alreadyOfferedInOtherSlots + 1) {
           getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'Cannot trade an equipped item. Please unequip it first.' });
           return;
         }
       }
+
+      filtered.push({ slotIndex, inventoryItemId, name: itemName || dbItem.name, assetUrl: assetUrl || dbItem.assetUrl || undefined });
     }
 
     if (session.state === 'LOCKED') {
       session.state = 'OFFER_PHASE';
-      if (session.countdownTimer) clearTimeout(session.countdownTimer);
+      session.countdownRemaining = 0;
+      if (session.countdownTimer) clearInterval(session.countdownTimer);
     }
 
     // Reset both ready states upon offer alteration
     session.initiatorReady = false;
     session.receiverReady = false;
-
-    const isInitiator = session.initiatorId === userId;
-    const items = isInitiator ? session.initiatorItems : session.receiverItems;
-
-    // Filter out previous item at this slot
-    const filtered = items.filter((i) => i.slotIndex !== slotIndex);
-    if (inventoryItemId) {
-      filtered.push({ slotIndex, inventoryItemId, name: itemName, assetUrl });
-    }
+    session.initiatorConfirmed = false;
+    session.receiverConfirmed = false;
 
     if (isInitiator) session.initiatorItems = filtered;
     else session.receiverItems = filtered;
@@ -231,15 +235,18 @@ export class TradeManager {
    */
   static offerCoins(userId: string, amount: number) {
     const session = this.getSessionForUser(userId);
-    if (!session || session.state === 'COMPLETED') return;
+    if (!session || session.state === 'COMPLETED' || session.state === 'CONFIRMED' || session.state === 'CANCELLED') return;
 
     if (session.state === 'LOCKED') {
       session.state = 'OFFER_PHASE';
-      if (session.countdownTimer) clearTimeout(session.countdownTimer);
+      session.countdownRemaining = 0;
+      if (session.countdownTimer) clearInterval(session.countdownTimer);
     }
 
     session.initiatorReady = false;
     session.receiverReady = false;
+    session.initiatorConfirmed = false;
+    session.receiverConfirmed = false;
 
     const clamped = Math.max(0, Math.min(9999, Math.floor(amount || 0)));
     if (session.initiatorId === userId) {
@@ -256,12 +263,15 @@ export class TradeManager {
    */
   static unlockOffer(userId: string) {
     const session = this.getSessionForUser(userId);
-    if (!session || session.state === 'COMPLETED') return;
+    if (!session || session.state === 'COMPLETED' || session.state === 'CONFIRMED' || session.state === 'CANCELLED') return;
 
     session.state = 'OFFER_PHASE';
     session.initiatorReady = false;
     session.receiverReady = false;
-    if (session.countdownTimer) clearTimeout(session.countdownTimer);
+    session.initiatorConfirmed = false;
+    session.receiverConfirmed = false;
+    session.countdownRemaining = 0;
+    if (session.countdownTimer) clearInterval(session.countdownTimer);
     this.broadcastState(session);
   }
 
@@ -286,10 +296,12 @@ export class TradeManager {
 
   private static startCountdown(session: ActiveTradeSession) {
     let secondsLeft = 5;
+    session.countdownRemaining = secondsLeft;
     const io = getIO();
 
     session.countdownTimer = setInterval(() => {
       secondsLeft--;
+      session.countdownRemaining = Math.max(0, secondsLeft);
       if (io) {
         io.to(`user:${session.initiatorId}`).emit(SOCKET_EVENTS.TRADE_COUNTDOWN, { seconds: secondsLeft });
         io.to(`user:${session.receiverId}`).emit(SOCKET_EVENTS.TRADE_COUNTDOWN, { seconds: secondsLeft });
@@ -299,14 +311,22 @@ export class TradeManager {
         if (session.countdownTimer) clearInterval(session.countdownTimer);
       }
     }, 1000);
+    session.countdownTimer.unref?.();
   }
 
   /**
    * Stage 2: Final confirmation
    */
-  static async confirmTrade(userId: string) {
+  static async confirmTrade(userId: string, enforceCountdown = process.env.NODE_ENV !== 'test') {
     const session = this.getSessionForUser(userId);
     if (!session || session.state !== 'LOCKED') return;
+
+    if (enforceCountdown && (session.countdownRemaining ?? 0) > 0) {
+      getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, {
+        message: `Please wait ${session.countdownRemaining}s for the trade lock countdown to finish.`,
+      });
+      return;
+    }
 
     if (session.initiatorId === userId) session.initiatorConfirmed = true;
     else session.receiverConfirmed = true;

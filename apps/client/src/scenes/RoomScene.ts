@@ -45,7 +45,6 @@ import { PlayersListModal, type RoomOccupant } from '../ui/PlayersListModal';
 import { PetController } from '../pets/PetController';
 import { PetManagementPanel } from '../ui/PetManagementPanel';
 import { WorkshopPanel } from '../ui/WorkshopPanel';
-import { ClubPanel } from '../clubs/ClubPanel';
 import { GalleryPanel } from '../gallery/GalleryPanel';
 import { DirectMessagePanel } from '../ui/DirectMessagePanel';
 import { TradeModal } from '../ui/TradeModal';
@@ -56,6 +55,7 @@ import { MinimapRadar } from '../ui/MinimapRadar';
 import { IdleStateManager } from '../engine/IdleStateManager';
 import { CollaborativeWhiteboard } from '../ui/CollaborativeWhiteboard';
 import { StreamerModeManager } from '../ui/StreamerModeManager';
+import { escapeHtml } from '../utils/escapeHtml';
 
 export async function createRoomScene(
   haven: HavenEngine,
@@ -82,6 +82,7 @@ export async function createRoomScene(
   document.getElementById('room-info-pill')?.classList.remove('hidden');
   document.getElementById('player-card')?.classList.remove('hidden');
   document.getElementById('chat-panel')?.classList.remove('hidden');
+  document.getElementById('quest-hud')?.classList.remove('hidden');
   document.getElementById('lobby-panel')?.classList.add('hidden');
   document.getElementById('login-panel')?.classList.add('hidden');
 
@@ -169,38 +170,38 @@ export async function createRoomScene(
     // ── Room Geometry Loading ─────────────────────────────────────────────────
   const roomLoader = new RoomLoader(scene);
   let roomMeshes: import('@babylonjs/core').AbstractMesh[] = [];
-  try {
-    const loadResult = await roomLoader.load(roomId);
-    roomMeshes = loadResult.allMeshes || [];
-    if (roomMeshes.length === 0) {
-      roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
+  if (RoomLoader.hasStaticGlb(roomId)) {
+    const glbId = RoomLoader.resolveGlbId(roomId);
+    try {
+      const loadResult = await roomLoader.load(glbId);
+      roomMeshes = loadResult.allMeshes || [];
+    } catch (err) {
+      console.warn(
+        `[RoomScene] Room GLB load failed for "${roomId}" ` +
+          `(tried ${assetUrl(`/assets/rooms/${glbId}.glb`)}): ` +
+          `${err instanceof Error ? err.message : String(err)}. ` +
+          'Falling back to procedural prefab.'
+      );
     }
-  } catch (err) {
-    // Log what failed and what was tried: a bare "model not found" used to
-    // make missing GLBs indistinguishable from load bugs. RoomLoader already
-    // logs the resolved URL on the happy path; log it here too on failure.
-    console.warn(
-      `[RoomScene] Room GLB load failed for "${roomId}" ` +
-        `(tried ${assetUrl(`/assets/rooms/${roomId}.glb`)}): ` +
-        `${err instanceof Error ? err.message : String(err)}. ` +
-        'Falling back to procedural prefab.'
-    );
+  }
+  if (roomMeshes.length === 0) {
     roomMeshes = buildRoomPrefab(scene, roomId) || createPlaceholderRoom(scene);
   }
 
   // Phase 3 — interactive props (arcade, corkboard, jukebox, NPCs, gathering
   // nodes) for the public spaces, whether the room came from GLB or prefab.
-  document.getElementById('btn-loft-upvote')?.classList.add('hidden');
+  const upvoteBtn = document.getElementById('btn-loft-upvote');
+  upvoteBtn?.classList.add('hidden');
+  let onUpvoteClick: (() => void) | null = null;
   if (['room-town-square', 'room-park', 'room-cafe'].includes(roomId)) {
     roomMeshes.push(...buildPublicSpaceProps(scene, roomId));
   } else if (!roomId.startsWith('room-')) {
     roomMeshes.push(...buildLoftProps(scene));
 
     // §3k — "Love this loft" upvote for visiting guests (not on your own loft)
-    const upvoteBtn = document.getElementById('btn-loft-upvote');
     if (upvoteBtn && !isOwner) {
       upvoteBtn.classList.remove('hidden');
-      upvoteBtn.addEventListener('click', async () => {
+      onUpvoteClick = async () => {
         try {
           const token = authService.token || (await authService.getToken()) || '';
           const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/upvote`, {
@@ -218,7 +219,8 @@ export async function createRoomScene(
         } catch {
           showToast({ icon: '⚠️', title: 'Loft rating', subtitle: 'Network error' });
         }
-      }, { once: false });
+      };
+      upvoteBtn.addEventListener('click', onUpvoteClick);
     }
   }
 
@@ -230,7 +232,7 @@ export async function createRoomScene(
   }
 
   // ── Room Custom Surfaces (Floors & Walls) ─────────────────────────────────
-  if (roomId.startsWith('room-') && roomId !== 'room-park') {
+  if (roomId !== 'room-park' && roomId !== 'room-town-square' && roomId !== 'room-cafe' && roomId !== 'room-lobby') {
     authService.getToken().then((tokenVal) => {
       if (!tokenVal) return;
       fetch(`${API_URL}/rooms/${roomId}`, {
@@ -300,7 +302,7 @@ export async function createRoomScene(
       radarCanvas.style.cssText = `
         position: fixed;
         top: 68px;
-        right: 16px;
+        right: 76px;
         width: ${minimapRadar.radarSize}px;
         height: ${minimapRadar.radarSize}px;
         background: rgba(15, 23, 42, 0.82);
@@ -483,7 +485,7 @@ export async function createRoomScene(
   // ── Visiting Room Banner ──────────────────────────────────────────────────
   let visitingBanner: HTMLElement | null = null;
   if (data?.isVisiting) {
-    const host = data.visitedHostName || 'Player';
+    const host = escapeHtml(data.visitedHostName || 'Player');
     visitingBanner = document.createElement('div');
     visitingBanner.id = 'visiting-banner';
     visitingBanner.style.cssText = `
@@ -672,14 +674,10 @@ export async function createRoomScene(
     btnPets.addEventListener('click', petHandler);
   }
 
-  // ── Workshop, Clubs, Gallery Navigation Buttons ───────────────────────────
+  // ── Workshop & Gallery Navigation Buttons (#btn-clubs is handled in main.ts) ──
   const btnWorkshop = document.getElementById('btn-workshop');
   const workshopHandler = () => WorkshopPanel.show();
   btnWorkshop?.addEventListener('click', workshopHandler);
-
-  const btnClubs = document.getElementById('btn-clubs');
-  const clubsHandler = () => ClubPanel.show();
-  btnClubs?.addEventListener('click', clubsHandler);
 
   const btnGallery = document.getElementById('btn-gallery');
   const galleryHandler = () => GalleryPanel.show();
@@ -1233,6 +1231,15 @@ export async function createRoomScene(
     }
     radarCanvas?.remove();
     radarCanvas = null;
+    weatherParticles?.dispose();
+    weatherParticles = null;
+    weatherDotTexture?.dispose();
+    weatherDotTexture = null;
+    tradeModal.dispose();
+    if (upvoteBtn && onUpvoteClick) {
+      upvoteBtn.removeEventListener('click', onUpvoteClick);
+      upvoteBtn.classList.add('hidden');
+    }
     // Drop stale toasts so notifications from the previous room don't linger
     clearToasts();
     if (btnLoftSettings) {
@@ -1254,9 +1261,6 @@ export async function createRoomScene(
     }
     if (btnWorkshop) {
       btnWorkshop.removeEventListener('click', workshopHandler);
-    }
-    if (btnClubs) {
-      btnClubs.removeEventListener('click', clubsHandler);
     }
     if (btnGallery) {
       btnGallery.removeEventListener('click', galleryHandler);

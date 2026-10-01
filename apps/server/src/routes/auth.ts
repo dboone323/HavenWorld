@@ -6,6 +6,7 @@ import { prisma } from '../prisma';
 import { redis } from '../redis';
 import { inventoryService } from '../services/InventoryService';
 import { AnalyticsService } from '../services/AnalyticsService';
+import { AchievementService } from '../services/AchievementService';
 import { Resend } from 'resend';
 import { setCsrfCookie, generateCsrfToken } from '../middleware/csrf';
 import { generateAccessToken, generateRefreshToken } from '../auth/tokens';
@@ -229,6 +230,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
   // 7. Grant default free items to inventory
   await inventoryService.grantDefaultItems(user.id);
+  void AchievementService.checkAndAward(user.id, 'LOGIN');
 
   // 8. Mark invite code as used
   if (inviteRecord) {
@@ -388,6 +390,7 @@ router.post('/login', async (req: Request, res: Response) => {
     sessionId,
     payload: { role: user.role },
   });
+  void AchievementService.checkAndAward(user.id, 'LOGIN');
 
   // Refresh cookie already set by issueSession(); now set the non-httpOnly
   // CSRF cookie used for double-submit header checks

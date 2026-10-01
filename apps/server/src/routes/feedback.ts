@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { FeedbackService } from '../services/FeedbackService';
 
 const router = Router();
@@ -22,7 +22,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // GET /api/feedback — list feedback backlog (admin/staff triage)
-router.get('/', requireAuth, async (req: AuthRequest, res) => {
+router.get('/', requireAuth, requireRole(['ADMIN', 'MODERATOR']), async (req: AuthRequest, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
   const feedbackList = await FeedbackService.listFeedback(limit);
   return res.json(feedbackList);

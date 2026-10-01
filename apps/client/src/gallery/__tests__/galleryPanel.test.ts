@@ -1,5 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createServer, Server } from 'node:http';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { GalleryPanel } from '../GalleryPanel';
+import { setServerUrl } from '../../config';
+import { authService } from '../../services/auth';
 
 const maliciousPhotos = [
   {
@@ -13,21 +16,36 @@ const maliciousPhotos = [
   },
 ];
 
-describe('GalleryPanel stored-XSS regression', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => maliciousPhotos,
-      } as unknown as Response)
-    );
+describe('GalleryPanel stored-XSS regression (Real HTTP Server Validation)', () => {
+  let server: Server;
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      if (req.url === '/api/gallery') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(maliciousPhotos));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address() as { port: number };
+    setServerUrl(`http://127.0.0.1:${addr.port}`);
+    (authService as unknown as { _accessToken: string })._accessToken = 'test-jwt-token';
   });
 
   afterEach(() => {
     GalleryPanel.dismiss();
     document.getElementById('gallery-modal-overlay')?.remove();
-    vi.unstubAllGlobals();
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   it('escapes caption, author, roomName and imageUrl when rendering cards', async () => {
@@ -37,23 +55,17 @@ describe('GalleryPanel stored-XSS regression', () => {
     const html = grid?.innerHTML ?? '';
     expect(html).not.toBe('');
 
-    // 1. The payloads must stay inert: no live <script> elements and no
-    //    injected event-handler attributes (attribute breakout would create
-    //    an [onerror] node).
     expect(grid?.querySelectorAll('script, [onerror], [onclick]')).toHaveLength(0);
 
     const img = grid?.querySelector('img');
     expect(img).not.toBeNull();
     expect(img?.hasAttribute('onerror')).toBe(false);
-    // The onerror payload survives only INSIDE the src attribute value
     expect(img?.getAttribute('src')).toContain('onerror=');
 
-    // 2. User text must render escaped, not as markup
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('&lt;b&gt;Room&lt;/b&gt;');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
 
-    // 3. The payloads appear only as TEXT content (never as elements)
     const allText = Array.from(grid?.querySelectorAll('div') ?? [])
       .map((d) => d.textContent ?? '')
       .join('\n');

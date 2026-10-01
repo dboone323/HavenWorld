@@ -1,26 +1,24 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ChatOverlay } from '../ChatOverlay';
 import { socketService } from '../../services/socket';
+import { SOCKET_EVENTS } from '@havenworld/shared';
+import type { SocketEventType } from '@havenworld/shared';
 
-describe('ChatOverlay Component', () => {
+describe('ChatOverlay Component (Real Functional Validation)', () => {
   let container: HTMLElement;
   let overlay: ChatOverlay;
-  let emitSpy: any;
-  let socketCallbacks: Record<string, ((data: any) => void)[]>;
+  let emitted: Array<{ event: SocketEventType; payload: unknown }> = [];
+  let offEmit: (() => void) | null = null;
 
   beforeEach(() => {
+    socketService.disconnect();
     document.body.innerHTML = '';
     container = document.createElement('div');
     document.body.appendChild(container);
 
-    socketCallbacks = {};
-    emitSpy = vi.spyOn(socketService, 'emit').mockImplementation(() => {});
-    vi.spyOn(socketService, 'on').mockImplementation((event: any, handler: any) => {
-      if (!socketCallbacks[event]) socketCallbacks[event] = [];
-      socketCallbacks[event].push(handler);
-      return () => {
-        socketCallbacks[event] = socketCallbacks[event].filter((h) => h !== handler);
-      };
+    emitted = [];
+    offEmit = socketService.onEmit((event, args) => {
+      emitted.push({ event, payload: args[0] });
     });
 
     overlay = new ChatOverlay(container);
@@ -28,7 +26,8 @@ describe('ChatOverlay Component', () => {
 
   afterEach(() => {
     overlay.dispose();
-    vi.restoreAllMocks();
+    offEmit?.();
+    offEmit = null;
     document.body.innerHTML = '';
   });
 
@@ -49,10 +48,9 @@ describe('ChatOverlay Component', () => {
     input.value = 'Hello world!';
     sendBtn.click();
 
-    expect(emitSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/chat:send|CHAT_MESSAGE/),
-      expect.objectContaining({ text: 'Hello world!' })
-    );
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].event).toMatch(/chat:send|CHAT_MESSAGE/);
+    expect(emitted[0].payload).toMatchObject({ text: 'Hello world!' });
     expect(input.value).toBe('');
   });
 
@@ -63,10 +61,9 @@ describe('ChatOverlay Component', () => {
     const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
     input.dispatchEvent(enterEvent);
 
-    expect(emitSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/chat:send|CHAT_MESSAGE/),
-      expect.objectContaining({ text: 'Pressing Enter message' })
-    );
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].event).toMatch(/chat:send|CHAT_MESSAGE/);
+    expect(emitted[0].payload).toMatchObject({ text: 'Pressing Enter message' });
     expect(input.value).toBe('');
   });
 
@@ -77,7 +74,7 @@ describe('ChatOverlay Component', () => {
     input.value = '   ';
     sendBtn.click();
 
-    expect(emitSpy).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
     expect(input.value).toBe('   ');
   });
 
@@ -85,17 +82,12 @@ describe('ChatOverlay Component', () => {
     const log = container.querySelector('#chat-log') as HTMLElement;
     expect(log.children.length).toBe(0);
 
-    const messageHandlers = socketCallbacks['chat:message'] || socketCallbacks['CHAT_MESSAGE'] || [];
-    expect(messageHandlers.length).toBeGreaterThan(0);
-
-    messageHandlers.forEach((handler) =>
-      handler({
-        id: 'msg-1',
-        senderName: 'Alice',
-        text: 'Welcome to HavenWorld!',
-        timestamp: Date.now(),
-      })
-    );
+    socketService.dispatchIncoming(SOCKET_EVENTS.CHAT_MESSAGE, {
+      id: 'msg-1',
+      senderName: 'Alice',
+      text: 'Welcome to HavenWorld!',
+      timestamp: Date.now(),
+    });
 
     expect(log.children.length).toBe(1);
     const entry = log.firstElementChild as HTMLElement;
@@ -104,29 +96,23 @@ describe('ChatOverlay Component', () => {
   });
 
   it('(f) Rate limit error: rapid sends trigger cooldown state, shows cooldown timer/message', () => {
-    const errHandlers = socketCallbacks['chat:error'] || socketCallbacks['CHAT_ERROR'] || [];
-    expect(errHandlers.length).toBeGreaterThan(0);
-
-    // Trigger server rate limit error
-    errHandlers.forEach((handler) =>
-      handler({
-        code: 'RATE_LIMITED',
-        message: 'Please slow down! Rate limit exceeded.',
-      })
-    );
+    socketService.dispatchIncoming(SOCKET_EVENTS.CHAT_ERROR, {
+      code: 'RATE_LIMITED',
+      message: 'Please slow down! Rate limit exceeded.',
+    });
 
     const errorEl = container.querySelector('#chat-error') as HTMLElement;
     expect(errorEl.classList.contains('hidden')).toBe(false);
     expect(errorEl.textContent).toContain('Please slow down!');
 
     // Further send attempts during cooldown should be blocked
-    emitSpy.mockClear();
+    emitted = [];
     const input = container.querySelector('#chat-input') as HTMLInputElement;
     const sendBtn = container.querySelector('#chat-send') as HTMLButtonElement;
     input.value = 'Should be blocked';
     sendBtn.click();
 
-    expect(emitSpy).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
   });
 
   it('(g) Message history capped at 50 messages (FIFO)', () => {
@@ -141,7 +127,6 @@ describe('ChatOverlay Component', () => {
     }
 
     expect(log.children.length).toBe(50);
-    // The first 10 messages should have been pushed out (FIFO)
     expect(log.firstElementChild?.textContent).toContain('Message number 11');
     expect(log.lastElementChild?.textContent).toContain('Message number 60');
   });
@@ -158,7 +143,6 @@ describe('ChatOverlay Component', () => {
     });
 
     expect(log.children.length).toBe(1);
-    // No actual script tag or executable img tag should be created in the DOM
     expect(log.querySelector('script')).toBeNull();
     const entry = log.firstElementChild as HTMLElement;
     expect(entry.innerHTML).not.toContain('<script>');

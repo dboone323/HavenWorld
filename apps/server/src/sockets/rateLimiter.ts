@@ -10,6 +10,9 @@ interface RateRule {
 const EVENT_LIMITS: Record<string, RateRule> = {
   [SOCKET_EVENTS.CHAT_SEND]: { max: 10, windowMs: 5000 },
   [SOCKET_EVENTS.PLAYER_MOVE]: { max: 100, windowMs: 5000 },
+  [SOCKET_EVENTS.CAST_LINE]: { max: 1, windowMs: 5000 },
+  [SOCKET_EVENTS.RING_DOORBELL]: { max: 3, windowMs: 60000 },
+  [SOCKET_EVENTS.TRADE_REQUEST]: { max: 3, windowMs: 30000 },
   START_FISHING: { max: 1, windowMs: 5000 },
   RING_DOORBELL: { max: 3, windowMs: 60000 },
   TRADE_INITIATE: { max: 3, windowMs: 30000 },

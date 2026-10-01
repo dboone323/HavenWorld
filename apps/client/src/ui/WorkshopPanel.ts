@@ -278,7 +278,7 @@ export class WorkshopPanel {
             `;
 
             const costStr = rec.materials
-              .map((m) => `${m.qty}x ${m.type}`)
+              .map((m) => `${m.qty}x ${MATERIAL_LABEL[m.type] || m.type}`)
               .join(', ');
 
             row.innerHTML = `

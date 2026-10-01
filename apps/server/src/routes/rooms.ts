@@ -152,6 +152,28 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
     }),
   ]);
 
+  const refreshed = await prisma.roomFurniture.findMany({
+    where: { roomId },
+    include: { item: true },
+    orderBy: { layer: 'asc' },
+  });
+  roomManager.setFurniture(
+    roomId,
+    refreshed.map((f) => ({
+      id: f.id,
+      itemId: f.itemId,
+      spriteKey: f.item.spriteKey,
+      x: f.x,
+      y: f.y,
+      z: f.z,
+      rotation: f.rotation,
+      layer: f.layer,
+      type: f.item.spriteKey,
+      depth: f.y,
+      ownerId: f.placedBy,
+    }))
+  );
+
   const io = getIO();
   if (io) {
     io.to(roomId).emit(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, { roomId });

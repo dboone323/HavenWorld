@@ -36,6 +36,7 @@ export class DailyLoginModal {
     }
 
     if (data.alreadyClaimed || data.coinsAwarded === 0) {
+      DailyLoginModal.clearBadge();
       if (explicit) {
         showToast({
           icon: '🎁',
@@ -46,7 +47,14 @@ export class DailyLoginModal {
       return;
     }
 
+    DailyLoginModal.clearBadge();
     DailyLoginModal.show(data.streak, data.coinsAwarded);
+  }
+
+  private static clearBadge(): void {
+    const badge = document.getElementById('daily-gift-badge');
+    if (badge) badge.style.display = 'none';
+    document.getElementById('btn-daily-gift')?.classList.remove('dock-btn--badge');
   }
 
   static show(streak: number, coinsAwarded: number): void {

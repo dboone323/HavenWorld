@@ -165,6 +165,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // §3d — first-run onboarding nudge (once per session, dismissible)
   window.setTimeout(() => { TutorialOverlay.maybeAutoOpen().catch(console.error); }, 4000);
+  window.addEventListener('auth:login', () => {
+    window.setTimeout(() => { TutorialOverlay.maybeAutoOpen().catch(console.error); }, 1500);
+  });
 
   // §3f — private loft rejected on join: offer the doorbell instead of a dead end
   socketService.on<{ code?: string; message?: string; roomId?: string }>(

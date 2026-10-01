@@ -100,14 +100,52 @@ export class PetManager {
   }
 
   /**
-   * Renames a pet
+   * Renames a pet (verifying ownership and syncing active session)
    */
   static async namePet(userId: string, petId: string, name: string) {
+    const pet = await prisma.pet.findUnique({ where: { id: petId } });
+    if (!pet || pet.ownerId !== userId) {
+      throw new Error('Pet not found or unauthorized');
+    }
+
     const cleanName = name.trim().slice(0, 16);
-    return await prisma.pet.update({
+    const updated = await prisma.pet.update({
       where: { id: petId },
       data: { name: cleanName },
     });
+
+    const session = this.activePets.get(petId);
+    if (session) {
+      session.name = cleanName;
+    }
+
+    return updated;
+  }
+
+  /**
+   * Ensures all persisted pets owned by a player are loaded into activePets
+   */
+  static async ensureOwnerPetsLoaded(userId: string, spawnX = 0, spawnZ = 0) {
+    const pets = await prisma.pet.findMany({ where: { ownerId: userId } });
+    for (const pet of pets) {
+      if (!this.activePets.has(pet.id)) {
+        this.activePets.set(pet.id, {
+          id: pet.id,
+          ownerId: userId,
+          petType: pet.petType as PetType,
+          name: pet.name,
+          state: 'IDLE',
+          stateTimer: 4,
+          x: spawnX,
+          y: 0,
+          z: spawnZ,
+          targetX: spawnX,
+          targetY: 0,
+          targetZ: spawnZ,
+        });
+      }
+    }
+    return pets;
   }
 
   /**
@@ -198,23 +236,11 @@ export class PetManager {
    */
   static async decayAllPets(): Promise<void> {
     try {
-      // Decrement hunger and happiness by 5, clamped at 0
-      const pets = await prisma.pet.findMany({
-        select: { id: true, hunger: true, happiness: true },
-      });
-
-      for (const pet of pets) {
-        const newHunger = Math.max(0, pet.hunger - 5);
-        const newHappiness = Math.max(0, pet.happiness - 3);
-
-        await prisma.pet.update({
-          where: { id: pet.id },
-          data: {
-            hunger: newHunger,
-            happiness: newHappiness,
-          },
-        });
-      }
+      await prisma.$executeRaw`
+        UPDATE "Pet"
+        SET "hunger" = GREATEST(0, "hunger" - 5),
+            "happiness" = GREATEST(0, "happiness" - 3)
+      `;
     } catch (err) {
       console.error('[PetManager] Error decaying pet stats:', err);
     }

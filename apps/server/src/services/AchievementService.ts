@@ -10,11 +10,15 @@ export class AchievementService {
     try {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: {
-          achievements: true,
-          fishCatches: true,
-          pets: true,
-          sentMessages: true,
+        select: {
+          id: true,
+          achievements: { select: { stamp: true } },
+          _count: {
+            select: {
+              fishCatches: true,
+              pets: true,
+            },
+          },
         },
       });
 
@@ -56,7 +60,7 @@ export class AchievementService {
           if (data?.species === 'radiant_haven_koi' || data?.species === 'Radiant Haven Koi') {
             await award('Master Angler');
           }
-          if (user.fishCatches.length >= 50) {
+          if (user._count.fishCatches >= 50) {
             await award('Fish and Chips');
           }
           break;

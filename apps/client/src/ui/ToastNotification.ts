@@ -13,7 +13,7 @@ export interface ToastOptions {
 let container: HTMLElement | null = null;
 
 function getContainer(): HTMLElement {
-  if (!container) {
+  if (!container || !container.isConnected) {
     container = document.createElement('div');
     container.id = 'haven-toast-container';
     container.style.cssText = `

@@ -391,6 +391,8 @@ export class PetController {
   private _root: TransformNode;
   private _quad: AbstractMesh;
   private _dynTex: DynamicTexture;
+  private _mat: StandardMaterial;
+  private _labelGui: AdvancedDynamicTexture | null = null;
   private _billboardLabel: TextBlock | null = null;
   private _targetMesh: TransformNode | null = null;
   private _renderObserver: (() => void) | null = null;
@@ -400,6 +402,7 @@ export class PetController {
   private _state: PetState = 'IDLE';
   private _stateTimer = 0;       // seconds in current state
   private _animTimer = 0;        // continuous animation clock (seconds)
+  private _paintAccum = 0;       // throttles 2D canvas redraws (~20 FPS)
   private _wanderTarget: Vector3 | null = null;
   private _facing = 1;           // 1 = right, -1 = left (for horizontal flip)
 
@@ -438,6 +441,7 @@ export class PetController {
     mat.backFaceCulling = false;
     mat.useAlphaFromDiffuseTexture = true;
     this._quad.material = mat;
+    this._mat = mat;
 
     this._buildLabel();
     this._paintFrame(0);          // initial render
@@ -458,6 +462,7 @@ export class PetController {
     labelPlane.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
 
     const gui = AdvancedDynamicTexture.CreateForMesh(labelPlane, 512, 96);
+    this._labelGui = gui;
     const label = new TextBlock(`pet_label_text_${this._petData.id}`, this._getLabelText());
     label.color = '#ffffff';
     label.fontSize = 30;
@@ -516,7 +521,7 @@ export class PetController {
     }
     ctx.restore();
 
-    this._dynTex.update(false);
+    this._dynTex.update(true);
   }
 
   // ── AI state machine + render loop ─────────────────────────────────────────
@@ -526,7 +531,11 @@ export class PetController {
       const rawDt = this._scene.getEngine().getDeltaTime();
       const dt = Math.min(rawDt / 1000, 0.1); // seconds, capped at 100ms
       this._tickAI(dt);
-      this._paintFrame(dt);
+      this._paintAccum += dt;
+      if (this._paintAccum >= 0.05) {
+        this._paintFrame(this._paintAccum);
+        this._paintAccum = 0;
+      }
     };
     this._scene.registerBeforeRender(this._renderObserver);
   }
@@ -672,6 +681,9 @@ export class PetController {
       this._unsubStateUpdate();
       this._unsubStateUpdate = null;
     }
+    this._labelGui?.dispose();
+    this._labelGui = null;
+    this._mat.dispose();
     this._dynTex.dispose();
     this._root.dispose(false, true);
   }

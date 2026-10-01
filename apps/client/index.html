@@ -61,8 +61,8 @@
         <input id="reg-confirm" type="password" autocomplete="new-password" placeholder="Repeat password" data-testid="reg-confirm" required />
       </div>
       <div class="form-group">
-        <label for="reg-invite">Invite Code</label>
-        <input id="reg-invite" type="text" autocomplete="off" placeholder="ALPHA-CODE (optional if open)" data-testid="reg-invite" />
+        <label for="reg-invite">Invite Code (Optional)</label>
+        <input id="reg-invite" type="text" autocomplete="off" placeholder="Optional — leave blank for open beta" data-testid="reg-invite" />
       </div>
       <button id="reg-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Create Account" data-testid="reg-submit">Create Account</button>
     </form>
@@ -137,12 +137,12 @@
       <button id="btn-browse-lofts" class="dock-btn" data-tooltip="Visit Lofts" data-testid="btn-browse-lofts">
         <span class="dock-icon">🏢</span>
       </button>
-      <button id="btn-clubs" class="dock-btn" data-tooltip="Clubs" data-testid="btn-clubs">
-        <span class="dock-icon">👥</span>
+      <button id="btn-clubs" class="dock-btn" data-tooltip="Clubs &amp; Guilds" data-testid="btn-clubs">
+        <span class="dock-icon">🏰</span>
       </button>
       <button id="btn-daily-gift" class="dock-btn dock-btn--badge" data-tooltip="Daily Bonus" data-testid="btn-daily-gift">
         <span class="dock-icon">🎁</span>
-        <span class="dock-badge">1</span>
+        <span id="daily-gift-badge" class="dock-badge">1</span>
       </button>
       <button id="btn-shop" class="dock-btn" data-tooltip="Emporium Shop" data-testid="btn-shop">
         <span class="dock-icon">🛍️</span>
@@ -187,9 +187,6 @@
       </button>
       <button id="btn-pets" class="dock-btn" data-tooltip="Pet Companions" data-testid="btn-pets">
         <span class="dock-icon">🐾</span>
-      </button>
-      <button id="btn-clubs" class="dock-btn" data-tooltip="Clubs & Guilds" data-testid="btn-clubs">
-        <span class="dock-icon">🏰</span>
       </button>
       <button id="btn-loft-upvote" class="dock-btn hidden" data-tooltip="Love this loft!" data-testid="btn-loft-upvote">
         <span class="dock-icon">👍</span>

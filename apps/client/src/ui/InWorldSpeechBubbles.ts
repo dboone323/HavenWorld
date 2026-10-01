@@ -79,12 +79,15 @@ export class InWorldSpeechBubbles {
 
     const isSelf =
       userId === authService.user?.id ||
-      (authService.user?.username && senderName === authService.user.username) ||
-      !this.remoteAvatarGetters.has(userId);
+      Boolean(authService.user?.username && senderName === authService.user.username);
 
     const targetGetter = isSelf
       ? this.localAvatarGetter
-      : this.remoteAvatarGetters.get(userId) || this.localAvatarGetter;
+      : this.remoteAvatarGetters.get(userId);
+
+    if (!isSelf && !targetGetter) {
+      return;
+    }
 
     const bubbleEl = document.createElement('div');
     bubbleEl.className = 'mp-bubble';

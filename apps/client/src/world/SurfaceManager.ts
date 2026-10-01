@@ -22,6 +22,9 @@ export function applyRoomSurfaces(
     });
 
     for (const m of floorMeshes) {
+      if (m.material && m.material.name.startsWith('floor_mat_')) {
+        m.material.dispose();
+      }
       const mat = new BABYLON.StandardMaterial(`floor_mat_${floorKey}`, scene);
       switch (floorKey) {
         case 'floor-wood-oak':
@@ -58,6 +61,9 @@ export function applyRoomSurfaces(
     });
 
     for (const m of wallMeshes) {
+      if (m.material && m.material.name.startsWith('wall_mat_')) {
+        m.material.dispose();
+      }
       const mat = new BABYLON.StandardMaterial(`wall_mat_${wallKey}`, scene);
       switch (wallKey) {
         case 'wall-plaster-white':

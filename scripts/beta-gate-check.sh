@@ -116,17 +116,20 @@ check_header 'strict-transport-security'
 check_header 'x-content-type-options'
 
 legal_ok=0
-for path in '/privacy.html' '/terms.html'; do
+for spec in '/privacy.html:Privacy Policy' '/terms.html:Terms of Service'; do
+  path="${spec%%:*}"
+  expected="${spec#*:}"
   found=0
   for base in "$CLIENT_URL" "$BASE_URL"; do
-    if curl -fsS -o /dev/null --max-time 15 "$base$path" 2>/dev/null; then
-      pass "Legal page reachable: $base$path"
+    body="$(curl -fsS --max-time 15 "$base$path" 2>/dev/null || true)"
+    if [ -n "$body" ] && printf '%s' "$body" | grep -qi "$expected"; then
+      pass "Legal page reachable with '$expected' content: $base$path"
       found=1
       break
     fi
   done
   if [ "$found" -eq 0 ]; then
-    fail "Legal page unreachable: $path"
+    fail "Legal page unreachable or missing '$expected' heading: $path"
   else
     legal_ok=$((legal_ok + 1))
   fi

@@ -23,6 +23,14 @@ const _handlers = new Map<SocketEventType, Set<(data: unknown) => void>>();
  */
 const _pendingEmits: Array<{ event: SocketEventType; args: unknown[] }> = [];
 const MAX_PENDING_EMITS = 50;
+const _emitObservers = new Set<(event: SocketEventType, args: unknown[]) => void>();
+const _unsubObservers = new Set<(event: SocketEventType) => void>();
+
+function notifyEmitObservers(event: SocketEventType, args: unknown[]): void {
+  for (const obs of _emitObservers) {
+    obs(event, args);
+  }
+}
 
 function attachRegisteredHandlers(socket: Socket): void {
   for (const [event, handlers] of _handlers) {
@@ -38,11 +46,15 @@ function flushPendingEmits(): void {
     const next = _pendingEmits.shift();
     if (!next) break;
     _socket.emit(next.event, ...next.args);
+    notifyEmitObservers(next.event, next.args);
   }
 }
 
 function removeHandler(event: SocketEventType, raw: (data: unknown) => void): void {
-  _handlers.get(event)?.delete(raw);
+  const set = _handlers.get(event);
+  if (set?.delete(raw)) {
+    for (const obs of _unsubObservers) obs(event);
+  }
   _socket?.off(event, raw);
 }
 
@@ -195,6 +207,7 @@ export const socketService = {
   emit(event: SocketEventType, ...args: unknown[]): void {
     if (_socket?.connected) {
       _socket.emit(event, ...args);
+      notifyEmitObservers(event, args);
       return;
     }
     if (_pendingEmits.length >= MAX_PENDING_EMITS) {
@@ -203,6 +216,42 @@ export const socketService = {
     }
     console.warn(`[Socket] socket not connected yet — queueing emit('${event}')`);
     _pendingEmits.push({ event, args });
+    if (!_socket) {
+      notifyEmitObservers(event, args);
+    }
+  },
+
+  /** Dispatch an incoming event to all registered listeners for this event type. */
+  dispatchIncoming<T = unknown>(event: SocketEventType, data: T): void {
+    const handlers = _handlers.get(event);
+    if (!handlers) return;
+    for (const handler of [...handlers]) {
+      handler(data);
+    }
+  },
+
+  /** Observe outbound emits (both immediate and flushed after connect). */
+  onEmit(observer: (event: SocketEventType, args: unknown[]) => void): () => void {
+    _emitObservers.add(observer);
+    return () => {
+      _emitObservers.delete(observer);
+    };
+  },
+
+  /** Observe listener unsubscriptions. */
+  onUnsubscribe(observer: (event: SocketEventType) => void): () => void {
+    _unsubObservers.add(observer);
+    return () => {
+      _unsubObservers.delete(observer);
+    };
+  },
+
+  /** Transition an in-flight socket connection to connected and flush pending emits. */
+  simulateHandshakeComplete(): void {
+    if (!_socket) return;
+    (_socket as unknown as { connected: boolean }).connected = true;
+    emitStatus('connected');
+    flushPendingEmits();
   },
 
   /** Typed listener helper — returns unsubscribe fn */
