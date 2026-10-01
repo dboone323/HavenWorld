@@ -121,7 +121,7 @@ for spec in '/privacy.html:Privacy Policy' '/terms.html:Terms of Service'; do
   expected="${spec#*:}"
   found=0
   for base in "$CLIENT_URL" "$BASE_URL"; do
-    body="$(curl -fsS --max-time 15 "$base$path" 2>/dev/null || true)"
+    body="$(curl -fsSL --max-time 15 "$base$path" 2>/dev/null || true)"
     if [ -n "$body" ] && printf '%s' "$body" | grep -qi "$expected"; then
       pass "Legal page reachable with '$expected' content: $base$path"
       found=1
