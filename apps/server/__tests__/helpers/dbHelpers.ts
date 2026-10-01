@@ -25,6 +25,7 @@ export async function truncateAllTables(): Promise<void> {
       "crafting_queues",
       "material_inventories",
       "weekly_earnings_caps",
+      "arcade_settlement_outbox",
       "minigame_sessions",
       "pets",
       "gift_transactions",

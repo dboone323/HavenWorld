@@ -564,6 +564,34 @@ model WeeklyEarningsCap {
   @@map("weekly_earnings_caps")
 }
 
+/// §6.3 arcade payout outbox. A row means "this finished match still owes its
+/// payout". It is written the moment a board is decided and claimed (settledAt)
+/// in the same transaction that credits the coins, so a crash or restart can
+/// neither lose a winner's coins nor pay them twice. Rows are the idempotency
+/// key and are never deleted.
+model ArcadeSettlementOutbox {
+  matchId         String    @id
+  gameType        String
+  cabinetId       String
+  player1Id       String
+  player2Id       String
+  winnerId        String?
+  isDraw          Boolean   @default(false)
+  startedAt       DateTime
+  finishedAt      DateTime  @default(now())
+  // Result columns: meaningful once settledAt is set, so replaying a match that
+  // finished long ago reports the exact numbers it paid the first time.
+  coinsAwarded    Int       @default(0)
+  weeklyRemaining Int       @default(0)
+  settledAt       DateTime?
+  attempts        Int       @default(0)
+  lastError       String?
+
+  @@index([settledAt, finishedAt])
+  @@map("arcade_settlement_outbox")
+}
+
+
 // §9 Workshop Crafting
 model MaterialInventory {
   id           String @id @default(uuid())

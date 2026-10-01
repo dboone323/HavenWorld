@@ -32,6 +32,8 @@ import leaderboardRoutes from './routes/leaderboard';
 import bulletinRoutes from './routes/bulletin';
 import tutorialRoutes from './routes/tutorial';
 import testRoutes from './routes/testRoutes';
+import { ArcadeService } from './services/ArcadeService';
+
 import { PetManager } from './services/PetManager';
 import { FishingService } from './services/FishingService';
 import { ShopService } from './services/ShopService';
@@ -150,6 +152,10 @@ async function start() {
     await connectRedis();
     await prisma.$connect();
     console.log('[DB] PostgreSQL connected');
+
+    // §6.3: pay out anything a previous process owed but never managed to
+    // credit. Runs before the port is bound, so no player can be mid-settlement.
+    await ArcadeService.recoverPendingSettlements();
 
     // Initialize autonomous systems
     PetManager.init();

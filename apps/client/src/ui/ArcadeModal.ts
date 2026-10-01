@@ -15,6 +15,15 @@ interface ArcadeMatch {
   isDraw: boolean;
 }
 
+/** Payout broadcast the server emits once a match is settled (§6.3). */
+interface ArcadeResult {
+  matchId: string;
+  winnerId: string | null;
+  isDraw: boolean;
+  coinsAwarded: number;
+  weeklyRemaining: number;
+}
+
 interface RoomPlayer {
   userId: string;
   username: string;
@@ -29,10 +38,12 @@ export class ArcadeModal {
   private static overlay: HTMLElement | null = null;
   private static unsubs: Array<() => void> = [];
   private static match: ArcadeMatch | null = null;
+  private static lastResult: ArcadeResult | null = null;
 
   static show(opts: { selfId: string; selfName: string; players: RoomPlayer[] }): void {
     this.dismiss();
     this.match = null;
+    this.lastResult = null;
 
     const overlay = document.createElement('div');
     overlay.id = 'arcade-modal-overlay';
@@ -55,13 +66,35 @@ export class ArcadeModal {
 
     this.unsubs.push(
       socketService.on<ArcadeMatch>(SOCKET_EVENTS.ARCADE_STATE, (match) => {
-        if (match.player1Id !== opts.selfId && match.player2Id !== opts.selfId) return;
+        const isPlayer = this.isParticipant(match, opts.selfId);
         const wasFinished = this.match?.status === 'FINISHED';
         this.match = match;
+        if (!isPlayer) {
+          // Roommate watching a cabinet in progress — read-only view (§6.3).
+          if (this.overlay) this.render(panel, opts);
+          return;
+        }
         if (!wasFinished && match.status === 'FINISHED') {
           showToast({
             icon: match.winnerId === opts.selfId ? '🏆' : match.isDraw ? '🤝' : '💀',
             title: match.isDraw ? 'Connect-4: Draw!' : match.winnerId === opts.selfId ? 'You win!' : 'You lose!',
+          });
+        }
+        if (this.overlay) this.render(panel, opts);
+      }),
+      socketService.on<ArcadeResult>(SOCKET_EVENTS.ARCADE_RESULT, (result) => {
+        this.lastResult = result;
+        if (result.winnerId === opts.selfId && result.coinsAwarded > 0) {
+          showToast({
+            icon: '🪙',
+            title: `+${result.coinsAwarded} HavenCoins`,
+            subtitle: `Arcade win — ${result.weeklyRemaining} left in this week's arcade budget`,
+          });
+        } else if (result.winnerId === opts.selfId && !result.isDraw && result.coinsAwarded === 0) {
+          showToast({
+            icon: '🪙',
+            title: 'Arcade budget used up',
+            subtitle: "You've reached this week's Connect-4 earnings limit",
           });
         }
         if (this.overlay) this.render(panel, opts);
@@ -78,8 +111,15 @@ export class ArcadeModal {
 
   private static render(panel: HTMLElement, opts: { selfId: string; selfName: string; players: RoomPlayer[] }): void {
     const match = this.match;
+    const isPlayer = match ? this.isParticipant(match, opts.selfId) : false;
 
-    if (!match || !this.isParticipant(match, opts.selfId)) {
+    // A roommate who isn't one of the two players watches the live cabinet read-only.
+    if (match && !isPlayer) {
+      this.renderBoard(panel, match, opts, true);
+      return;
+    }
+
+    if (!match) {
       panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <h2 style="margin:0;font-size:17px">🕹️ Connect-4 Cabinet</h2>
@@ -108,7 +148,20 @@ export class ArcadeModal {
       return;
     }
 
-    const myTurn = match.status === 'IN_PROGRESS' && match.currentTurn === opts.selfId;
+    this.renderBoard(panel, match, opts, false);
+  }
+
+  /**
+   * Draws the Connect-4 board. Participants get clickable columns on their turn;
+   * spectators get the identical board with controls disabled.
+   */
+  private static renderBoard(
+    panel: HTMLElement,
+    match: ArcadeMatch,
+    opts: { selfId: string; selfName: string; players: RoomPlayer[] },
+    spectating: boolean
+  ): void {
+    const myTurn = !spectating && match.status === 'IN_PROGRESS' && match.currentTurn === opts.selfId;
     const nameFor = (id: string) =>
       id === opts.selfId ? opts.selfName : (opts.players.find((p) => p.userId === id)?.username ?? 'Opponent');
 
@@ -125,15 +178,23 @@ export class ArcadeModal {
 
     const status = match.status === 'FINISHED'
       ? (match.isDraw ? '🤝 Draw!' : match.winnerId === opts.selfId ? '🏆 You won!' : `😅 ${escapeHtml(nameFor(match.winnerId ?? ''))} won`)
+      : spectating ? `👀 Spectating — waiting for ${escapeHtml(nameFor(match.currentTurn))}…`
       : myTurn ? '🟢 Your turn — click a disc slot' : `⏳ Waiting for ${escapeHtml(nameFor(match.currentTurn))}…`;
+
+    const won = this.lastResult && this.lastResult.matchId === match.id
+      && this.lastResult.winnerId === opts.selfId && this.lastResult.coinsAwarded > 0;
+    const payout = won
+      ? `<p style="font-size:13px;margin:8px 0 0;color:#ffd166">🪙 +${this.lastResult!.coinsAwarded} HavenCoins earned · ${this.lastResult!.weeklyRemaining} left in this week's arcade budget</p>`
+      : '';
 
     panel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <h2 style="margin:0;font-size:17px">🕹️ ${escapeHtml(nameFor(match.player1Id))} <span style="color:#ff6b6b">●</span> vs <span style="color:#4ecdc4">●</span> ${escapeHtml(nameFor(match.player2Id))}</h2>
+        <h2 style="margin:0;font-size:17px">${spectating ? '👀 ' : '🕹️ '}${escapeHtml(nameFor(match.player1Id))} <span style="color:#ff6b6b">●</span> vs <span style="color:#4ecdc4">●</span> ${escapeHtml(nameFor(match.player2Id))}</h2>
         <button data-action="close" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">✕</button>
       </div>
       <div style="background:rgba(30,30,80,0.8);padding:8px;border-radius:12px;display:inline-block">${grid}</div>
       <p style="font-size:13px;margin:12px 0 0">${status}</p>
+      ${payout}
     `;
 
     panel.querySelector('[data-action="close"]')?.addEventListener('click', () => this.dismiss());
@@ -157,6 +218,7 @@ export class ArcadeModal {
     this.unsubs.forEach((off) => off());
     this.unsubs = [];
     this.match = null;
+    this.lastResult = null;
     this.overlay?.remove();
     this.overlay = null;
   }

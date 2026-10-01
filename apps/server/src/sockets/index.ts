@@ -44,7 +44,7 @@ import { WeatherService } from '../services/WeatherService';
 import { JukeboxService } from '../services/JukeboxService';
 import { RandomizerService } from '../services/RandomizerService';
 import { GatheringService } from '../services/GatheringService';
-import { ArcadeService } from '../services/ArcadeService';
+import { ArcadeService, type ConnectFourMatch } from '../services/ArcadeService';
 import { LoftShopService } from '../services/LoftShopService';
 import { DelayedMailService } from '../services/DelayedMailService';
 import { NpcDialogueService } from '../services/NpcDialogueService';
@@ -111,10 +111,58 @@ export function getIO(): Server | null {
   return ioInstance;
 }
 
+/**
+ * Rooms that must see a cabinet's broadcasts. The two players can sit in
+ * different room instances of the same roomId (and either may have moved rooms
+ * mid-game), so fan out to each player's current room rather than assuming the
+ * emitting player's room still covers both of them.
+ */
+function arcadeBroadcastRooms(match: ConnectFourMatch): string[] {
+  const roomIds = new Set<string>();
+  for (const playerId of [match.player1Id, match.player2Id]) {
+    const roomId = roomManager.getPlayer(playerId)?.roomId;
+    if (roomId) roomIds.add(roomId);
+  }
+  return [...roomIds];
+}
+
+/** How often the server re-checks for payouts it still owes a winner (§6.3). */
+const ARCADE_SETTLEMENT_SWEEP_MS = 15_000;
+let arcadeSettlementSweep: NodeJS.Timeout | null = null;
+
+/**
+ * Retries queued arcade payouts and broadcasts whatever just landed. Runs on a
+ * timer every ARCADE_SETTLEMENT_SWEEP_MS, and is exported so a caller (or a
+ * test) can drain the queue on demand. A payout that failed to write — DB blip,
+ * or a player whose socket died before the settlement continuation ran — is
+ * delayed by at most one sweep, never lost.
+ */
+export async function flushArcadeSettlements(io: Server): Promise<void> {
+  ArcadeService.pruneFinishedMatches();
+  ArcadeService.queueUnsettledFinishedMatches();
+  const settled = await ArcadeService.settlePendingMatches();
+  for (const settlement of settled) {
+    const match = ArcadeService.getMatch(settlement.matchId);
+    if (!match) continue;
+    for (const roomId of arcadeBroadcastRooms(match)) {
+      io.to(roomId).emit(SOCKET_EVENTS.ARCADE_RESULT, settlement);
+    }
+  }
+}
+
 export function registerSocketHandlers(io: Server): void {
   ioInstance = io;
   io.use(socketOriginMiddleware);
   io.use(socketAuthMiddleware);
+
+  // §6.3: retry payouts the server still owes. unref() so the sweep never keeps
+  // the process (or a test runner) alive.
+  if (!arcadeSettlementSweep) {
+    arcadeSettlementSweep = setInterval(() => {
+      if (ioInstance) void flushArcadeSettlements(ioInstance);
+    }, ARCADE_SETTLEMENT_SWEEP_MS);
+    arcadeSettlementSweep.unref();
+  }
 
   io.on('connection', (socket: Socket) => {
     const { userId, username } = socket.data.user as {
@@ -1246,20 +1294,53 @@ export function registerSocketHandlers(io: Server): void {
         return;
       }
       try {
+        // One board per cabinet: refuse a second challenge while a game is live.
+        if (ArcadeService.busyCabinet(parsed.data.cabinetId)) {
+          socket.emit(SOCKET_EVENTS.ERROR, {
+            code: 'ARCADE_ERROR',
+            message: 'That cabinet is already running a match.',
+          });
+          return;
+        }
         const match = ArcadeService.startMatch(userId, parsed.data.opponentId, parsed.data.cabinetId);
-        io.to(myRoom).emit(SOCKET_EVENTS.ARCADE_STATE, match);
+        for (const roomId of arcadeBroadcastRooms(match)) {
+          io.to(roomId).emit(SOCKET_EVENTS.ARCADE_STATE, match);
+        }
       } catch (err: any) {
         socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: err?.message });
       }
     });
 
-    socket.on(SOCKET_EVENTS.ARCADE_MOVE, (rawData: unknown) => {
+    socket.on(SOCKET_EVENTS.ARCADE_MOVE, async (rawData: unknown) => {
       const parsed = ArcadeMoveSchema.safeParse(rawData);
       if (!parsed.success) return;
       try {
         const match = ArcadeService.makeMove(parsed.data.matchId, userId, parsed.data.col);
-        const room = roomManager.getPlayer(userId)?.roomId;
-        if (room) io.to(room).emit(SOCKET_EVENTS.ARCADE_STATE, match);
+        const rooms = arcadeBroadcastRooms(match);
+        for (const roomId of rooms) {
+          io.to(roomId).emit(SOCKET_EVENTS.ARCADE_STATE, match);
+        }
+
+        // §6.3: settle the win payout once the board is decided. A settlement
+        // failure must not strand the players in a finished match, so it is
+        // logged rather than surfaced as an ARCADE_ERROR.
+        if (match.status === 'FINISHED') {
+          // Record the owed payout durably *before* paying it, so a crash between
+          // the board deciding and the coins landing is replayed at next boot
+          // instead of being lost with the in-memory match (§6.3).
+          await ArcadeService.recordOwedPayout(match);
+          try {
+            const settlement = await ArcadeService.settleMatch(match.id);
+            for (const roomId of rooms) {
+              io.to(roomId).emit(SOCKET_EVENTS.ARCADE_RESULT, settlement);
+            }
+          } catch (err: any) {
+            // A settlement failure must not cost the winner their coins: queue it
+            // so the sweep retries, instead of dropping it on the floor.
+            ArcadeService.queueSettlementRetry(match.id);
+            console.error('[Arcade] Match settlement failed, queued for retry:', err);
+          }
+        }
       } catch (err: any) {
         socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: err?.message });
       }

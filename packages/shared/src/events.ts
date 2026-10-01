@@ -190,6 +190,8 @@ export const SOCKET_EVENTS = {
   ARCADE_START: 'arcade:start',
   ARCADE_MOVE:  'arcade:move',
   ARCADE_STATE: 'arcade:state',
+  /** Server-authored payout after a match finishes (skill-based, winner-only coins). */
+  ARCADE_RESULT: 'arcade:result',
 
   // Loft shop registers (owner-stocked cash registers)
   LOFT_SHOP_LIST:     'loft_shop:list',
