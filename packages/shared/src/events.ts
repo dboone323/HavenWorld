@@ -135,10 +135,13 @@ export const SOCKET_EVENTS = {
   SEASONAL_PROGRESS_UPDATE: 'seasonal:progress_update',
 
   // ── Phase 3: Player Clubs (§13) ──────────────────────────────────────────
-  CLUB_INVITE:       'club:invite',
-  CLUB_KICK:         'club:kick',
-  CLUB_CHAT_SEND:    'club:chat_send',
-  CLUB_CHAT_MESSAGE: 'club:chat_message',
+  CLUB_INVITE:          'club:invite',
+  CLUB_KICK:            'club:kick',
+  CLUB_CHAT_SEND:       'club:chat_send',
+  CLUB_CHAT_MESSAGE:    'club:chat_message',
+  CLUB_TREASURY_UPDATE: 'club:treasury_update',
+  CLUB_ROLE_UPDATE:     'club:role_update',
+  CLUB_MOTD_UPDATE:     'club:motd_update',
 
   // ── Phase 3: Emote Wheel (§14) ───────────────────────────────────────────
   EMOTE_TRIGGERED: 'emote:triggered',
