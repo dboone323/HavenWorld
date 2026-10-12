@@ -66,8 +66,10 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter server exec prisma generate
 
-      - name: Run Prisma migrations on test database
-        run: pnpm --filter server exec prisma db push --accept-data-loss
+      - name: Run Prisma migrations & seed on test database
+        run: |
+          pnpm --filter server exec prisma db push --accept-data-loss
+          pnpm --filter server exec npx tsx prisma/seed.ts
 
       - name: TypeScript build check
         run: pnpm --filter server exec tsc --noEmit --project tsconfig.test.json

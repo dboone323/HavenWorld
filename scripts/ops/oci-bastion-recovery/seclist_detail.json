@@ -1,0 +1,49 @@
+{
+  "data": {
+    "compartment-id": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+    "defined-tags": {
+      "Oracle-Tags": {
+        "CreatedBy": "default/dboone9@msn.com",
+        "CreatedOn": "2026-09-02T17:50:01.525Z"
+      }
+    },
+    "display-name": "Default Security List for vcn-20260902-1230",
+    "egress-security-rules": [
+      {
+        "description": null,
+        "destination": "0.0.0.0/0",
+        "destination-type": "CIDR_BLOCK",
+        "icmp-options": null,
+        "is-stateless": false,
+        "protocol": "all",
+        "tcp-options": null,
+        "udp-options": null
+      }
+    ],
+    "freeform-tags": {},
+    "id": "ocid1.securitylist.oc1.us-chicago-1.aaaaaaaauj3diwsc62r436nu2n6ljaybqyzbj6pgcsyz4du6yow4xt6csoyq",
+    "ingress-security-rules": [
+      {
+        "description": null,
+        "icmp-options": null,
+        "is-stateless": false,
+        "protocol": "6",
+        "source": "0.0.0.0/0",
+        "source-type": "CIDR_BLOCK",
+        "tcp-options": {
+          "destination-port-range": {
+            "max": 22,
+            "min": 22
+          },
+          "source-port-range": null
+        },
+        "udp-options": null
+      }
+    ],
+    "lifecycle-state": "AVAILABLE",
+    "system-tags": null,
+    "time-created": "2026-09-02T17:50:01.557000+00:00",
+    "vcn-id": "ocid1.vcn.oc1.us-chicago-1.amaaaaaamwdgjgaaibw4aox6pu2syy6agf7hytiztd4hphkkcxxk5gts3hbq"
+  },
+  "etag": "72bd00d6"
+}

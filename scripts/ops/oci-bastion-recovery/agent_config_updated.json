@@ -1,0 +1,26 @@
+{
+  "is-monitoring-disabled": false,
+  "are-all-plugins-disabled": false,
+  "plugins-config": [
+    {
+      "name": "Bastion",
+      "desired-state": "ENABLED"
+    },
+    {
+      "name": "Vulnerability Scanning",
+      "desired-state": "ENABLED"
+    },
+    {
+      "name": "Custom Logs Monitoring",
+      "desired-state": "ENABLED"
+    },
+    {
+      "name": "Compute Instance Monitoring",
+      "desired-state": "ENABLED"
+    },
+    {
+      "name": "Cloud Guard Workload Protection",
+      "desired-state": "ENABLED"
+    }
+  ]
+}

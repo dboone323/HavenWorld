@@ -1,0 +1,14 @@
+{
+  "displayName": "sudo-test",
+  "content": {
+    "source": {
+      "sourceType": "TEXT",
+      "text": "echo '=WHOMAI'; id\necho '=SUDO_NOPASSWD_TEST'; sudo -n true 2>&1; echo \"exit=$?\"\necho '=SUDO_ID'; sudo -n id 2>&1\necho '=SSHD_PORTS'; sudo -n sshd -T 2>&1 | grep -i '^port'\necho '=IPT'; sudo -n iptables -S INPUT 2>&1 | head -25\necho '=DONE'"
+    }
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "timeoutInSeconds": 60
+}

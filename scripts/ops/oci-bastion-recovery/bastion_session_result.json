@@ -1,0 +1,14 @@
+ServiceError:
+{
+    "client_version": "Oracle-PythonSDK/2.186.0, Oracle-PythonCLI/3.93.0",
+    "code": "NotAuthorizedOrNotFound",
+    "logging_tips": "Please run the OCI CLI command using --debug flag to find more debug information.",
+    "message": "Authorization failed or requested resource not found.",
+    "opc-request-id": "CCC6252241E2473393CB6D51DD13F08B/6B1BFE9DBB1AA1C615B9B16A4F524407/3D711D30C67BDFEBDCEF79744ADC4AFD",
+    "operation_name": "create_session",
+    "request_endpoint": "POST https://bastion.us-chicago-1.oci.oraclecloud.com/20210331/sessions",
+    "status": 404,
+    "target_service": "bastion",
+    "timestamp": "2026-09-21T23:09:09.493526+00:00",
+    "troubleshooting_tips": "See [https://docs.oracle.com/iaas/Content/API/References/apierrors.htm] for more information about resolving this error. If you are unable to resolve this issue, run this CLI command with --debug option and contact Oracle support and provide them the full error message."
+}

@@ -1,0 +1,14 @@
+ServiceError:
+{
+    "client_version": "Oracle-PythonSDK/2.186.0, Oracle-PythonCLI/3.93.0",
+    "code": "NotAuthorizedOrNotFound",
+    "logging_tips": "Please run the OCI CLI command using --debug flag to find more debug information.",
+    "message": "Authorization failed or requested resource not found.",
+    "opc-request-id": "C2D36B44C37B4C60B404CB06BA149C2F/283B4390EA6BD67341BBB16A4F524441/1A2E41B2146FAB126B530DCDAF14C667",
+    "operation_name": "get_security_list",
+    "request_endpoint": "GET https://iaas.us-chicago-1.oraclecloud.com/20160918/securityLists/Query%20returned%20empty%20result%2C%20no%20output%20to%20show.",
+    "status": 404,
+    "target_service": "virtual_network",
+    "timestamp": "2026-09-21T23:18:26.001327+00:00",
+    "troubleshooting_tips": "See [https://docs.oracle.com/iaas/Content/API/References/apierrors.htm] for more information about resolving this error. If you are unable to resolve this issue, run this CLI command with --debug option and contact Oracle support and provide them the full error message."
+}

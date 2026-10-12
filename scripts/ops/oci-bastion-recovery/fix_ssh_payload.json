@@ -1,0 +1,16 @@
+{
+  "displayName": "fix-ssh-firewall",
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "content": {
+    "source": {
+      "sourceType": "TEXT",
+      "text": "ZWNobyAnPUlEJzsgaWQKZWNobyAnPUlQVF9CRUZPUkUnOyBpcHRhYmxlcyAtUyBJTlBVVCAyPiYxCiMgQWxsb3cgcG9ydCAyMjIyIGZyb20gdGhlIHByaXZhdGUgbmV0d29yay9WUEMgQ0lEUgppcHRhYmxlcyAtSSBJTlBVVCAxIC1wIHRjcCAtLWRwb3J0IDIyMjIgLWogQUNDRVBUIDI+JjEKZWNobyAnPUlQVF9BRlRFUic7IGlwdGFibGVzIC1TIElOUFVUIDI+JjEKIyBTYXZlIHJ1bGVzCm5ldGZpbHRlci1wZXJzaXN0ZW50IHNhdmUgMj4mMSB8fCBpcHRhYmxlcy1zYXZlID4gL2V0Yy9pcHRhYmxlcy9ydWxlcy52NCAyPiYxCmVjaG8gJz1MSVNURU4nOyBzcyAtdGxucCAyPiYxCiMgQWxzbyBhZGQgcG9ydCAyMiBiYWNrIHRvIHNzaGRfY29uZmlnIGFzIGJhY2t1cApncmVwIC1xICdeUG9ydCAyMicgL2V0Yy9zc2gvc3NoZF9jb25maWcgfHwgZWNobyAnUG9ydCAyMicgPj4gL2V0Yy9zc2gvc3NoZF9jb25maWcKZ3JlcCAtcSAnXlBvcnQgMjIyMicgL2V0Yy9zc2gvc3NoZF9jb25maWcgfHwgZWNobyAnUG9ydCAyMjIyJyA+PiAvZXRjL3NzaC9zc2hkX2NvbmZpZwojIFJlc3RhcnQgc3NoIHRvIHBpY2sgdXAgYm90aCBwb3J0cwpzeXN0ZW1jdGwgcmVzdGFydCBzc2ggMj4mMSB8fCBzeXN0ZW1jdGwgcmVzdGFydCBzc2hkIDI+JjEKZWNobyAnPUxJU1RFTl9BRlRFUic7IHNzIC10bG5wIDI+JjEKZWNobyAnPVNWQyc7IHN5c3RlbWN0bCBpcy1hY3RpdmUgc3NoIDI+JjEK"
+    }
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "timeoutInSeconds": 300,
+  "runAsUser": "root",
+  "executionMode": "STANDARD"
+}

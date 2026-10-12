@@ -1,0 +1,5 @@
+Usage: oci bastion session create [OPTIONS]
+
+Error: Invalid value for '--key-type': invalid choice: EPM. (choose from PUB)
+
+For OCI CLI commands and parameters suggestion, auto completion and other useful features, try the Interactive mode by typing `oci -i`.

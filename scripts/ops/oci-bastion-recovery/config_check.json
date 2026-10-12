@@ -1,0 +1,14 @@
+{
+  "displayName": "check-config",
+  "content": {
+    "source": {
+      "sourceType": "TEXT",
+      "text": "echo '=SSHD_D_DIR'\nls -la /etc/ssh/sshd_config.d/ 2>&1\ncat /etc/ssh/sshd_config.d/*.conf 2>&1\necho '=SSHD_RUNNING'\nps aux | grep '[s]shd' 2>&1\necho '=PORT_CHECK'\nss -tlnp 2>&1 | grep -E '22|80|443'\necho '=CLOUD_INIT'\ntail -60 /var/log/cloud-init-output.log 2>&1\necho '=SUDO_CHECK'\nsudo -n true 2>&1 && echo 'SUDO_OK' || echo 'SUDO_NEEDS_PASSWORD'\necho '=WHICH'\nwhich sshd iptables 2>&1\necho '=DONE'\n"
+    }
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "timeoutInSeconds": 60
+}
