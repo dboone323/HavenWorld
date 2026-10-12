@@ -77,7 +77,11 @@ else
 fi
 
 if have pm2; then
-  if pm2 jlist 2>/dev/null | grep -q '"name":"havenworld-server".*"status":"online"'; then
+  PM2_JSON="$(pm2 jlist 2>/dev/null || true)"
+  if [ -z "$PM2_JSON" ] || [ "$PM2_JSON" = "[]" ]; then
+    PM2_JSON="$(sudo -n -u havenworld -H pm2 jlist 2>/dev/null || true)"
+  fi
+  if printf '%s' "$PM2_JSON" | grep -q '"name":"havenworld-server".*"status":"online"'; then
     pass 'PM2 reports havenworld-server online'
   else
     fail 'PM2 does not report havenworld-server online'
