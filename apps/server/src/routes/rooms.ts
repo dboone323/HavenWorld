@@ -540,4 +540,13 @@ router.delete('/:id/decorators/:targetUserId', requireAuth, async (req: AuthRequ
   }
 });
 
+// GET /api/rooms/:id/role — get authenticated user's RBAC role for the loft (OWNER, CO_BUILDER, or VISITOR)
+router.get('/:id/role', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  const userId = req.user!.userId;
+  const { PrivacyManager } = await import('../services/PrivacyManager');
+  const role = await PrivacyManager.getLoftRole(userId, roomId);
+  return res.json({ roomId, userId, role });
+});
+
 export default router;

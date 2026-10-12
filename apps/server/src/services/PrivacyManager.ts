@@ -260,4 +260,20 @@ export class PrivacyManager {
       where: { roomId, userId: targetUserId },
     });
   }
+
+  /**
+   * Resolve Loft RBAC role: OWNER, CO_BUILDER, or VISITOR
+   */
+  static async getLoftRole(userId: string, roomId: string): Promise<LoftRole> {
+    const room = await prisma.room.findUnique({
+      where: { id: roomId },
+      include: { decorators: true },
+    });
+    if (!room) return 'VISITOR';
+    if (room.ownerId === userId) return 'OWNER';
+    if (room.decorators.some((d) => d.userId === userId)) return 'CO_BUILDER';
+    return 'VISITOR';
+  }
 }
+
+export type LoftRole = 'OWNER' | 'CO_BUILDER' | 'VISITOR';

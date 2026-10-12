@@ -165,5 +165,79 @@ describe('RoomManager', () => {
     expect(rm.getPlayer('multi_user')?.roomId).toBe('cozy_cafe');
     expect(rm.getPlayer('multi_user')?.x).toBe(20);
   });
+
+  describe('Boundary collision clamping', () => {
+    it('clamps player coordinates to default boundaries (0..1200, 0..800)', () => {
+      const player: PlayerState = { id: 'u_clamp', username: 'ClampedUser', x: 50, y: 50, z: 0, rotY: 0, direction: 'down', isMoving: false, avatar: defaultTestAvatar };
+      rm.joinRoom('bounded_room', 'sock_clamp', player);
+
+      // Attempt moving out of bounds negative
+      rm.movePlayer('sock_clamp', -150, -50, 'left', true);
+      let updated = rm.getPlayer('u_clamp');
+      expect(updated?.x).toBe(0);
+      expect(updated?.y).toBe(0);
+
+      // Attempt moving out of bounds exceeding limits
+      rm.movePlayer('sock_clamp', 1500, 950, 'right', true);
+      updated = rm.getPlayer('u_clamp');
+      expect(updated?.x).toBe(1200);
+      expect(updated?.y).toBe(800);
+    });
+
+    it('supports custom room bounds', () => {
+      rm.setRoomBounds('custom_bounds_room', { minX: 100, maxX: 500, minY: 100, maxY: 400 });
+      const player: PlayerState = { id: 'u_custom', username: 'CustomBound', x: 200, y: 200, z: 0, rotY: 0, direction: 'down', isMoving: false, avatar: defaultTestAvatar };
+      rm.joinRoom('custom_bounds_room', 'sock_custom', player);
+
+      rm.movePlayer('sock_custom', 50, 500, 'up', true);
+      const updated = rm.getPlayer('u_custom');
+      expect(updated?.x).toBe(100);
+      expect(updated?.y).toBe(400);
+    });
+  });
+});
+
+describe('PrivacyManager Loft Decorator RBAC permissions', () => {
+  it('correctly resolves OWNER, CO_BUILDER, and VISITOR roles against real database', async () => {
+    const { PrivacyManager } = await import('../PrivacyManager');
+    const { createTestUser, createTestRoom } = await import('../../../__tests__/helpers/factories');
+    const { prisma } = await import('../../prisma');
+
+    const owner = await createTestUser();
+    const coBuilder = await createTestUser();
+    const visitor = await createTestUser();
+
+    const room = await createTestRoom(owner.id, { name: 'RBAC Test Loft' });
+
+    // Grant decorator permission to coBuilder
+    await prisma.roomDecorator.create({
+      data: {
+        roomId: room.id,
+        userId: coBuilder.id,
+      },
+    });
+
+    // Test Owner role
+    const ownerRole = await PrivacyManager.getLoftRole(owner.id, room.id);
+    expect(ownerRole).toBe('OWNER');
+
+    // Test Co-Builder role
+    const coBuilderRole = await PrivacyManager.getLoftRole(coBuilder.id, room.id);
+    expect(coBuilderRole).toBe('CO_BUILDER');
+
+    // Test Visitor role
+    const visitorRole = await PrivacyManager.getLoftRole(visitor.id, room.id);
+    expect(visitorRole).toBe('VISITOR');
+
+    // Test non-existent room falls back to VISITOR
+    const nonExistentRole = await PrivacyManager.getLoftRole(visitor.id, 'room_non_existent');
+    expect(nonExistentRole).toBe('VISITOR');
+
+    // Cleanup
+    await prisma.roomDecorator.deleteMany({ where: { roomId: room.id } });
+    await prisma.room.delete({ where: { id: room.id } });
+    await prisma.avatar.deleteMany({ where: { userId: { in: [owner.id, coBuilder.id, visitor.id] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [owner.id, coBuilder.id, visitor.id] } } });
+  });
 });
 
