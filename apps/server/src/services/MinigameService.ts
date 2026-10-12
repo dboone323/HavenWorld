@@ -1,6 +1,7 @@
 import { prisma } from '../prisma';
 import { QuestService } from './QuestService';
 import { AchievementService } from './AchievementService';
+import { AnalyticsService } from './AnalyticsService';
 
 interface PizzaOrderPayload {
   recipe: 'margherita' | 'funghi_rustica' | 'green_garden' | 'seasonal';
@@ -137,6 +138,17 @@ export class MinigameService {
       if (tier === 'PERFECT') {
         await QuestService.incrementProgress(userId, 'PIZZA_PERFECT', 1);
       }
+
+      void AnalyticsService.trackEvent('PIZZA_ORDER_SUBMIT', {
+        userId,
+        payload: {
+          recipe: data.recipe,
+          tier,
+          coinsEarned: actualAward,
+          combo,
+          durationMs: data.durationMs,
+        },
+      });
 
       return {
         tier,
