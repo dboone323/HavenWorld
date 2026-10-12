@@ -1130,16 +1130,19 @@ export async function createRoomScene(
   );
 
   // ── Phase 3B: World Weather Atmosphere & Jukebox ───────────────────────────
-  type WeatherId = 'SUNNY' | 'RAIN' | 'AURORA' | 'SNOW';
+  type WeatherId = 'SUNNY' | 'RAIN' | 'AURORA' | 'SNOW' | 'SAKURA_BLOSSOM' | 'SANDSTORM' | 'FOG';
   const WEATHER_PRESETS: Record<WeatherId, { fog: Color3; density: number; ambient: number; icon: string }> = {
-    SUNNY:  { fog: new Color3(0.85, 0.90, 0.96), density: 0.002,          ambient: 0.95, icon: '☀️' },
-    RAIN:   { fog: new Color3(0.42, 0.47, 0.56), density: 0.014,          ambient: 0.55, icon: '🌧️' },
-    SNOW:   { fog: new Color3(0.92, 0.94, 0.99), density: 0.010,          ambient: 0.80, icon: '❄️' },
-    AURORA: { fog: new Color3(0.14, 0.10, 0.34), density: 0.005,          ambient: 0.65, icon: '🌌' },
+    SUNNY:          { fog: new Color3(0.85, 0.90, 0.96), density: 0.002, ambient: 0.95, icon: '☀️' },
+    RAIN:           { fog: new Color3(0.42, 0.47, 0.56), density: 0.014, ambient: 0.55, icon: '🌧️' },
+    SNOW:           { fog: new Color3(0.92, 0.94, 0.99), density: 0.010, ambient: 0.80, icon: '❄️' },
+    AURORA:         { fog: new Color3(0.14, 0.10, 0.34), density: 0.005, ambient: 0.65, icon: '🌌' },
+    SAKURA_BLOSSOM: { fog: new Color3(0.98, 0.88, 0.92), density: 0.004, ambient: 0.92, icon: '🌸' },
+    SANDSTORM:      { fog: new Color3(0.85, 0.70, 0.45), density: 0.022, ambient: 0.50, icon: '🏜️' },
+    FOG:            { fog: new Color3(0.65, 0.72, 0.78), density: 0.032, ambient: 0.48, icon: '🌫️' },
   };
   let lastWeather: WeatherId | null = null;
 
-  // §3j — precipitation particles for outdoor spaces (rain streaks / drifting snow)
+  // §3j — precipitation particles for outdoor spaces (rain streaks / drifting snow / sakura petals / sandstorm)
   let weatherParticles: ParticleSystem | null = null;
   let weatherDotTexture: DynamicTexture | null = null;
   const getWeatherDotTexture = (): DynamicTexture => {
@@ -1166,14 +1169,13 @@ export async function createRoomScene(
     weatherParticles?.dispose();
     weatherParticles = null;
     const isOutdoor = roomId === 'room-park' || roomId === 'room-town-square';
-    if (isOutdoor && (weather === 'RAIN' || weather === 'SNOW')) {
-      const rain = weather === 'RAIN';
-      const ps = new ParticleSystem(`weather_${weather}`, rain ? 700 : 350, scene);
+    if (isOutdoor && (weather === 'RAIN' || weather === 'SNOW' || weather === 'SAKURA_BLOSSOM' || weather === 'SANDSTORM')) {
+      const ps = new ParticleSystem(`weather_${weather}`, weather === 'RAIN' ? 700 : 350, scene);
       ps.particleTexture = getWeatherDotTexture();
       ps.emitter = new Vector3(0, 9, 0);
       ps.minEmitBox = new Vector3(-14, 0, -14);
       ps.maxEmitBox = new Vector3(14, 2, 14);
-      if (rain) {
+      if (weather === 'RAIN') {
         ps.color1 = new Color4(0.65, 0.75, 0.95, 0.75);
         ps.color2 = new Color4(0.85, 0.9, 1, 0.6);
         ps.colorDead = new Color4(0.6, 0.7, 0.9, 0);
@@ -1184,7 +1186,8 @@ export async function createRoomScene(
         ps.minLifeTime = 0.6;
         ps.maxLifeTime = 1.1;
         ps.emitRate = Math.round(520 * (0.4 + i));
-      } else {
+        ps.gravity = new Vector3(0, -4, 0);
+      } else if (weather === 'SNOW') {
         ps.color1 = new Color4(1, 1, 1, 0.9);
         ps.color2 = new Color4(0.85, 0.92, 1, 0.8);
         ps.colorDead = new Color4(1, 1, 1, 0);
@@ -1195,8 +1198,32 @@ export async function createRoomScene(
         ps.minLifeTime = 2.5;
         ps.maxLifeTime = 6;
         ps.emitRate = Math.round(150 * (0.4 + i));
+        ps.gravity = new Vector3(0, -0.4, 0);
+      } else if (weather === 'SAKURA_BLOSSOM') {
+        ps.color1 = new Color4(0.98, 0.70, 0.82, 0.85);
+        ps.color2 = new Color4(1.0, 0.85, 0.92, 0.7);
+        ps.colorDead = new Color4(0.95, 0.65, 0.8, 0);
+        ps.direction1 = new Vector3(-0.8, -0.8, -0.3);
+        ps.direction2 = new Vector3(0.6, -1.6, 0.4);
+        ps.minSize = 0.08;
+        ps.maxSize = 0.18;
+        ps.minLifeTime = 3.0;
+        ps.maxLifeTime = 7.0;
+        ps.emitRate = Math.round(120 * (0.5 + i));
+        ps.gravity = new Vector3(0.1, -0.2, 0);
+      } else if (weather === 'SANDSTORM') {
+        ps.color1 = new Color4(0.88, 0.72, 0.45, 0.8);
+        ps.color2 = new Color4(0.78, 0.58, 0.35, 0.6);
+        ps.colorDead = new Color4(0.7, 0.5, 0.3, 0);
+        ps.direction1 = new Vector3(-3.0, -0.8, -0.5);
+        ps.direction2 = new Vector3(-5.0, -1.8, 0.5);
+        ps.minSize = 0.05;
+        ps.maxSize = 0.15;
+        ps.minLifeTime = 1.0;
+        ps.maxLifeTime = 2.5;
+        ps.emitRate = Math.round(300 * (0.5 + i));
+        ps.gravity = new Vector3(-1.0, -0.5, 0);
       }
-      ps.gravity = new Vector3(0, rain ? -4 : -0.4, 0);
       ps.start();
       weatherParticles = ps;
     }
