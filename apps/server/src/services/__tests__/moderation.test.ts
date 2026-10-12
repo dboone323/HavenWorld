@@ -140,4 +140,11 @@ describe('ModerationService', () => {
     expect(result.filtered).toContain('*');
     expect(result.filtered).not.toContain('damn');
   });
+
+  it('strips zero-width evasion characters and normalizes visual homoglyphs', () => {
+    const evasion = 'd\u200Ba\u200Cmn';
+    const result = moderateMessage(evasion);
+    expect(result.wasFiltered).toBe(true);
+    expect(result.filtered).toContain('*');
+  });
 });
