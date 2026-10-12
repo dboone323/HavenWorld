@@ -14,6 +14,16 @@ export const DEFAULT_ROOM_BOUNDS: RoomBounds = {
   maxY: 800,
 };
 
+export interface RoomCapacityLimits {
+  softCap: number; // e.g. 25: normal players spill over to next shard once reached
+  hardCap: number; // e.g. 30: absolute maximum capacity, VIPs can enter up to hardCap
+}
+
+export const DEFAULT_ROOM_CAPACITY: RoomCapacityLimits = {
+  softCap: 25,
+  hardCap: 30,
+};
+
 interface RoomState {
   players: Map<string, PlayerState>; // socketId → PlayerState
   chatHistory: ChatMessage[]; // last 50 messages (ring buffer)
@@ -27,6 +37,9 @@ class RoomManager {
   private socketToRoom = new Map<string, string>(); // socketId → roomId
   private socketToUser = new Map<string, string>(); // socketId → userId
   private userToSocket = new Map<string, string>(); // userId → socketId
+  private roomCapacity = new Map<string, RoomCapacityLimits>();
+  private waitingQueues = new Map<string, string[]>(); // baseRoomId → array of userIds
+  private admittedQueueUsers = new Set<string>(); // users permitted entry from queue
 
   // ── Room lifecycle ──────────────────────────────────────────────────────────
   private ensureRoom(roomId: string): RoomState {
@@ -74,6 +87,17 @@ class RoomManager {
     if (room && room.players.size === 0 && roomId !== 'room-park') {
       this.rooms.delete(roomId);
     }
+
+    // When an occupant leaves a room, if a waiting queue exists, admit next user
+    const baseRoomId = roomId.split('#')[0];
+    const queue = this.waitingQueues.get(baseRoomId);
+    if (queue && queue.length > 0) {
+      const nextUser = queue.shift();
+      if (nextUser) {
+        this.admittedQueueUsers.add(nextUser);
+      }
+    }
+
     return player ? { roomId, playerId: player.id } : null;
   }
 
@@ -213,6 +237,102 @@ class RoomManager {
     const player = this.rooms.get(roomId)?.players.get(socketId);
     if (!player) return undefined;
     return { ...player, roomId };
+  }
+
+  // ── Capacity Soft-Caps & Overflow Sharding (Batch 39) ──────────────────────
+
+  setRoomCapacityLimits(roomId: string, limits: Partial<RoomCapacityLimits>): RoomCapacityLimits {
+    const existing = this.getRoomCapacityLimits(roomId);
+    const updated: RoomCapacityLimits = {
+      softCap: limits.softCap ?? existing.softCap,
+      hardCap: limits.hardCap ?? existing.hardCap,
+    };
+    this.roomCapacity.set(roomId, updated);
+    return updated;
+  }
+
+  getRoomCapacityLimits(roomId: string): RoomCapacityLimits {
+    return this.roomCapacity.get(roomId) ?? { ...DEFAULT_ROOM_CAPACITY };
+  }
+
+  resolveTargetRoomInstance(
+    baseRoomId: string,
+    userId: string,
+    isVip: boolean = false,
+    maxShards: number = 5
+  ): { targetRoomId: string; canEnter: boolean; queuePosition?: number; shardIndex: number } {
+    const limits = this.getRoomCapacityLimits(baseRoomId);
+
+    // If user was previously admitted from queue, let them into base room
+    if (this.admittedQueueUsers.has(userId)) {
+      this.admittedQueueUsers.delete(userId);
+      return { targetRoomId: baseRoomId, canEnter: true, shardIndex: 1 };
+    }
+
+    // Iterate shards 1 to maxShards
+    for (let i = 1; i <= maxShards; i++) {
+      const shardId = i === 1 ? baseRoomId : `${baseRoomId}#${i}`;
+      const count = this.getOccupantCount(shardId);
+
+      // VIPs can enter up to hardCap, standard players up to softCap
+      const allowedCap = isVip ? limits.hardCap : limits.softCap;
+      if (count < allowedCap) {
+        return { targetRoomId: shardId, canEnter: true, shardIndex: i };
+      }
+    }
+
+    // All shards full -> enqueue player
+    const pos = this.enqueueWaitingPlayer(baseRoomId, userId);
+    return { targetRoomId: baseRoomId, canEnter: false, queuePosition: pos, shardIndex: 0 };
+  }
+
+  enqueueWaitingPlayer(baseRoomId: string, userId: string): number {
+    let queue = this.waitingQueues.get(baseRoomId);
+    if (!queue) {
+      queue = [];
+      this.waitingQueues.set(baseRoomId, queue);
+    }
+    const idx = queue.indexOf(userId);
+    if (idx !== -1) return idx + 1;
+
+    queue.push(userId);
+    return queue.length;
+  }
+
+  dequeueWaitingPlayer(baseRoomId: string, userId: string): boolean {
+    const queue = this.waitingQueues.get(baseRoomId);
+    if (!queue) return false;
+    const idx = queue.indexOf(userId);
+    if (idx !== -1) {
+      queue.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  getQueuePosition(baseRoomId: string, userId: string): number | null {
+    const queue = this.waitingQueues.get(baseRoomId);
+    if (!queue) return null;
+    const idx = queue.indexOf(userId);
+    return idx !== -1 ? idx + 1 : null;
+  }
+
+  listRoomShards(baseRoomId: string, maxShards = 5) {
+    const limits = this.getRoomCapacityLimits(baseRoomId);
+    const list = [];
+    for (let i = 1; i <= maxShards; i++) {
+      const shardId = i === 1 ? baseRoomId : `${baseRoomId}#${i}`;
+      const occupants = this.getOccupantCount(shardId);
+      list.push({
+        roomId: shardId,
+        shardIndex: i,
+        occupants,
+        softCap: limits.softCap,
+        hardCap: limits.hardCap,
+        isFull: occupants >= limits.hardCap,
+      });
+    }
+    return list;
   }
 }
 
