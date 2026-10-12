@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import { AnalyticsService } from './AnalyticsService';
+import { WeatherService, type WorldWeather } from './WeatherService';
 import { FISH_CATALOG, FISHING_CONSTANTS, FishSpecies } from '@havenworld/shared';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
@@ -11,6 +12,8 @@ interface ActiveFishingSession {
   roomId: string;
   fish: FishSpecies;
   weightLbs: number;
+  isTrophy: boolean;
+  weatherMultiplier: number;
   currentTension: number; // 0.0 to 1.0
   sweetSpotCenter: number;// 0.0 to 1.0
   sweetSpotWidth: number; // 0.25 standard
@@ -24,15 +27,59 @@ export class FishingService {
   private static activeSessions = new Map<string, ActiveFishingSession>();
 
   /**
-   * Selects a fish based on weighted rarity probabilities
+   * Calculates weather drop rate bonus and weight variance multiplier
    */
-  private static pickRandomFish(): FishSpecies {
+  static calculateWeatherBonus(weather: WorldWeather = 'SUNNY'): {
+    rarityBonus: number;
+    weightMultiplier: number;
+    description: string;
+  } {
+    switch (weather) {
+      case 'RAIN':
+        return {
+          rarityBonus: 8, // +8% higher rarity shift
+          weightMultiplier: 1.1,
+          description: 'Rainy waters stir up uncommon and rare fish.',
+        };
+      case 'AURORA':
+        return {
+          rarityBonus: 15, // +15% higher rarity shift (double legendary chance)
+          weightMultiplier: 1.25,
+          description: 'Mystical Aurora lights attract legendary radiant species.',
+        };
+      case 'SNOW':
+        return {
+          rarityBonus: 5,
+          weightMultiplier: 1.2, // Deep-freeze heavyweights
+          description: 'Chilly waters yield heavier trophy catches.',
+        };
+      case 'SUNNY':
+      default:
+        return {
+          rarityBonus: 0,
+          weightMultiplier: 1.0,
+          description: 'Standard calm waters.',
+        };
+    }
+  }
+
+  /**
+   * Selects a fish based on weighted rarity probabilities and weather bonus
+   */
+  static pickRandomFish(weather?: WorldWeather): FishSpecies {
+    const activeWeather = weather ?? WeatherService.getWeather().currentWeather;
+    const bonus = this.calculateWeatherBonus(activeWeather);
+
     const roll = Math.random() * 100;
     let targetRarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'LEGENDARY';
 
-    if (roll < 55) targetRarity = 'COMMON';
-    else if (roll < 85) targetRarity = 'UNCOMMON';
-    else if (roll < 97) targetRarity = 'RARE';
+    const commonThreshold = Math.max(30, 55 - bonus.rarityBonus);
+    const uncommonThreshold = Math.max(60, 85 - Math.round(bonus.rarityBonus * 0.7));
+    const rareThreshold = Math.max(85, 97 - Math.round(bonus.rarityBonus * 0.4));
+
+    if (roll < commonThreshold) targetRarity = 'COMMON';
+    else if (roll < uncommonThreshold) targetRarity = 'UNCOMMON';
+    else if (roll < rareThreshold) targetRarity = 'RARE';
     else targetRarity = 'LEGENDARY';
 
     const candidates = FISH_CATALOG.filter((f) => f.rarity === targetRarity);
@@ -41,21 +88,37 @@ export class FishingService {
   }
 
   /**
+   * Calculates fish weight with trophy variance
+   */
+  static calculateFishWeight(
+    fish: FishSpecies,
+    weightMultiplier: number = 1.0
+  ): { weightLbs: number; isTrophy: boolean } {
+    const effectiveMax = fish.maxWeight * weightMultiplier;
+    const rawWeight = fish.minWeight + Math.random() * (effectiveMax - fish.minWeight);
+    const weightLbs = parseFloat(rawWeight.toFixed(2));
+    const isTrophy = weightLbs >= fish.maxWeight * 0.9;
+    return { weightLbs, isTrophy };
+  }
+
+  /**
    * Starts a fishing session when player casts line
    */
   static startSession(userId: string, roomId: string) {
     this.cancelSession(userId);
 
-    const fish = this.pickRandomFish();
-    const weightLbs = parseFloat(
-      (fish.minWeight + Math.random() * (fish.maxWeight - fish.minWeight)).toFixed(2)
-    );
+    const currentWeather = WeatherService.getWeather().currentWeather;
+    const weatherBonus = this.calculateWeatherBonus(currentWeather);
+    const fish = this.pickRandomFish(currentWeather);
+    const { weightLbs, isTrophy } = this.calculateFishWeight(fish, weatherBonus.weightMultiplier);
 
     const session: ActiveFishingSession = {
       userId,
       roomId,
       fish,
       weightLbs,
+      isTrophy,
+      weatherMultiplier: weatherBonus.weightMultiplier,
       currentTension: 0.35, // starting tension
       sweetSpotCenter: 0.5,
       sweetSpotWidth: 0.25,
@@ -145,8 +208,11 @@ export class FishingService {
   private static async endSessionSuccess(session: ActiveFishingSession) {
     this.cancelSession(session.userId);
 
-    const coinMultiplier = 1 + (session.weightLbs / session.fish.maxWeight) * 0.5;
-    const coins = Math.round(session.fish.baseCoinReward * coinMultiplier);
+    const baseWeightRatio = session.weightLbs / session.fish.maxWeight;
+    const weatherMult = session.weatherMultiplier || 1.0;
+    const coinMultiplier = (1 + baseWeightRatio * 0.5) * weatherMult;
+    const trophyBonusCoins = session.isTrophy ? 50 : 0;
+    const coins = Math.round(session.fish.baseCoinReward * coinMultiplier) + trophyBonusCoins;
     const isRare = session.fish.rarity === 'RARE' || session.fish.rarity === 'LEGENDARY';
 
     try {

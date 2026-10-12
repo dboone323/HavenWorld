@@ -3,13 +3,13 @@ import { QuestService } from './QuestService';
 import { AchievementService } from './AchievementService';
 import { AnalyticsService } from './AnalyticsService';
 
-interface PizzaOrderPayload {
+export interface PizzaOrderPayload {
   recipe: 'margherita' | 'funghi_rustica' | 'green_garden' | 'seasonal';
   ingredients: string[];
   durationMs: number;
 }
 
-const RECIPES: Record<string, { order: string[]; maxMs: number }> = {
+export const RECIPES: Record<string, { order: string[]; maxMs: number }> = {
   margherita: {
     order: ['dough', 'sauce', 'mozzarella'],
     maxMs: 15_000,

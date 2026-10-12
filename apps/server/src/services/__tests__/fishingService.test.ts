@@ -1,6 +1,7 @@
 import { FishingService } from '../FishingService';
 import { prisma } from '../../prisma';
 import { createTestUser } from '../../../__tests__/helpers/factories';
+import { FISH_CATALOG } from '@havenworld/shared';
 
 type TestSession = {
   userId: string;
@@ -236,5 +237,75 @@ describe('FishingService (Real Database Validation)', () => {
   it('cancelSession and tick tolerate unknown users', async () => {
     expect(() => FishingService.cancelSession('ghost')).not.toThrow();
     await expect(tick('ghost')).resolves.toBeUndefined();
+  });
+
+  describe('Weather Drop Rates & Trophy Variance (Batch 22)', () => {
+    it('calculateWeatherBonus returns distinct bonus profiles for each weather type', () => {
+      const sunny = FishingService.calculateWeatherBonus('SUNNY');
+      expect(sunny.rarityBonus).toBe(0);
+      expect(sunny.weightMultiplier).toBe(1.0);
+
+      const rain = FishingService.calculateWeatherBonus('RAIN');
+      expect(rain.rarityBonus).toBe(8);
+      expect(rain.weightMultiplier).toBe(1.1);
+
+      const aurora = FishingService.calculateWeatherBonus('AURORA');
+      expect(aurora.rarityBonus).toBe(15);
+      expect(aurora.weightMultiplier).toBe(1.25);
+
+      const snow = FishingService.calculateWeatherBonus('SNOW');
+      expect(snow.rarityBonus).toBe(5);
+      expect(snow.weightMultiplier).toBe(1.2);
+    });
+
+    it('pickRandomFish selects valid species for all weather conditions', () => {
+      const weathers: Array<'SUNNY' | 'RAIN' | 'AURORA' | 'SNOW'> = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'];
+      for (const w of weathers) {
+        const fish = FishingService.pickRandomFish(w);
+        expect(fish).toBeDefined();
+        expect(fish.id).toBeTruthy();
+        expect(fish.name).toBeTruthy();
+        expect(['COMMON', 'UNCOMMON', 'RARE', 'LEGENDARY']).toContain(fish.rarity);
+      }
+    });
+
+    it('calculateFishWeight correctly flags trophy status when weight meets or exceeds 90% max', () => {
+      const fish = FISH_CATALOG[0];
+
+      const resultNormal = FishingService.calculateFishWeight(fish, 1.0);
+      expect(resultNormal.weightLbs).toBeGreaterThanOrEqual(fish.minWeight);
+      expect(resultNormal.weightLbs).toBeLessThanOrEqual(fish.maxWeight);
+
+      // Multiplier expands weight ceiling
+      const highMultiplierResult = FishingService.calculateFishWeight(fish, 1.5);
+      expect(highMultiplierResult.weightLbs).toBeGreaterThanOrEqual(fish.minWeight);
+      if (highMultiplierResult.weightLbs >= fish.maxWeight * 0.9) {
+        expect(highMultiplierResult.isTrophy).toBe(true);
+      }
+    });
+
+    it('catching a trophy fish under weather multiplier awards enhanced havenCoins', async () => {
+      const user = await makeUser(50);
+      FishingService.startSession(user.id, 'room-park');
+      const session = stabilize(user.id)!;
+
+      // Manually set trophy and weather multiplier attributes
+      (session as unknown as { isTrophy: boolean; weatherMultiplier: number }).isTrophy = true;
+      (session as unknown as { isTrophy: boolean; weatherMultiplier: number }).weatherMultiplier = 1.25;
+      session.sweetSpotWidth = 1;
+      session.playerReelPos = 0.5;
+      session.currentTension = 0.99;
+
+      await tick(user.id);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const catches = await prisma.fishCatch.findMany({ where: { userId: user.id } });
+      expect(catches).toHaveLength(1);
+      // Base reward + 50 trophy bonus coins
+      expect(catches[0].coinsEarned).toBeGreaterThanOrEqual(50);
+
+      const updatedUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(updatedUser.havenCoins).toBe(50 + catches[0].coinsEarned);
+    });
   });
 });

@@ -14,6 +14,41 @@ router.get('/targets', requireAuth, (req, res) => {
   return res.json(targets);
 });
 
+// GET /api/scavenger/clues/current — get player's active scavenger hunt riddle and progress
+router.get('/clues/current', requireAuth, (req: AuthRequest, res) => {
+  const progress = ScavengerHuntService.getUserProgress(req.user!.userId);
+  return res.json(progress);
+});
+
+const solveClueSchema = z.object({
+  clueIndex: z.number().int().positive(),
+  roomId: z.string().min(1),
+  solutionToken: z.string().min(1),
+});
+
+// POST /api/scavenger/clues/solve — submit cryptographic clue solution to advance quest
+router.post('/clues/solve', requireAuth, async (req: AuthRequest, res) => {
+  const parsed = solveClueSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Invalid clue solution payload',
+      issues: parsed.error.issues,
+    });
+  }
+
+  try {
+    const result = await ScavengerHuntService.solveClue(
+      req.user!.userId,
+      parsed.data.clueIndex,
+      parsed.data.roomId,
+      parsed.data.solutionToken
+    );
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Failed to solve scavenger clue' });
+  }
+});
+
 const claimTicketSchema = z.object({
   ticketId: z.string().min(1),
   x: z.number().finite().optional(),

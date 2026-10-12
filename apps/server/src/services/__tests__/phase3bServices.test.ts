@@ -80,6 +80,62 @@ describe('Phase 3B JukeboxService', () => {
   it('reports no track for a room that never played one', () => {
     expect(JukeboxService.getCurrentTrack('room-never-played').track).toBeNull();
   });
+
+  describe('Batch 25: Custom Playlist Management & Skip Throttle', () => {
+    beforeEach(() => {
+      JukeboxService.resetThrottle();
+    });
+
+    it('setRoomPlaylist initializes custom playlist, validates tracks, and plays first track', () => {
+      const result = JukeboxService.setRoomPlaylist('room-party', ['haven_nostalgia', 'cozy_fireplace', 'neon_pulse'], 'LOOP');
+      expect(result.playlist).toEqual(['haven_nostalgia', 'cozy_fireplace', 'neon_pulse']);
+      expect(result.mode).toBe('LOOP');
+      expect(result.currentTrack.id).toBe('haven_nostalgia');
+
+      const pl = JukeboxService.getRoomPlaylist('room-party');
+      expect(pl?.tracks).toHaveLength(3);
+      expect(pl?.currentIndex).toBe(0);
+
+      // Current room track matches
+      const current = JukeboxService.getCurrentTrack('room-party');
+      expect(current.track?.id).toBe('haven_nostalgia');
+
+      // Reject empty or invalid track playlist
+      expect(() => JukeboxService.setRoomPlaylist('room-party', [])).toThrow(/empty/i);
+      expect(() => JukeboxService.setRoomPlaylist('room-party', ['fake_audio_track'])).toThrow(/not found/i);
+    });
+
+    it('addTrackToPlaylist appends tracks to an existing playlist', () => {
+      JukeboxService.setRoomPlaylist('room-party-2', ['haven_nostalgia']);
+      const updated = JukeboxService.addTrackToPlaylist('room-party-2', 'cozy_fireplace');
+      expect(updated.tracks).toEqual(['haven_nostalgia', 'cozy_fireplace']);
+    });
+
+    it('skipTrack advances through playlist and throttles rapid skips within 5 seconds', () => {
+      JukeboxService.setRoomPlaylist('room-disco', ['haven_nostalgia', 'cozy_fireplace', 'neon_pulse'], 'LOOP');
+
+      // First skip succeeds
+      const skip1 = JukeboxService.skipTrack('room-disco', 'dj_user');
+      expect(skip1.track.id).toBe('cozy_fireplace');
+
+      // Immediate second skip by same user triggers throttle
+      expect(() => JukeboxService.skipTrack('room-disco', 'dj_user')).toThrow(/throttled/i);
+
+      // Force option bypasses throttle
+      const forcedSkip = JukeboxService.skipTrack('room-disco', 'dj_user', { force: true });
+      expect(forcedSkip.track.id).toBe('neon_pulse');
+
+      // Next skip loops back to beginning
+      const loopedSkip = JukeboxService.skipTrack('room-disco', 'dj_user', { force: true });
+      expect(loopedSkip.track.id).toBe('haven_nostalgia');
+    });
+
+    it('supports SHUFFLE mode when skipping tracks', () => {
+      JukeboxService.setRoomPlaylist('room-shuffle', ['haven_nostalgia', 'cozy_fireplace', 'neon_pulse'], 'SHUFFLE');
+      const skipped = JukeboxService.skipTrack('room-shuffle', 'dj_user', { force: true });
+      expect(['haven_nostalgia', 'cozy_fireplace', 'neon_pulse']).toContain(skipped.track.id);
+    });
+  });
 });
 
 describe('Phase 3B RandomizerService', () => {

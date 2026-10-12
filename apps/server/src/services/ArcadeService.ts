@@ -66,12 +66,15 @@ export interface ConnectFourMatch {
   winnerId: string | null; // null if in progress or draw
   isDraw: boolean;
   createdAt: number;
+  forfeitedBy?: string;
 }
 
 export class ArcadeService {
   private static matches = new Map<string, ConnectFourMatch>();
   /** Idempotency guard: a match can only ever pay out once (survives reconnect/re-broadcast). */
   private static settlements = new Map<string, ArcadeSettlement>();
+  /** Rematch handshake request registry per finished matchId */
+  private static rematchRequests = new Map<string, Set<string>>();
   /**
    * Finished matches whose payout has not been written yet. A settlement that
    * fails (DB blip, player disconnected mid-settlement, server stall) lands
@@ -175,6 +178,92 @@ export class ArcadeService {
     // Alternate turn
     match.currentTurn = playerId === match.player1Id ? match.player2Id : match.player1Id;
     return match;
+  }
+
+  /**
+   * Forfeits an in-progress match, granting victory to the opposing player
+   */
+  static forfeitMatch(matchId: string, forfeitingPlayerId: string): ConnectFourMatch {
+    const match = this.matches.get(matchId);
+    if (!match) throw new Error('Arcade match not found');
+    if (match.status === 'FINISHED') throw new Error('Match has already finished');
+    if (forfeitingPlayerId !== match.player1Id && forfeitingPlayerId !== match.player2Id) {
+      throw new Error('Player is not part of this match');
+    }
+
+    match.status = 'FINISHED';
+    match.winnerId = forfeitingPlayerId === match.player1Id ? match.player2Id : match.player1Id;
+    match.isDraw = false;
+    match.forfeitedBy = forfeitingPlayerId;
+
+    void this.recordOwedPayout(match);
+    return match;
+  }
+
+  /**
+   * Rematch handshake: records player's rematch willingness. When both agree, starts new match.
+   */
+  static requestRematch(
+    matchId: string,
+    requestingPlayerId: string
+  ): { matchId: string; status: 'PENDING' | 'ACCEPTED'; newMatch?: ConnectFourMatch } {
+    const match = this.matches.get(matchId);
+    if (!match) throw new Error('Arcade match not found');
+    if (match.status !== 'FINISHED') throw new Error('Can only rematch a finished match');
+    if (requestingPlayerId !== match.player1Id && requestingPlayerId !== match.player2Id) {
+      throw new Error('Player is not part of this match');
+    }
+
+    let requesters = this.rematchRequests.get(matchId);
+    if (!requesters) {
+      requesters = new Set<string>();
+      this.rematchRequests.set(matchId, requesters);
+    }
+    requesters.add(requestingPlayerId);
+
+    const opponentId = requestingPlayerId === match.player1Id ? match.player2Id : match.player1Id;
+
+    // Both players accepted -> Handshake complete!
+    if (requesters.has(opponentId)) {
+      this.rematchRequests.delete(matchId);
+      // Clean up previous match from active status on cabinet so new match can start
+      this.matches.delete(matchId);
+
+      // Start new match on same cabinet with swapped first turn
+      const newMatch = this.startMatch(match.player2Id, match.player1Id, match.cabinetId);
+      return { matchId, status: 'ACCEPTED', newMatch };
+    }
+
+    return { matchId, status: 'PENDING' };
+  }
+
+  /**
+   * Rejects or cancels an open rematch handshake
+   */
+  static cancelRematch(matchId: string, playerId: string): boolean {
+    const match = this.matches.get(matchId);
+    if (!match) throw new Error('Arcade match not found');
+    if (playerId !== match.player1Id && playerId !== match.player2Id) {
+      throw new Error('Player is not part of this match');
+    }
+
+    const existed = this.rematchRequests.has(matchId);
+    this.rematchRequests.delete(matchId);
+    return existed;
+  }
+
+  /**
+   * Returns rematch status for a finished match
+   */
+  static getRematchStatus(matchId: string): { requestedBy: string[]; status: 'NONE' | 'PENDING' } {
+    const requesters = this.rematchRequests.get(matchId);
+    if (!requesters || requesters.size === 0) {
+      return { requestedBy: [], status: 'NONE' };
+    }
+    return {
+      requestedBy: Array.from(requesters),
+      status: 'PENDING',
+    };
   }
 
   /**
