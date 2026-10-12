@@ -7,6 +7,7 @@ import { WeatherService } from '../services/WeatherService';
 import { GlobalEventService } from '../services/GlobalEventService';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { RedisHealthService } from '../services/RedisHealthService';
+import { DatabaseHealthTelemetryService } from '../services/DatabaseHealthTelemetryService';
 import { roomManager } from '../services/RoomManager';
 import { traceSpan } from '../monitoring/sentry';
 import { prisma } from '../prisma';
@@ -463,6 +464,21 @@ router.get('/system-health', async (_req, res) => {
       activeRooms: occupants.size,
       totalOnlinePlayers,
     });
+  });
+});
+
+// GET /api/admin/database-health — automated database health telemetry report
+router.get('/database-health', async (_req, res) => {
+  return await traceSpan('admin.database_health', 'diagnostic', async () => {
+    try {
+      const report = await DatabaseHealthTelemetryService.getTelemetryReport();
+      return res.json(report);
+    } catch (err: any) {
+      return res.status(500).json({
+        status: 'DOWN',
+        error: err?.message || 'Database health telemetry failed',
+      });
+    }
   });
 });
 
