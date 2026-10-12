@@ -1,4 +1,5 @@
 import { WorkshopService } from '../WorkshopService';
+import { CraftingService } from '../CraftingService';
 import { prisma } from '../../prisma';
 import { createTestUser } from '../../../__tests__/helpers/factories';
 import { truncateAllTables } from '../../../__tests__/helpers/dbHelpers';
@@ -115,5 +116,101 @@ describe('WorkshopService', () => {
 
     const userQueue = await prisma.craftingQueue.findMany({ where: { userId: user.id } });
     expect(userQueue.length).toBe(2);
+  });
+
+  describe('Batch 24: CraftingService Recipe Unlocks & Queue Slot Expansions', () => {
+    afterEach(async () => {
+      // Clean up any test crafting queues
+    });
+
+    it('validates recipe unlock requirements (common is unlocked, rare requires unlock)', async () => {
+      const user = await createTestUser();
+      CraftingService.resetRecipeUnlocks(user.id);
+
+      const commonRecipe = CRAFTING_RECIPES.find((r) => r.rarity === 'COMMON')!;
+      const rareRecipe = CRAFTING_RECIPES.find((r) => r.rarity === 'RARE')!;
+
+      // Common recipe is unlocked by default
+      const commonUnlocked = await CraftingService.isRecipeUnlocked(user.id, commonRecipe.id);
+      expect(commonUnlocked).toBe(true);
+
+      // Rare recipe is locked by default
+      const rareUnlockedBefore = await CraftingService.isRecipeUnlocked(user.id, rareRecipe.id);
+      expect(rareUnlockedBefore).toBe(false);
+
+      // Attempting to craft a locked recipe throws an error
+      await expect(CraftingService.startCraft(user.id, rareRecipe.id)).rejects.toThrow(
+        /locked\. Unlock requirement not met/i
+      );
+
+      // Unlocking the rare recipe succeeds
+      const unlockRes = await CraftingService.unlockRecipe(user.id, rareRecipe.id);
+      expect(unlockRes.success).toBe(true);
+      expect(unlockRes.recipeId).toBe(rareRecipe.id);
+
+      const rareUnlockedAfter = await CraftingService.isRecipeUnlocked(user.id, rareRecipe.id);
+      expect(rareUnlockedAfter).toBe(true);
+    });
+
+    it('enforces queue slot limits and allows expansion up to maximum capacity', async () => {
+      const user = await createTestUser();
+      CraftingService.resetQueueSlots(user.id);
+
+      // Base capacity should be 2
+      const baseMax = await CraftingService.getUserMaxQueueSlots(user.id);
+      expect(baseMax).toBe(2);
+
+      const commonRecipe = CRAFTING_RECIPES.find((r) => r.rarity === 'COMMON')!;
+
+      // Give user enough materials for multiple crafts
+      await prisma.materialInventory.create({
+        data: {
+          userId: user.id,
+          timber: 200,
+          scrapMetal: 200,
+          fabric: 200,
+          crystalShard: 200,
+        },
+      });
+
+      // Craft 1 and 2 fill the base slots
+      const c1 = await CraftingService.startCraft(user.id, commonRecipe.id);
+      const c2 = await CraftingService.startCraft(user.id, commonRecipe.id);
+      expect(c1).toBeDefined();
+      expect(c2).toBeDefined();
+
+      const status = await CraftingService.getQueueSlotStatus(user.id);
+      expect(status.activeCount).toBe(2);
+      expect(status.maxSlots).toBe(2);
+      expect(status.availableSlots).toBe(0);
+
+      // Attempting a 3rd craft exceeds base capacity and throws
+      await expect(CraftingService.startCraft(user.id, commonRecipe.id)).rejects.toThrow(
+        /Crafting queue is full/i
+      );
+
+      // Expand queue by 1 slot
+      const expandRes = await CraftingService.expandQueueSlots(user.id, 1);
+      expect(expandRes.currentSlots).toBe(3);
+
+      // Now 3rd craft succeeds!
+      const c3 = await CraftingService.startCraft(user.id, commonRecipe.id);
+      expect(c3).toBeDefined();
+
+      // Check slot status
+      const updatedStatus = await CraftingService.getQueueSlotStatus(user.id);
+      expect(updatedStatus.activeCount).toBe(3);
+      expect(updatedStatus.maxSlots).toBe(3);
+
+      // Expand to max limit (5)
+      await CraftingService.expandQueueSlots(user.id, 2);
+      const maxSlots = await CraftingService.getUserMaxQueueSlots(user.id);
+      expect(maxSlots).toBe(5);
+
+      // Cannot expand beyond max capacity
+      await expect(CraftingService.expandQueueSlots(user.id, 1)).rejects.toThrow(
+        /Cannot expand beyond maximum capacity/i
+      );
+    });
   });
 });
