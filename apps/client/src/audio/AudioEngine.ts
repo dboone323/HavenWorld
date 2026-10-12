@@ -462,6 +462,106 @@ export class AudioEngine {
     });
   }
 
+  // ── Spatial Audio & Reverb Zones (Batch 35) ──────────────────────────────
+
+  private currentReverbZone: 'cathedral' | 'small_room' | 'open_park' | 'underwater_cave' | 'none' = 'none';
+  public convolverNode: ConvolverNode | null = null;
+  public reverbBusGain: GainNode | null = null;
+
+  /**
+   * Computes distance attenuation gain and stereo panning for sound source
+   */
+  calculateSpatialParameters(
+    sourcePos: { x: number; y: number; z?: number },
+    listenerPos: { x: number; y: number; z?: number },
+    maxDistance = 500
+  ): { distance: number; gain: number; pan: number } {
+    const dx = sourcePos.x - listenerPos.x;
+    const dy = sourcePos.y - listenerPos.y;
+    const dz = (sourcePos.z || 0) - (listenerPos.z || 0);
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    const gain = Math.max(0, Math.min(1, 1 - distance / maxDistance));
+    const panRange = maxDistance * 0.5 || 1;
+    const pan = Math.max(-1, Math.min(1, dx / panRange));
+
+    return {
+      distance: Math.round(distance * 100) / 100,
+      gain: Math.round(gain * 1000) / 1000,
+      pan: Math.round(pan * 1000) / 1000,
+    };
+  }
+
+  /**
+   * Synthesizes procedural decaying Gaussian impulse response buffer
+   */
+  createProceduralImpulseBuffer(
+    durationSeconds = 1.5,
+    decayRate = 2.0
+  ): AudioBuffer | null {
+    const ctx = this.ctx;
+    if (!ctx || !ctx.createBuffer) return null;
+
+    const sampleRate = ctx.sampleRate || 44100;
+    const length = Math.floor(sampleRate * durationSeconds);
+    const impulse = ctx.createBuffer(2, length, sampleRate);
+
+    for (let channel = 0; channel < 2; channel++) {
+      const channelData = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i++) {
+        const t = i / sampleRate;
+        channelData[i] = (Math.random() * 2 - 1) * Math.exp(-t * decayRate);
+      }
+    }
+    return impulse;
+  }
+
+  /**
+   * Switches ambient acoustic space with procedural reverb convolver
+   */
+  setAmbientReverbZone(
+    zone: 'cathedral' | 'small_room' | 'open_park' | 'underwater_cave' | 'none'
+  ): void {
+    this.currentReverbZone = zone;
+    if (zone === 'none') {
+      if (this.reverbBusGain && this.ctx) {
+        this.reverbBusGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      }
+      return;
+    }
+
+    if (!this.ctx) this.initContext();
+    const ctx = this.ctx;
+    if (!ctx || !this.masterGain) return;
+
+    const zoneConfigs = {
+      cathedral: { duration: 3.2, decay: 2.2, mix: 0.4 },
+      small_room: { duration: 0.8, decay: 3.5, mix: 0.2 },
+      open_park: { duration: 0.4, decay: 4.5, mix: 0.1 },
+      underwater_cave: { duration: 2.5, decay: 2.8, mix: 0.5 },
+    };
+
+    const cfg = zoneConfigs[zone];
+    const impulseBuffer = this.createProceduralImpulseBuffer(cfg.duration, cfg.decay);
+
+    if (ctx.createConvolver && impulseBuffer) {
+      if (!this.convolverNode) {
+        this.convolverNode = ctx.createConvolver();
+        this.reverbBusGain = ctx.createGain();
+        this.convolverNode.connect(this.reverbBusGain);
+        this.reverbBusGain.connect(this.masterGain);
+      }
+      this.convolverNode.buffer = impulseBuffer;
+      if (this.reverbBusGain && this.reverbBusGain.gain.setValueAtTime) {
+        this.reverbBusGain.gain.setValueAtTime(cfg.mix, ctx.currentTime);
+      }
+    }
+  }
+
+  getActiveReverbZone(): string {
+    return this.currentReverbZone;
+  }
+
   private canPlay(category: SoundCategory): boolean {
     if (this.settings.isMuted) return false;
     if (!this.settings.categories[category]) return false;

@@ -66,11 +66,31 @@ class FunctionalOscillatorNode {
 
 let activeFunctionalContext: FunctionalAudioContext | null = null;
 
+class FunctionalAudioBuffer {
+  channels: Float32Array[];
+  constructor(numberOfChannels: number, length: number) {
+    this.channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
+  }
+  getChannelData(channel: number) {
+    return this.channels[channel];
+  }
+}
+
+class FunctionalConvolverNode {
+  buffer: any = null;
+  connectedTo: any[] = [];
+  connect(dest: any) {
+    this.connectedTo.push(dest);
+  }
+}
+
 class FunctionalAudioContext {
   currentTime = 0;
+  sampleRate = 44100;
   destination = { name: 'FunctionalAudioDestination' };
   createdOscillators: FunctionalOscillatorNode[] = [];
   createdGains: FunctionalGainNode[] = [];
+  createdConvolvers: FunctionalConvolverNode[] = [];
   state: AudioContextState = 'running';
 
   constructor() {
@@ -87,6 +107,16 @@ class FunctionalAudioContext {
     const osc = new FunctionalOscillatorNode();
     this.createdOscillators.push(osc);
     return osc as unknown as OscillatorNode;
+  }
+
+  createBuffer(channels: number, length: number) {
+    return new FunctionalAudioBuffer(channels, length) as unknown as AudioBuffer;
+  }
+
+  createConvolver() {
+    const convolver = new FunctionalConvolverNode();
+    this.createdConvolvers.push(convolver);
+    return convolver as unknown as ConvolverNode;
   }
 
   async resume() {
@@ -249,5 +279,45 @@ describe('AudioEngine', () => {
     expect(activeFunctionalContext?.createdOscillators.length).toBe(17);
     const waterOsc = activeFunctionalContext!.createdOscillators[15];
     expect(waterOsc.type).toBe('sine');
+  });
+
+  it('Batch 35: Spatial audio distance attenuation and stereo panning calculation', () => {
+    // 1. Same position -> max gain, centered pan
+    const center = engine.calculateSpatialParameters({ x: 100, y: 100 }, { x: 100, y: 100 }, 500);
+    expect(center.distance).toBe(0);
+    expect(center.gain).toBe(1);
+    expect(center.pan).toBe(0);
+
+    // 2. Sound to the right at 250 units distance -> reduced gain, pan = 1 (far right)
+    const right = engine.calculateSpatialParameters({ x: 350, y: 100 }, { x: 100, y: 100 }, 500);
+    expect(right.distance).toBe(250);
+    expect(right.gain).toBe(0.5);
+    expect(right.pan).toBe(1);
+
+    // 3. Sound beyond maxDistance (600 units) -> gain culled to 0
+    const far = engine.calculateSpatialParameters({ x: 700, y: 100 }, { x: 100, y: 100 }, 500);
+    expect(far.distance).toBe(600);
+    expect(far.gain).toBe(0);
+  });
+
+  it('Batch 35: Procedural reverb impulse generation and ambient reverb zones', () => {
+    engine.init();
+
+    // Generate procedural impulse buffer
+    const buffer = engine.createProceduralImpulseBuffer(1.0, 2.0);
+    expect(buffer).not.toBeNull();
+    const ch0 = buffer!.getChannelData(0);
+    expect(ch0.length).toBe(44100);
+
+    // Switch ambient acoustic reverb zones
+    engine.setAmbientReverbZone('cathedral');
+    expect(engine.getActiveReverbZone()).toBe('cathedral');
+    expect(activeFunctionalContext?.createdConvolvers.length).toBe(1);
+
+    engine.setAmbientReverbZone('small_room');
+    expect(engine.getActiveReverbZone()).toBe('small_room');
+
+    engine.setAmbientReverbZone('none');
+    expect(engine.getActiveReverbZone()).toBe('none');
   });
 });

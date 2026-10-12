@@ -176,4 +176,221 @@ export class ClubService {
 
     return messagePayload;
   }
+
+  /**
+   * Calculates club level, perks, and threshold given treasury balance
+   */
+  static calculateTreasuryTier(balance: number) {
+    if (balance >= 20000) {
+      return {
+        level: 4,
+        perks: [
+          'Clubhouse HQ Access',
+          '+10% Fishing Coins',
+          '+15% Workshop Crafting Speed',
+          'Exclusive Grand Trophy Room & Chandelier',
+        ],
+        nextLevelThreshold: null,
+      };
+    }
+    if (balance >= 5000) {
+      return {
+        level: 3,
+        perks: [
+          'Clubhouse HQ Access',
+          '+10% Fishing Coins',
+          '+15% Workshop Crafting Speed',
+        ],
+        nextLevelThreshold: 20000,
+      };
+    }
+    if (balance >= 1000) {
+      return {
+        level: 2,
+        perks: ['Clubhouse HQ Access', '+10% Fishing Coins'],
+        nextLevelThreshold: 5000,
+      };
+    }
+    return {
+      level: 1,
+      perks: ['Clubhouse HQ Access'],
+      nextLevelThreshold: 1000,
+    };
+  }
+
+  /**
+   * Retrieves club treasury balance, level, and active perks
+   */
+  static async getTreasury(clubId: string) {
+    const club = await prisma.club.findUnique({ where: { id: clubId } });
+    if (!club) throw new Error('Club not found');
+
+    const redisKey = `club:treasury:${clubId}`;
+    let balance = 0;
+    if (redisClient.isOpen) {
+      const val = await redisClient.get(redisKey);
+      if (val !== null) {
+        balance = parseInt(val, 10) || 0;
+      }
+    }
+
+    if (balance === 0) {
+      const agg = await prisma.transactionLog.aggregate({
+        where: {
+          type: 'CLUB_TREASURY_DEPOSIT',
+          source: `club:${clubId}`,
+        },
+        _sum: { amount: true },
+      });
+      balance = agg._sum.amount || 0;
+    }
+
+    const tier = this.calculateTreasuryTier(balance);
+    return {
+      clubId,
+      balance,
+      ...tier,
+    };
+  }
+
+  /**
+   * Deposits HavenCoins into the club treasury
+   */
+  static async depositTreasury(userId: string, clubId: string, amount: number) {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Deposit amount must be a positive integer');
+    }
+
+    const member = await prisma.clubMember.findUnique({ where: { userId } });
+    if (!member || member.clubId !== clubId) {
+      throw new Error('You are not a member of this club');
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const club = await tx.club.findUnique({ where: { id: clubId } });
+      if (!club) throw new Error('Club not found');
+
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user || user.havenCoins < amount) {
+        throw new Error('Insufficient HavenCoins balance');
+      }
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { havenCoins: { decrement: amount } },
+      });
+
+      await tx.transactionLog.create({
+        data: {
+          senderId: userId,
+          receiverId: club.ownerId,
+          amount,
+          type: 'CLUB_TREASURY_DEPOSIT',
+          source: `club:${clubId}`,
+        },
+      });
+
+      return { remainingCoins: user.havenCoins - amount, ownerId: club.ownerId };
+    });
+
+    const redisKey = `club:treasury:${clubId}`;
+    let newBalance = amount;
+    if (redisClient.isOpen) {
+      newBalance = await redisClient.incrBy(redisKey, amount);
+    } else {
+      const agg = await prisma.transactionLog.aggregate({
+        where: {
+          type: 'CLUB_TREASURY_DEPOSIT',
+          source: `club:${clubId}`,
+        },
+        _sum: { amount: true },
+      });
+      newBalance = agg._sum.amount || amount;
+    }
+
+    const tier = this.calculateTreasuryTier(newBalance);
+    const payload = {
+      clubId,
+      depositorId: userId,
+      amount,
+      balance: newBalance,
+      ...tier,
+    };
+
+    const io = getIO();
+    if (io) {
+      io.to(`club:${clubId}`).emit(SOCKET_EVENTS.CLUB_TREASURY_UPDATE, payload);
+    }
+
+    return {
+      ...payload,
+      userRemainingCoins: result.remainingCoins,
+    };
+  }
+
+  /**
+   * Updates a club member's role (promotes to OFFICER or demotes to MEMBER)
+   */
+  static async updateMemberRole(
+    requesterId: string,
+    clubId: string,
+    targetUserId: string,
+    newRole: ClubRole
+  ) {
+    if (newRole === 'OWNER') {
+      throw new Error('Cannot assign OWNER role via role update');
+    }
+
+    const requester = await prisma.clubMember.findUnique({ where: { userId: requesterId } });
+    if (!requester || requester.clubId !== clubId || requester.role !== 'OWNER') {
+      throw new Error('Only the club Owner can modify member roles');
+    }
+
+    const target = await prisma.clubMember.findUnique({ where: { userId: targetUserId } });
+    if (!target || target.clubId !== clubId) {
+      throw new Error('Target user is not a member of this club');
+    }
+
+    if (target.role === 'OWNER') {
+      throw new Error('Cannot change the role of the club Owner');
+    }
+
+    const updated = await prisma.clubMember.update({
+      where: { userId: targetUserId },
+      data: { role: newRole },
+    });
+
+    const io = getIO();
+    if (io) {
+      const payload = { clubId, userId: targetUserId, role: newRole };
+      io.to(`club:${clubId}`).emit(SOCKET_EVENTS.CLUB_ROLE_UPDATE, payload);
+      io.to(`user:${targetUserId}`).emit(SOCKET_EVENTS.CLUB_ROLE_UPDATE, payload);
+    }
+
+    return updated;
+  }
+
+  /**
+   * Updates the club motto / announcement
+   */
+  static async setClubMotd(requesterId: string, clubId: string, motd: string) {
+    const requester = await prisma.clubMember.findUnique({ where: { userId: requesterId } });
+    if (!requester || requester.clubId !== clubId || requester.role === 'MEMBER') {
+      throw new Error('Only club Owner or Officers can update the club MOTD');
+    }
+
+    const cleanMotd = (motd ?? '').trim().slice(0, 80);
+    const updated = await prisma.club.update({
+      where: { id: clubId },
+      data: { motto: cleanMotd },
+    });
+
+    const io = getIO();
+    if (io) {
+      io.to(`club:${clubId}`).emit(SOCKET_EVENTS.CLUB_MOTD_UPDATE, { clubId, motd: cleanMotd });
+    }
+
+    return updated;
+  }
 }
+

@@ -92,4 +92,68 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// GET /api/clubs/:id/treasury — get club treasury balance, level, and perks
+router.get('/:id/treasury', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const treasury = await ClubService.getTreasury(req.params.id as string);
+    return res.json(treasury);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Failed to fetch treasury' });
+  }
+});
+
+// POST /api/clubs/:id/treasury/deposit — deposit HavenCoins to club treasury
+router.post('/:id/treasury/deposit', requireAuth, async (req: AuthRequest, res) => {
+  const { amount } = req.body;
+  if (typeof amount !== 'number' || amount <= 0) {
+    return res.status(400).json({ error: 'Deposit amount must be a positive number' });
+  }
+
+  try {
+    const result = await ClubService.depositTreasury(
+      req.user!.userId,
+      req.params.id as string,
+      Math.floor(amount)
+    );
+    return res.status(200).json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Treasury deposit failed' });
+  }
+});
+
+// PATCH /api/clubs/:id/members/:targetUserId/role — promote/demote club member
+router.patch('/:id/members/:targetUserId/role', requireAuth, async (req: AuthRequest, res) => {
+  const { role } = req.body;
+  if (!role || (role !== 'OFFICER' && role !== 'MEMBER')) {
+    return res.status(400).json({ error: 'Valid role (OFFICER or MEMBER) is required' });
+  }
+
+  try {
+    const updated = await ClubService.updateMemberRole(
+      req.user!.userId,
+      req.params.id as string,
+      req.params.targetUserId as string,
+      role
+    );
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Failed to update member role' });
+  }
+});
+
+// PATCH /api/clubs/:id/motd — update club motd/announcement
+router.patch('/:id/motd', requireAuth, async (req: AuthRequest, res) => {
+  const { motd } = req.body;
+  try {
+    const updated = await ClubService.setClubMotd(
+      req.user!.userId,
+      req.params.id as string,
+      String(motd ?? '')
+    );
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Failed to update club MOTD' });
+  }
+});
+
 export default router;

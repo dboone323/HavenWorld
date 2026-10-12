@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { redisClient } from '../redis';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 
@@ -175,19 +176,138 @@ export class AchievementService {
       },
     });
 
+    const stampsList = user.achievements.map((a) => ({
+      stamp: a.stamp,
+      earnedAt: a.earnedAt.toISOString(),
+    }));
+
+    const milestone = this.calculatePassportMilestone(stampsList.length);
+
+    let featuredBadge: string | null = null;
+    if (redisClient.isOpen) {
+      featuredBadge = await redisClient.get(`user:featured_badge:${targetUserId}`);
+    }
+
     return {
       userId: user.id,
       username: user.username,
       joinDate: user.createdAt.toISOString(),
       isVIP: user.isVIP,
       frameId: user.passportFrame?.frameId || 'default',
-      stamps: user.achievements.map((a) => ({
-        stamp: a.stamp,
-        earnedAt: a.earnedAt.toISOString(),
-      })),
+      featuredBadge: featuredBadge || milestone.badge,
+      milestone,
+      stamps: stampsList,
       fishCount: user._count.fishCatches,
       totalTips: user._count.tipsReceived,
       completedTrades,
     };
+  }
+
+  /**
+   * Evaluates passport milestone tier and percentage completion
+   */
+  static calculatePassportMilestone(stampCount: number) {
+    const TOTAL_STAMPS = 20;
+    const clampedCount = Math.max(0, Math.min(TOTAL_STAMPS, stampCount));
+    const percentage = Math.round((clampedCount / TOTAL_STAMPS) * 100);
+
+    if (clampedCount >= 20) {
+      return {
+        tier: 'DIAMOND',
+        badge: 'Legend of Haven',
+        completionPercentage: 100,
+        nextMilestoneCount: null,
+      };
+    }
+    if (clampedCount >= 15) {
+      return {
+        tier: 'PLATINUM',
+        badge: 'Haven Luminary',
+        completionPercentage: percentage,
+        nextMilestoneCount: 20,
+      };
+    }
+    if (clampedCount >= 10) {
+      return {
+        tier: 'GOLD',
+        badge: 'Haven Champion',
+        completionPercentage: percentage,
+        nextMilestoneCount: 15,
+      };
+    }
+    if (clampedCount >= 5) {
+      return {
+        tier: 'SILVER',
+        badge: 'Haven Pioneer',
+        completionPercentage: percentage,
+        nextMilestoneCount: 10,
+      };
+    }
+    return {
+      tier: 'BRONZE',
+      badge: 'Haven Explorer',
+      completionPercentage: percentage,
+      nextMilestoneCount: 5,
+    };
+  }
+
+  /**
+   * Sets user's customized passport frame with unlock requirement validation
+   */
+  static async setPassportFrame(userId: string, frameId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { achievements: true },
+    });
+
+    if (!user) throw new Error('User not found');
+
+    const stamps = new Set(user.achievements.map((a) => a.stamp));
+
+    // Validate unlock requirements
+    switch (frameId) {
+      case 'default':
+        break; // open to all
+      case 'golden_vip':
+        if (!user.isVIP) throw new Error('Golden VIP frame requires active VIP membership');
+        break;
+      case 'master_angler':
+        if (!stamps.has('Master Angler')) throw new Error('Requires Master Angler achievement');
+        break;
+      case 'secret_explorer':
+        if (!stamps.has('Secret Explorer')) throw new Error('Requires Secret Explorer achievement');
+        break;
+      case 'social_butterfly':
+        if (!stamps.has('Social Butterfly')) throw new Error('Requires Social Butterfly achievement');
+        break;
+      case 'grand_legend':
+        if (!stamps.has('Legend of Haven')) throw new Error('Requires Legend of Haven achievement');
+        break;
+      default:
+        throw new Error(`Unknown passport frame ID: "${frameId}"`);
+    }
+
+    const updatedFrame = await prisma.passportFrame.upsert({
+      where: { userId },
+      update: { frameId },
+      create: { userId, frameId },
+    });
+
+    return updatedFrame;
+  }
+
+  /**
+   * Sets player's featured profile badge
+   */
+  static async setFeaturedBadge(userId: string, badgeName: string) {
+    if (!badgeName || !badgeName.trim()) {
+      throw new Error('Badge name is required');
+    }
+
+    const clean = badgeName.trim().slice(0, 32);
+    if (redisClient.isOpen) {
+      await redisClient.set(`user:featured_badge:${userId}`, clean);
+    }
+    return { userId, featuredBadge: clean };
   }
 }
