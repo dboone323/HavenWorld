@@ -8,6 +8,7 @@ import { GlobalEventService } from '../services/GlobalEventService';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { RedisHealthService } from '../services/RedisHealthService';
 import { DatabaseHealthTelemetryService } from '../services/DatabaseHealthTelemetryService';
+import { ServerApmClusterService } from '../services/ServerApmClusterService';
 import { roomManager } from '../services/RoomManager';
 import { traceSpan } from '../monitoring/sentry';
 import { prisma } from '../prisma';
@@ -356,7 +357,7 @@ router.post('/global-event', requireRole(['ADMIN']), async (req, res) => {
   if (!validTypes.includes(type) || typeof title !== 'string' || title.trim().length < 3) {
     return res.status(400).json({ error: `type must be one of ${validTypes.join(', ')} and title is required` });
   }
-  const event = GlobalEventService.triggerGlobalEvent(
+  const event = await GlobalEventService.triggerGlobalEvent(
     type,
     title.trim().slice(0, 80),
     typeof description === 'string' ? description.slice(0, 300) : '',
@@ -477,6 +478,21 @@ router.get('/database-health', async (_req, res) => {
       return res.status(500).json({
         status: 'DOWN',
         error: err?.message || 'Database health telemetry failed',
+      });
+    }
+  });
+});
+
+// GET /api/admin/cluster-apm — cluster APM health telemetry aggregator
+router.get('/cluster-apm', async (_req, res) => {
+  return await traceSpan('admin.cluster_apm', 'diagnostic', async () => {
+    try {
+      const snapshot = await ServerApmClusterService.getClusterApmSnapshot();
+      return res.json(snapshot);
+    } catch (err: any) {
+      return res.status(500).json({
+        status: 'UNHEALTHY',
+        error: err?.message || 'Cluster APM snapshot failed',
       });
     }
   });
