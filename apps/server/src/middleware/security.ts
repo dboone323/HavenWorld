@@ -83,7 +83,7 @@ export function verifyStartupSecurityAssertions(): void {
   if (!process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
     throw new Error('FATAL: REDIS_URL environment variable is not set. Refusing to start.');
   }
-  const secret = process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET || '';
+  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || '';
   if (process.env.NODE_ENV === 'production' && secret.length < 64) {
     throw new Error('FATAL: JWT_SECRET must be at least 64 hex characters (32 bytes) in production.');
   }

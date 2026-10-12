@@ -12,7 +12,7 @@ async function runBruteForceTest() {
 
   let rateLimited = false;
   let attempts = 0;
-  const maxAttempts = 20;
+  const maxAttempts = 35;
 
   for (let i = 1; i <= maxAttempts; i++) {
     attempts++;

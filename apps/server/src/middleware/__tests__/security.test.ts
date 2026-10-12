@@ -50,6 +50,7 @@ describe('verifyStartupSecurityAssertions', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgresql://user:pw@127.0.0.1:5432/havenworld';
     process.env.REDIS_URL = 'redis://localhost:6379/0';
+    delete process.env.JWT_ACCESS_SECRET;
     process.env.JWT_SECRET = 'too_short';
 
     expect(() => verifyStartupSecurityAssertions()).toThrow(/64 hex/);
