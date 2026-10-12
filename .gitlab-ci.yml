@@ -2,7 +2,7 @@
 # Replaces: pr-check.yml, client-test.yml, e2e.yml, nightly.yml,
 #           load-test.yml, deploy-client.yml, deploy-server.yml
 #
-# Runner strategy (trial quota): everything Linux `saas-linux-small-amd64`
+# Runner strategy (trial quota): everything Linux `saas-linux-small-arm64`
 # (cost factor 1). No macOS jobs in this repo.
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
@@ -50,7 +50,7 @@ stages:
 
 default:
   image: node:22-bookworm
-  tags: [saas-linux-small-amd64]
+  tags: [saas-linux-small-arm64]
   interruptible: true
   cache:
     key:
