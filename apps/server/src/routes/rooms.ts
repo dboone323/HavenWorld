@@ -266,11 +266,32 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
 
   if (!room) return res.status(404).json({ error: 'Room not found.' });
 
-  return res.json(room);
+  const { passwordHash, ...safeRoom } = room;
+  return res.json({
+    ...safeRoom,
+    hasPassword: Boolean(passwordHash),
+  });
+});
+
+const placeFurnitureBodySchema = z.object({
+  itemId: z.string().min(1),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  z: z.number().finite().optional(),
+  rotation: z.number().finite().optional(),
+  layer: z.union([z.string(), z.number().int()]).optional(),
 });
 
 // POST /api/rooms/:id/furniture — place furniture in personal room (Track 3.8 Co-Building)
 router.post('/:id/furniture', requireAuth, async (req: AuthRequest, res) => {
+  const parsed = placeFurnitureBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Invalid furniture placement payload',
+      issues: parsed.error.issues,
+    });
+  }
+
   const roomId = req.params.id as string;
   const room = await prisma.room.findUnique({ where: { id: roomId } });
   if (!room) return res.status(404).json({ error: 'Room not found.' });
@@ -283,7 +304,13 @@ router.post('/:id/furniture', requireAuth, async (req: AuthRequest, res) => {
     });
   }
 
-  const { itemId, x, y, z = 0, rotation = 0, layer = 0 } = req.body;
+  const { itemId, x, y, z = 0, rotation = 0, layer: rawLayer } = parsed.data;
+  const layer =
+    typeof rawLayer === 'number'
+      ? rawLayer
+      : rawLayer !== undefined
+        ? Number.parseInt(rawLayer, 10) || 0
+        : 0;
 
   // Verify item is in the user's inventory
   const owned = await prisma.inventory.findUnique({

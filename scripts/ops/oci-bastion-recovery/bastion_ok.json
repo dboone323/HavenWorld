@@ -1,0 +1,5 @@
+Usage: oci bastion session create [OPTIONS]
+
+Error: Invalid value for '--wait-for-state': invalid choice: ACTIVE. (choose from ACCEPTED, IN_PROGRESS, FAILED, SUCCEEDED, CANCELING, CANCELED)
+
+For OCI CLI commands and parameters suggestion, auto completion and other useful features, try the Interactive mode by typing `oci -i`.

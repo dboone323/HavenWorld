@@ -1,0 +1,29 @@
+{
+  "data": {
+    "bastion-id": "ocid1.bastion.oc1.us-chicago-1.amaaaaaamwdgjgaarh7nn4mxykk72b3j3dt2a3geudmh2zr5hpgqsmzag5ha",
+    "bastion-name": "fix-ssh-1790029013",
+    "bastion-public-host-key-info": null,
+    "bastion-user-name": null,
+    "display-name": "fix-ssh-2222",
+    "id": "ocid1.bastionsession.oc1.us-chicago-1.amaaaaaamwdgjgaa2qm2tkdafffzf6rlqhrkpo7xgkg32abwod4mwdwrnlgq",
+    "key-details": {
+      "public-key-content": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF4S1PBUth+UBRXeEV24xfMJdT0k38YOQCZBb+8h7FVE oracle-vm\n"
+    },
+    "key-type": "PUB",
+    "lifecycle-details": null,
+    "lifecycle-state": "CREATING",
+    "session-ttl-in-seconds": 1800,
+    "ssh-metadata": null,
+    "target-resource-details": {
+      "session-type": "MANAGED_SSH",
+      "target-resource-display-name": "ai-agent-runner",
+      "target-resource-id": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja",
+      "target-resource-operating-system-user-name": "ubuntu",
+      "target-resource-port": 2222,
+      "target-resource-private-ip-address": "10.0.0.111"
+    },
+    "time-created": "2026-09-21T23:09:36.174000+00:00",
+    "time-updated": "2026-09-21T23:09:36.174000+00:00"
+  },
+  "opc-work-request-id": "ocid1.bastionworkrequest.oc1.us-chicago-1.amaaaaaamwdgjgaabkilkipuihkemnivttj3blra7bfavqyrp3a4dzu4dq2q"
+}

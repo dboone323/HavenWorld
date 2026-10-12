@@ -1,8 +1,8 @@
 /**
  * Penetration Test: Speed-Hack & Movement Exploit Validation
  *
- * Connects a socket client, joins a room, and fires teleportation/speed-hack
- * movements (e.g. moving 500 units in 50ms). Verifies the server replies with
+ * Connects a socket client, joins a room (`auth:join`), and fires teleportation/speed-hack
+ * movements (e.g. moving 500+ units in 50ms). Verifies the server replies with
  * POSITION_CORRECTION and disconnects after repeated violations.
  */
 
@@ -10,6 +10,7 @@ import { io } from 'socket.io-client';
 
 const TARGET_URL = process.env.TARGET_URL || 'http://localhost:3000';
 const TEST_TOKEN = process.env.TEST_TOKEN || '';
+const ROOM_ID = 'room-park';
 
 async function runSpeedHackTest() {
   console.log(`[PenTest] Starting Speed-Hack test against ${TARGET_URL}...`);
@@ -26,17 +27,28 @@ async function runSpeedHackTest() {
   });
 
   let correctionsReceived = 0;
+  let sentInitialMove = false;
 
-  socket.on('connect', () => {
-    console.log('[Socket] Connected. Emitting impossible movement packets...');
-
-    // Attempt rapid teleportation across the map
+  const fireInitialSpeedHack = () => {
+    if (sentInitialMove) return;
+    sentInitialMove = true;
+    console.log('[Socket] Joined room. Emitting impossible movement packets...');
     socket.emit('player:move', {
       x: 9999,
       y: 0,
       z: 9999,
-      roomId: 'haven-park',
+      roomId: ROOM_ID,
     });
+  };
+
+  socket.on('connect', () => {
+    console.log(`[Socket] Connected. Joining ${ROOM_ID} via auth:join...`);
+    socket.emit('auth:join', { roomId: ROOM_ID });
+    setTimeout(fireInitialSpeedHack, 400);
+  });
+
+  socket.on('room:state', () => {
+    fireInitialSpeedHack();
   });
 
   socket.on('player:position_correction', (correction) => {
@@ -49,7 +61,7 @@ async function runSpeedHackTest() {
         x: -9999 + i * 100,
         y: 0,
         z: -9999,
-        roomId: 'haven-park',
+        roomId: ROOM_ID,
       });
     }
   });

@@ -1,0 +1,14 @@
+{
+  "displayName": "check-firewall",
+  "content": {
+    "source": {
+      "sourceType": "TEXT",
+      "text": "echo '=IPT_RULES_FILE'\ncat /etc/iptables/rules.v4 2>&1 || echo '(no rules.v4 file)'\necho '=UFW_USER_RULES'\ncat /etc/ufw/user.rules 2>&1 | tail -50\necho '=UFW_STATUS'\nufw status verbose 2>&1 || echo 'ufw not available'\necho '=NFT_CHECK'\nnft list ruleset 2>&1 | head -40\necho '=IPT_CHECK'\niptables -S 2>&1\necho '=SSHD_CFG_FULL'\ncat /etc/ssh/sshd_config 2>&1 | grep -vE '^#|^$'\necho '=SSHD_DROPINS'\ncat /etc/ssh/sshd_config.d/*.conf 2>&1\necho '=DONE'\n"
+    }
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "timeoutInSeconds": 60
+}

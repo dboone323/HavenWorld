@@ -1,0 +1,38 @@
+{
+  "data": {
+    "availability-domain": null,
+    "cidr-block": "10.0.0.0/24",
+    "compartment-id": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+    "defined-tags": {
+      "Oracle-Tags": {
+        "CreatedBy": "default/dboone9@msn.com",
+        "CreatedOn": "2026-09-02T17:50:01.821Z"
+      }
+    },
+    "dhcp-options-id": "ocid1.dhcpoptions.oc1.us-chicago-1.aaaaaaaam7ty4zyjfwkthb57paadk2bhknpiajuzjtznmuym6kd4zrtifdnq",
+    "display-name": "subnet-20260902-1230",
+    "dns-label": "subnet09021246",
+    "freeform-tags": {},
+    "id": "ocid1.subnet.oc1.us-chicago-1.aaaaaaaawcjflv2ybbyljx46zdfdlodwkumnj2a6356rrvwatgclrhdxkd5a",
+    "ipv4-cidr-blocks": [
+      "10.0.0.0/24"
+    ],
+    "ipv6-cidr-block": null,
+    "ipv6-cidr-blocks": null,
+    "ipv6-virtual-router-ip": null,
+    "lifecycle-state": "AVAILABLE",
+    "prohibit-internet-ingress": false,
+    "prohibit-public-ip-on-vnic": false,
+    "route-table-id": "ocid1.routetable.oc1.us-chicago-1.aaaaaaaa7wq26nzhfynngxf332wrokwedrszdo5rnufi5srnjblvw4b5arba",
+    "security-list-ids": [
+      "ocid1.securitylist.oc1.us-chicago-1.aaaaaaaauj3diwsc62r436nu2n6ljaybqyzbj6pgcsyz4du6yow4xt6csoyq"
+    ],
+    "subnet-domain-name": "subnet09021246.vcn09021246.oraclevcn.com",
+    "system-tags": {},
+    "time-created": "2026-09-02T17:50:01.845000+00:00",
+    "vcn-id": "ocid1.vcn.oc1.us-chicago-1.amaaaaaamwdgjgaaibw4aox6pu2syy6agf7hytiztd4hphkkcxxk5gts3hbq",
+    "virtual-router-ip": "10.0.0.1",
+    "virtual-router-mac": "00:00:17:B3:8D:DC"
+  },
+  "etag": "6eeb62ea"
+}

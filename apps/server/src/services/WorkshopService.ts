@@ -9,6 +9,7 @@ import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { QuestService } from './QuestService';
 import { AchievementService } from './AchievementService';
+import { AnalyticsService } from './AnalyticsService';
 
 export class WorkshopService {
   /**
@@ -223,6 +224,15 @@ export class WorkshopService {
 
       await QuestService.incrementProgress(userId, 'CRAFT_ITEM', 1);
       await AchievementService.checkAndAward(userId, 'CRAFT_ITEM');
+
+      void AnalyticsService.trackEvent('CRAFT_ITEM', {
+        userId,
+        payload: {
+          recipeId: queueItem.recipeId,
+          itemId: item.id,
+          rarity: item.rarity,
+        },
+      });
 
       return item;
     });

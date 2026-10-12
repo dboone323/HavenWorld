@@ -68,7 +68,8 @@ function socketOriginMiddleware(socket: Socket, next: (err?: Error) => void): vo
 // the same verifyAccessToken used by requireAuth (HS256 + iss/aud pinning +
 // unified secret precedence).
 async function socketAuthMiddleware(socket: Socket, next: (err?: Error) => void): Promise<void> {
-  const token = socket.handshake.auth?.token;
+  const rawToken = socket.handshake.auth?.token || socket.handshake.query?.token;
+  const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
   if (!token || typeof token !== 'string') {
     return next(new Error('AUTH_REQUIRED'));
   }

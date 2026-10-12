@@ -1,0 +1,7 @@
+{
+  "is-monitoring-disabled": false,
+  "are-all-plugins-disabled": false,
+  "plugins-config": [
+    {"name": "Bastion", "desired-state": "ENABLED"}
+  ]
+}

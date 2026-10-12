@@ -1,5 +1,6 @@
 import type { ArcadeSettlementOutbox, Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
+import { AnalyticsService } from './AnalyticsService';
 
 /**
  * Connect-4 payout tuning (§6.3). Rewards are earned purely from skill —
@@ -307,6 +308,20 @@ export class ArcadeService {
 
     this.settlements.set(matchId, result);
     this.pendingSettlements.delete(matchId);
+
+    void AnalyticsService.trackEvent('ARCADE_MATCH', {
+      userId: winnerId,
+      payload: {
+        matchId,
+        cabinetId: intent.cabinetId,
+        player1Id: intent.player1Id,
+        player2Id: intent.player2Id,
+        winnerId,
+        isDraw: result.isDraw,
+        coinsAwarded: result.coinsAwarded,
+      },
+    });
+
     return result;
   }
 

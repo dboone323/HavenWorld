@@ -29,13 +29,20 @@ export default function () {
   const res = ws.connect(WS_URL, {}, function (socket) {
     socket.on('open', () => {
       // socket.io v4 protocol handler
+      // "0{...}" = Engine.IO OPEN → send Socket.IO CONNECT `40{"token":"..."}`
       // "2" = PING → respond with PONG "3"
       // "40" = CONNECT ack → server confirmed connection, safe to send events
       // "42" = EVENT (incoming from server)
       // "42" + JSON array = send event to server
       socket.on('message', (raw) => {
+        if (raw.startsWith('0')) {
+          socket.send(`40${JSON.stringify({ token: TEST_TOKEN })}`);
+          return;
+        }
+
         if (raw === '2' || raw.startsWith('2[')) {
           socket.send('3');
+          return;
         }
 
         if (raw.startsWith('40')) {
@@ -44,23 +51,14 @@ export default function () {
           // Join room — socket.io v4 event format
           socket.send('42' + JSON.stringify(['auth:join', {
             roomId: 'room-park',
-            player: {
-              id: `vu_${__VU}`,
-              username: `Player_${__VU}`,
-              x: 100,
-              y: 100,
-              z: 0,
-              rotY: 0,
-              direction: 'down',
-              isMoving: false,
-            },
           }]));
 
-          // Send chat messages
+          // Send chat messages using canonical ChatSchema payload ({ content, roomId })
           for (let i = 0; i < 5; i++) {
             const chatStart = Date.now();
             socket.send('42' + JSON.stringify(['chat:send', {
-              message: `Load test message ${i} from VU ${__VU}`,
+              content: 'Hello from k6 load test!',
+              roomId: 'room-park',
             }]));
             chatLatency.add(Date.now() - chatStart);
             sleep(0.5);
@@ -69,7 +67,7 @@ export default function () {
       });
     });
 
-    socket.on('error', (e) => {
+    socket.on('error', () => {
       errorsTotal.add(1);
     });
 

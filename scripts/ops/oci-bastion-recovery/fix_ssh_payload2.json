@@ -1,0 +1,14 @@
+{
+  "displayName": "fix-ssh-firewall",
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "content": {
+    "source": {
+      "sourceType": "TEXT",
+      "text": "echo '=ID'; id\necho '=IPT_BEFORE'; iptables -S INPUT 2>&1\n# Allow port 2222 in iptables\niptables -I INPUT 1 -p tcp --dport 2222 -j ACCEPT 2>&1\necho '=IPT_AFTER'; iptables -S INPUT 2>&1\n# Save iptables rules\nmkdir -p /etc/iptables; iptables-save > /etc/iptables/rules.v4 2>&1\nnetfilter-persistent save 2>&1\necho '=LISTEN'; ss -tlnp 2>&1\n# Also add port 22 back to sshd_config as backup\ngrep -q '^Port 22' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config\ngrep -q '^Port 2222' /etc/ssh/sshd_config || echo 'Port 2222' >> /etc/ssh/sshd_config\n# Restart ssh to pick up both ports\nsystemctl restart ssh 2>&1 || systemctl restart sshd 2>&1\necho '=LISTEN_AFTER'; ss -tlnp 2>&1\necho '=SVC'; systemctl is-active ssh 2>&1\necho '=DONE'\n"
+    }
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "timeoutInSeconds": 300
+}

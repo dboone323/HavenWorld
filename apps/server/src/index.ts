@@ -31,6 +31,9 @@ import feedbackRoutes from './routes/feedback';
 import leaderboardRoutes from './routes/leaderboard';
 import bulletinRoutes from './routes/bulletin';
 import tutorialRoutes from './routes/tutorial';
+import scavengerRoutes from './routes/scavenger';
+import worldRoutes from './routes/world';
+import transitRoutes from './routes/transit';
 import testRoutes from './routes/testRoutes';
 import { ArcadeService } from './services/ArcadeService';
 
@@ -130,6 +133,9 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/bulletin', bulletinRoutes);
 app.use('/api/tutorial', tutorialRoutes);
+app.use('/api/scavenger', scavengerRoutes);
+app.use('/api/world', worldRoutes);
+app.use('/api/transit', transitRoutes);
 
 if (process.env.NODE_ENV === 'test') {
   app.use('/api/test', testRoutes);

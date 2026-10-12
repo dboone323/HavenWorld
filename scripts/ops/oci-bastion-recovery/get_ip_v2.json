@@ -1,0 +1,1 @@
+{"displayName": "get-ip-v2", "content": {"source": {"sourceType": "TEXT", "text": "hostname -I"}}, "target": {"instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"}, "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq", "timeoutInSeconds": 60}

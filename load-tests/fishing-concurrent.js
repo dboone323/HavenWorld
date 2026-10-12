@@ -23,33 +23,30 @@ const WS_URL = `${WS_BASE}/socket.io/?EIO=4&transport=websocket&token=${TEST_TOK
 export default function () {
   let caughtOnce = false;
 
-  ws.connect(WS_URL, {}, function (socket) {
+  const res = ws.connect(WS_URL, {}, function (socket) {
     socket.on('open', () => {
       socket.on('message', (raw) => {
+        // Engine.IO OPEN -> send Socket.IO v4 CONNECT packet with auth token
+        if (raw.startsWith('0')) {
+          socket.send(`40${JSON.stringify({ token: TEST_TOKEN })}`);
+          return;
+        }
+
         // socket.io v4 protocol: "2" = PING, respond with PONG ("3")
         if (raw === '2' || raw.startsWith('2[')) {
           socket.send('3');
+          return;
         }
 
         // "40" = CONNECT ack — server is ready for events
         if (raw.startsWith('40')) {
           socket.send('42' + JSON.stringify(['auth:join', {
-            roomId: 'room-fishing-dock',
-            player: {
-              id: `fisher_${__VU}`,
-              username: `Fisher_${__VU}`,
-              x: 50,
-              y: 50,
-              z: 0,
-              rotY: 0,
-              direction: 'down',
-              isMoving: false,
-            },
+            roomId: 'room-park',
           }]));
 
           // Cast line immediately after joining
           socket.send('42' + JSON.stringify(['fishing:cast_line', {
-            roomId: 'room-fishing-dock',
+            roomId: 'room-park',
           }]));
         }
 
@@ -87,4 +84,6 @@ export default function () {
     sleep(15);
     socket.close();
   });
+
+  check(res, { 'WebSocket connected': (r) => r && r.status === 101 });
 }

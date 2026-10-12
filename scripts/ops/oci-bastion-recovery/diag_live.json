@@ -1,0 +1,15 @@
+{
+  "displayName": "diag-live",
+  "content": {
+    "sourceType": "TEXT",
+    "text": "ZWNobyAnPURBVEUnOyBkYXRlCmVjaG8gJz1JRCc7IGlkCmVjaG8gJz1MSVNURU4nOyBzcyAtdGxucCAyPiYxCmVjaG8gJz1JUFQnOyBpcHRhYmxlcyAtUyAyPiYxCmVjaG8gJz1ORlQnOyBuZnQgbGlzdCBydWxlc2V0IDI+JjEgfCBoZWFkIC0zMAplY2hvICc9U1NIRF9DRkcnOyBncmVwIC1ybiAtRSAnXltbOnNwYWNlOl1dKlBvcnQgfF5bWzpzcGFjZTpdXSpBbGxvd3xQZXJtaXRSb290fExpc3RlblN0cmVhbScgL2V0Yy9zc2gvc3NoZF9jb25maWcgL2V0Yy9zc2gvc3NoZF9jb25maWcuZC8qLmNvbmYgMj4mMQplY2hvICc9U1ZDJzsgc3lzdGVtY3RsIGlzLWFjdGl2ZSBzc2ggc3NoZCAyPiYxCmVjaG8gJz1TT0NLRVQnOyBzeXN0ZW1jdGwgaXMtYWN0aXZlIHNzaC5zb2NrZXQgMj4mMQo=",
+    "encoding": "BASE64"
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "runAsUser": "root",
+  "executionMode": "STANDARD",
+  "timeoutInSeconds": 300
+}

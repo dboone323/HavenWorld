@@ -1,0 +1,14 @@
+{
+  "displayName": "status-check2",
+  "content": {
+    "source": {
+      "sourceType": "TEXT",
+      "text": "echo '=ID'; id\necho '=DATE'; date\necho '=LISTEN'; ss -tlnp 2>&1\necho '=SSHD_PROC'; ps aux | grep '[s]sh' 2>&1\necho '=SOCKETS'; systemctl list-sockets 2>&1 | grep ssh || true\necho '=IPT_CHECK'; iptables -S 2>&1\necho '=NFT_CHECK'; nft list ruleset 2>&1 | head -20\necho '=REJECT'; grep -r '2222' /etc/iptables/ 2>&1 || echo 'no iptables config'\necho '=SSHD_CFG'; grep -rn -E 'Port|Allow|Permit|Listen' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>&1\necho '=CLOUD_INIT'; tail -30 /var/log/cloud-init-output.log 2>&1\necho '=FAIL2BAN'; grep -r '2222' /etc/fail2ban/ 2>&1 || echo 'no fail2ban refs'\necho '=DONE'\n"
+    }
+  },
+  "target": {
+    "instanceId": "ocid1.instance.oc1.us-chicago-1.anxxeljtmwdgjgacz2zo6xk65k62kbscd62stcztuvft4hgzsn2edrv36bja"
+  },
+  "compartmentId": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+  "timeoutInSeconds": 60
+}

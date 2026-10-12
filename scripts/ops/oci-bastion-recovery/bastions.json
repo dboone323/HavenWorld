@@ -1,0 +1,28 @@
+WARNING: This operation supports pagination and not all resources were returned.  Re-run using the --all option to auto paginate and list all resources.
+{
+  "data": [
+    {
+      "bastion-type": "STANDARD",
+      "compartment-id": "ocid1.tenancy.oc1..aaaaaaaaknewdg47aijyiytgvtuby3mrpilfzt7xasbaknih7dazfmek2yrq",
+      "defined-tags": {
+        "Oracle-Tags": {
+          "CreatedBy": "default/dboone9@msn.com",
+          "CreatedOn": "2026-09-21T22:16:55.487Z"
+        }
+      },
+      "dns-proxy-status": "DISABLED",
+      "freeform-tags": {},
+      "id": "ocid1.bastion.oc1.us-chicago-1.amaaaaaamwdgjgaarh7nn4mxykk72b3j3dt2a3geudmh2zr5hpgqsmzag5ha",
+      "lifecycle-details": null,
+      "lifecycle-state": "ACTIVE",
+      "name": "fix-ssh-1790029013",
+      "security-attributes": {},
+      "system-tags": {},
+      "target-subnet-id": "ocid1.subnet.oc1.us-chicago-1.aaaaaaaawcjflv2ybbyljx46zdfdlodwkumnj2a6356rrvwatgclrhdxkd5a",
+      "target-vcn-id": "ocid1.vcn.oc1.us-chicago-1.amaaaaaamwdgjgaaibw4aox6pu2syy6agf7hytiztd4hphkkcxxk5gts3hbq",
+      "time-created": "2026-09-21T22:16:55.919000+00:00",
+      "time-updated": "2026-09-21T22:17:42.382000+00:00"
+    }
+  ],
+  "opc-next-page": "AAAAAAAAAAJleUpyYVdRaU9pSXlPRFkxSWl3aVpXNWpJam9pUVRJMU5rZERUU0lzSW1Gc1p5STZJbVJwY2lKOS4uNUFkN0ZqeFpxUTFrLUhTUy50dU1KaGY3MXdzZERVbWdyenVFaFlyV0VrRHJBRjJKMjJ6V21TTzh4VjNENFVBTkE3N29vaC1lZk5GT3ctZG5FY014ei02NFVDWFBxNEFCQXRfVzdLX1ZkenF3MDcyZ1FtdmtIMF9wdVpCUGdyMEhzSEpxTWYxVjMycWl3TkhrbDk3VnBXSG5qeWlIWE03Q0RaeXhHZVZwQ2Vlb3pTNXRWWWNxcHBjdzBHV0N6MC1IRHBHVjFvc2dzV00yWnJkd21VX1EtTi1jUngzYVU0X1c4b19NUnBFLXlJUzNrTG96VU00eVd5SGU4T05IeF9vWXg3QUdSeFEtSkVsaGdpa3JBdFU2Y1JKdGNxNkpma0NpMi1zd1Qtc1VmeDhLamEwa1lkUmJlUF9DeFd2RGhXV093a2dzbC1vcDR6TEJibFhtTjd3aDJ6QWVLZFRKdXNOM1dIQzNLcl8wUVNodTBwZTh1TG9uZk53dHlsSGstOUQ0dHZVNEtNNGgyQW1DdEVMV1lLYlFDWmpDc05uLXFvNkVxb1RBSjVhQjJZNTBKaWlGQkpNWjFaOGZBQjJhek0wX1BucWQ0aTFNTjh1TXlYQkpLMzVFcDlmUkM4M0I4YXVHQ0s2Q0V0NU40UlpZbW9tR0dFQjJoZnFfN2FFd1pXbDhuVmRzV2hDdkR0Qnh2cWRIcTM5SjJFSkZEWFQwaU43QkQ3S1lSakJReDdleHQxSmZQZ29pSTNPM3BVdVJXTGREbE1faHpJNE1SVUJHdjdZQVE5VFJuSEoyWXl3NkJoalVYYWNrbllxX2xPMGtFQTBlZjVXWU5OcDM1WmJUSGUwWVM0Qk9ERTVMbTRwX24tOEdjMG1aSndhNEFoVVpMUGpwNEVOcm1IUDVXel9DdUpwTGVtSkg3VHBldzZCbGdUeFBlVzl0X2J0alpMOW8uOTNLbGY1WjJkeVR1UExlblFqUjY3QQ=="
+}

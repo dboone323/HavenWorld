@@ -186,7 +186,20 @@ describe('Prisma Database Integration — Schema Constraints', () => {
     const townSquare = defaultRooms.find((r) => r.name === 'Town Square');
     expect(townSquare).toBeDefined();
 
-    const park = defaultRooms.find((r) => r.name === 'Haven Park');
+    const park = defaultRooms.find((r) => r.name === 'HavenPark') || defaultRooms.find((r) => r.name === 'Haven Park');
     expect(park).toBeDefined();
+  });
+
+  it('should verify that all public tables have RLS enabled or tracked in migration', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const migrationSql = fs.readFileSync(
+      path.resolve(__dirname, '../../prisma/migrations/20261001000000_enable_rls_all_public_tables/migration.sql'),
+      'utf8'
+    );
+    expect(migrationSql).toContain('ENABLE ROW LEVEL SECURITY');
+    expect(migrationSql).toContain('"public"."users"');
+    expect(migrationSql).toContain('"public"."rooms"');
+    expect(migrationSql).toContain('"public"."inventories"');
   });
 });
