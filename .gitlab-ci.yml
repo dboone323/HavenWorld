@@ -62,17 +62,19 @@ default:
       files: [pnpm-lock.yaml]
     paths: [.pnpm-store/]
     policy: pull-push
-  before_script:
-    - corepack enable
-    - corepack prepare pnpm@${PNPM_VERSION} --activate
-    - pnpm config set store-dir "$PNPM_STORE"
-    - pnpm install --frozen-lockfile
-    - pnpm --filter '@havenworld/shared' build
+
+.node-setup: &node-setup
+  - corepack enable
+  - corepack prepare pnpm@${PNPM_VERSION} --activate
+  - pnpm config set store-dir "$PNPM_STORE"
+  - pnpm install --frozen-lockfile
+  - pnpm --filter '@havenworld/shared' build
 
 # ── test stage (mirrors pr-check.yml) ─────────────────────────────────────────
 
 server-test:
   stage: test
+  before_script: *node-setup
   services:
     - name: postgres:16-alpine
       alias: postgres
@@ -98,6 +100,7 @@ server-test:
 
 client-test:
   stage: test
+  before_script: *node-setup
   script:
     - pnpm --filter client exec tsc --noEmit
     - pnpm --filter client lint
@@ -119,6 +122,7 @@ client-test:
 
 security-audit:
   stage: test
+  before_script: *node-setup
   script:
     - pnpm audit --audit-level=high
   allow_failure: true # 5 pre-existing dev-dep advisories (matches main); tighten later
@@ -131,6 +135,7 @@ security-audit:
 e2e-chromium:
   stage: e2e
   image: mcr.microsoft.com/playwright:v1.63.0-noble
+  before_script: *node-setup
   services:
     - name: postgres:16-alpine
       alias: postgres
@@ -164,6 +169,7 @@ e2e-chromium:
 e2e-matrix:
   stage: e2e
   image: mcr.microsoft.com/playwright:v1.63.0-noble
+  before_script: *node-setup
   services:
     - name: postgres:16-alpine
       alias: postgres
@@ -230,6 +236,7 @@ deploy-server:
 
 deploy-client:
   stage: deploy
+  before_script: *node-setup
   interruptible: false # Duo: never auto-cancel a live Pages upload
   resource_group: production # Duo: deploys never overlap
   needs:
