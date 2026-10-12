@@ -58,8 +58,26 @@ export class AnalyticsService {
           payload: args.payload ? (args.payload as object) : undefined,
         },
       });
-    } catch (err) {
-      console.warn(`[Analytics] Failed to record ${event}:`, err);
+    } catch (err: any) {
+      if (args.userId && err?.code === 'P2003') {
+        try {
+          await prisma.gameEvent.create({
+            data: {
+              event,
+              userId: null,
+              sessionId: args.sessionId ?? null,
+              roomId: args.roomId ?? null,
+              payload: args.payload ? (args.payload as object) : undefined,
+            },
+          });
+          return;
+        } catch {
+          // Swallow fallback error
+        }
+      }
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(`[Analytics] Failed to record ${event}:`, err);
+      }
     }
   }
 
@@ -182,7 +200,7 @@ export class AnalyticsService {
   /** Mini-game participation counts for the window. */
   static async minigameStats(days = 7): Promise<MinigameStats[]> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const tracked = ['FISH_CAUGHT', 'FISH_CAST', 'PIZZA_ORDER_SUBMIT', 'CRAFT_ITEM'];
+    const tracked = ['FISH_CAUGHT', 'FISH_CAST', 'PIZZA_ORDER_SUBMIT', 'CRAFT_ITEM', 'ARCADE_MATCH'];
 
     const grouped = await prisma.gameEvent.groupBy({
       by: ['event'],

@@ -5,6 +5,7 @@ import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { requireAdmin, logAdminAction } from '../middleware/adminAuth';
 import { WeatherService } from '../services/WeatherService';
 import { GlobalEventService } from '../services/GlobalEventService';
+import { AnalyticsService } from '../services/AnalyticsService';
 import { prisma } from '../prisma';
 
 const router = Router();
@@ -138,7 +139,13 @@ router.get('/users/:id', async (req, res) => {
   });
 
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  return res.json(user);
+  const {
+    passwordHash: _passwordHash,
+    emailVerifyToken: _emailVerifyToken,
+    twoFactorSecret: _twoFactorSecret,
+    ...safeUser
+  } = user as typeof user & { twoFactorSecret?: unknown };
+  return res.json(safeUser);
 });
 
 const muteSchema = z.object({
@@ -354,6 +361,56 @@ router.post('/global-event', requireRole(['ADMIN']), async (req, res) => {
   );
   console.log(`[Admin] ${logLabel(req as AuthRequest)} triggered global event: ${event.title}`);
   res.json(event);
+});
+
+// ── Part 9B: Product Analytics Endpoints (ADMIN / MODERATOR) ────────────────
+function parseDaysParam(raw: unknown, fallback: number): number {
+  const parsed = parseInt(String(raw ?? fallback), 10);
+  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 90) : fallback;
+}
+
+router.get('/analytics/summary', async (req, res) => {
+  const days = parseDaysParam(req.query.days, 7);
+  const dauDays = parseDaysParam(req.query.dauDays ?? req.query.days, 14);
+  const [dau, sessionLengths, roomPopularity, economyHealth, minigameStats] = await Promise.all([
+    AnalyticsService.dau(dauDays),
+    AnalyticsService.sessionLengths(days),
+    AnalyticsService.roomPopularity(days),
+    AnalyticsService.economyHealth(days),
+    AnalyticsService.minigameStats(days),
+  ]);
+  return res.json({
+    dau,
+    sessionLengths,
+    roomPopularity,
+    economyHealth,
+    minigameStats,
+  });
+});
+
+router.get('/analytics/dau', async (req, res) => {
+  const days = parseDaysParam(req.query.days, 14);
+  return res.json(await AnalyticsService.dau(days));
+});
+
+router.get('/analytics/session-lengths', async (req, res) => {
+  const days = parseDaysParam(req.query.days, 7);
+  return res.json(await AnalyticsService.sessionLengths(days));
+});
+
+router.get('/analytics/room-popularity', async (req, res) => {
+  const days = parseDaysParam(req.query.days, 7);
+  return res.json(await AnalyticsService.roomPopularity(days));
+});
+
+router.get('/analytics/economy-health', async (req, res) => {
+  const days = parseDaysParam(req.query.days, 7);
+  return res.json(await AnalyticsService.economyHealth(days));
+});
+
+router.get('/analytics/minigame-stats', async (req, res) => {
+  const days = parseDaysParam(req.query.days, 7);
+  return res.json(await AnalyticsService.minigameStats(days));
 });
 
 function logLabel(req: AuthRequest): string {

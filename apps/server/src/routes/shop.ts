@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { ShopService } from '../services/ShopService';
+import { AnalyticsService } from '../services/AnalyticsService';
 import { z } from 'zod';
 
 const router = Router();
@@ -11,10 +12,14 @@ router.get('/', requireAuth, async (_req, res) => {
   return res.json(state);
 });
 
-const buySchema = z.object({
-  itemId: z.string(),
-  currency: z.enum(['COIN', 'GEM']).default('COIN'),
-});
+const buySchema = z
+  .object({
+    itemId: z.string().min(1),
+    currency: z.enum(['COIN', 'GEM']).default('COIN'),
+    count: z.number().int().positive().optional(),
+    quantity: z.number().int().positive().optional(),
+  })
+  .strict();
 
 // POST /api/shop/buy — purchase item with HavenCoins or HavenGems
 router.post('/buy', requireAuth, async (req: AuthRequest, res) => {
@@ -23,6 +28,13 @@ router.post('/buy', requireAuth, async (req: AuthRequest, res) => {
 
   try {
     const result = await ShopService.buyItem(req.user!.userId, parsed.data.itemId, parsed.data.currency);
+    void AnalyticsService.trackEvent('SHOP_PURCHASE', {
+      userId: req.user!.userId,
+      payload: {
+        itemId: parsed.data.itemId,
+        currency: parsed.data.currency,
+      },
+    });
     return res.json(result);
   } catch (err: any) {
     return res.status(400).json({ error: err.message || 'Purchase failed' });
