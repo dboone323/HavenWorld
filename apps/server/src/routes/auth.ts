@@ -7,6 +7,7 @@ import { redis } from '../redis';
 import { inventoryService } from '../services/InventoryService';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { AchievementService } from '../services/AchievementService';
+import { EmailService } from '../services/EmailService';
 import { Resend } from 'resend';
 import { setCsrfCookie, generateCsrfToken } from '../middleware/csrf';
 import { generateAccessToken, generateRefreshToken } from '../auth/tokens';
@@ -80,30 +81,7 @@ async function sendVerificationEmail(
   username: string,
   token: string
 ): Promise<void> {
-  const serverUrl = process.env.SERVER_URL || 'https://147-224-184-148.nip.io';
-  const verifyUrl = `${serverUrl}/api/auth/verify?token=${token}`;
-
-  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
-    await resend.emails
-      .send({
-        from: process.env.EMAIL_FROM,
-        to: email,
-        subject: 'Verify your HavenWorld account',
-        html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0d1a;color:#fff;border-radius:16px;">
-          <h1 style="color:#4ecdc4;">Welcome to HavenWorld, ${username}!</h1>
-          <p>Click the button below to verify your email and enter the world.</p>
-          <a href="${verifyUrl}" style="display:inline-block;margin:24px 0;padding:14px 28px;background:#4ecdc4;color:#0d0d1a;text-decoration:none;border-radius:8px;font-weight:bold;">
-            Verify My Account
-          </a>
-          <p style="color:#aaa;font-size:0.85rem;">
-            Link expires in 48 hours. If you didn't create this account, ignore this email.
-          </p>
-        </div>
-      `,
-      })
-      .catch((err) => console.error('[Resend] Verification email error:', err));
-  }
+  await EmailService.sendVerificationEmail(email, username, token);
 }
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
