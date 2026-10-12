@@ -6,12 +6,16 @@
 # (cost factor 1). No macOS jobs in this repo.
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
-#   ORACLE_HOST      (e.g. ubuntu@147.224.184.148 — deploy/login user)
 #   ORACLE_HOSTNAME  (bare IP/hostname for ssh-keyscan)
 #   ORACLE_SSH_KEY   File type, masked — private key for the deploy user
-#   CF_API_TOKEN     masked — Cloudflare API token (Pages deploy)
-#   CF_ACCOUNT_ID    Cloudflare account id
+#   CLOUDFLARE_API_TOKEN   masked — Cloudflare API token (Pages deploy)
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account id
 #   RESEND_API_KEY   masked — failure notification emails (load-test)
+#   WRANGLER_VERSION pinned wrangler release, e.g. "3.114.0" (deploy-client)
+# NOTE (GitLab Duo review !11): fixed 7 findings — interruptible:false +
+# resource_group on deploys, optional needs, push-gated deploy rules,
+# CLOUDFLARE_* var names, pinned wrangler, tsx seed, MATRIX_WEEKLY gate,
+# scp-to-parent for load-tests.
 
 workflow:
   # Exactly one pipeline per push/MR (no duplicate detached + branch runs),
@@ -135,14 +139,9 @@ e2e-chromium:
     SERVER_AUTOSTART: "true"
     BASE_URL: "http://localhost:5173"
   script:
-    - corepack enable
-    - corepack prepare pnpm@${PNPM_VERSION} --activate
-    - pnpm config set store-dir "$PNPM_STORE"
-    - pnpm install --frozen-lockfile
-    - pnpm --filter '@havenworld/shared' build
     - pnpm --filter server exec prisma generate
     - pnpm --filter server exec prisma db push --accept-data-loss
-    - pnpm --filter server exec ts-node prisma/seed.ts
+    - pnpm --filter server exec npx tsx prisma/seed.ts
     - npx playwright test --project=chromium
   artifacts:
     when: always
@@ -176,11 +175,6 @@ e2e-matrix:
     matrix:
       - PROJECT: [chromium, firefox, webkit, mobile-chrome, mobile-safari]
   script:
-    - corepack enable
-    - corepack prepare pnpm@${PNPM_VERSION} --activate
-    - pnpm config set store-dir "$PNPM_STORE"
-    - pnpm install --frozen-lockfile
-    - pnpm --filter '@havenworld/shared' build
     - pnpm --filter server exec prisma generate
     - pnpm --filter server exec prisma db push --accept-data-loss
     - pnpm --filter server exec npx tsx prisma/seed.ts
@@ -190,7 +184,7 @@ e2e-matrix:
     expire_in: 2 weeks
     paths: [playwright-report/]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MATRIX_WEEKLY == "1"
 
 # ── deploy stage (mirrors deploy-server.yml / deploy-client.yml) ─────────────
 
@@ -203,9 +197,13 @@ e2e-matrix:
 deploy-server:
   stage: deploy
   image: node:22-bookworm
+  interruptible: false # Duo: never auto-cancel a live deploy mid-SSH
+  resource_group: production # Duo: deploys never overlap
   variables:
     ORACLE_USER: ubuntu # login user; deploy script sudo's to havenworld on the VM
-  needs: [server-test]
+  needs:
+    - job: server-test
+      optional: true # Duo: manual web-run on a branch without server-test in pipeline
   before_script:
     - *ssh-setup
   script:
@@ -214,23 +212,30 @@ deploy-server:
     - ssh oracle-vm 'sudo -u havenworld -H bash /opt/havenworld/scripts/remote-deploy.sh </dev/null'
     - sleep 10
     - curl -fsS https://147-224-184-148.nip.io/health | head -c 500
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  rules: # Duo: push-gated so schedules never redeploy production
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
       changes: [apps/server/**/*, packages/shared/**/*, scripts/remote-deploy.sh, .gitlab-ci.yml]
     - if: $CI_PIPELINE_SOURCE == "web" # manual "Run pipeline" from UI
       when: manual
 
 deploy-client:
   stage: deploy
-  needs: [client-test]
+  interruptible: false # Duo: never auto-cancel a live Pages upload
+  resource_group: production # Duo: deploys never overlap
+  needs:
+    - job: client-test
+      optional: true # Duo: .gitlab-ci.yml-only change ships without client-test in pipeline
   script:
     - pnpm --filter client build
-    - npx wrangler pages deploy apps/client/dist
+    # Duo: CLOUDFLARE_* names (what wrangler reads), pinned version,
+    # explicit --branch (detached HEAD can't infer production vs preview).
+    - npx --yes wrangler@${WRANGLER_VERSION} pages deploy apps/client/dist
       --project-name=havenworld-game
+      --branch=$CI_COMMIT_BRANCH
       --commit-hash=$CI_COMMIT_SHA
       --commit-dirty=true
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  rules: # Duo: push-gated so schedules never redeploy production
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
       changes: [apps/client/**/*, packages/shared/**/*, .gitlab-ci.yml]
   environment:
     name: production-client
@@ -246,8 +251,8 @@ load-test:
   before_script:
     - apt-get update -qq && apt-get install -y -qq openssh-client >/dev/null
     - *ssh-setup
-  script:
-    - scp -r load-tests/ oracle-vm:/home/havenworld/load-tests/
+  script: # Duo: copy to PARENT (existing dir + trailing slash would nest load-tests/load-tests/)
+    - scp -r load-tests oracle-vm:/home/havenworld/
     - ssh oracle-vm 'mkdir -p load-test-results && k6 run --out json=load-test-results/ws-$(date +%Y%m%d).json load-tests/ws-concurrent.js && k6 run -e BASE_URL=http://localhost:3000 --out json=load-test-results/auth-$(date +%Y%m%d).json load-tests/api-auth.js && k6 run --out json=load-test-results/fishing-$(date +%Y%m%d).json load-tests/fishing-concurrent.js && echo ALL LOAD TESTS COMPLETE'
     - mkdir -p load-test-results && scp 'oracle-vm:/home/havenworld/load-test-results/*.json' load-test-results/
   artifacts:
