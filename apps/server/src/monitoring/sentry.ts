@@ -108,3 +108,27 @@ export function captureException(error: unknown): void {
   if (!getSentryDsn()) return;
   Sentry.captureException(error);
 }
+
+/**
+ * Execute an operation within a monitored Sentry APM distributed trace span
+ */
+export async function traceSpan<T>(
+  name: string,
+  op: string,
+  fn: (span?: any) => Promise<T> | T,
+  data?: Record<string, unknown>
+): Promise<T> {
+  if (getSentryDsn() && Sentry.startSpan) {
+    return await Sentry.startSpan({ name, op, attributes: data as any }, async (span) => {
+      try {
+        return await fn(span);
+      } catch (err) {
+        if (span && typeof span.setStatus === 'function') {
+          span.setStatus({ code: 2, message: err instanceof Error ? err.message : String(err) });
+        }
+        throw err;
+      }
+    });
+  }
+  return await fn();
+}

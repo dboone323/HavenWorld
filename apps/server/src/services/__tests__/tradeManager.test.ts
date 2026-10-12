@@ -184,4 +184,12 @@ describe('TradeManager (P2P Trade)', () => {
 
     roomManager.leaveRoom('sock_1');
   });
+
+  it('should lock items in active trades and release locks on trade cancellation', async () => {
+    TradeManager.lockTradeItem('item-unique-xyz', 'trade-123');
+    expect(TradeManager.isItemLocked('item-unique-xyz')).toBe(true);
+
+    TradeManager.unlockTradeItems('trade-123');
+    expect(TradeManager.isItemLocked('item-unique-xyz')).toBe(false);
+  });
 });

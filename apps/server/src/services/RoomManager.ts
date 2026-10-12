@@ -1,10 +1,25 @@
 import type { PlayerState, ChatMessage, FurnitureState } from '@havenworld/shared';
 
+export interface RoomBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+export const DEFAULT_ROOM_BOUNDS: RoomBounds = {
+  minX: 0,
+  maxX: 1200,
+  minY: 0,
+  maxY: 800,
+};
+
 interface RoomState {
   players: Map<string, PlayerState>; // socketId → PlayerState
   chatHistory: ChatMessage[]; // last 50 messages (ring buffer)
   furniture: FurnitureState[]; // loaded from DB on first join
   loaded: boolean; // whether furniture was loaded from DB
+  bounds: RoomBounds; // boundary collision constraints
 }
 
 class RoomManager {
@@ -21,6 +36,7 @@ class RoomManager {
         chatHistory: [],
         furniture: [],
         loaded: false,
+        bounds: { ...DEFAULT_ROOM_BOUNDS },
       });
     }
     return this.rooms.get(roomId)!;
@@ -61,6 +77,30 @@ class RoomManager {
     return player ? { roomId, playerId: player.id } : null;
   }
 
+  // ── Boundary clamping & constraints ────────────────────────────────────────
+  setRoomBounds(roomId: string, bounds: Partial<RoomBounds>): RoomBounds {
+    const room = this.ensureRoom(roomId);
+    room.bounds = {
+      minX: bounds.minX ?? room.bounds.minX,
+      maxX: bounds.maxX ?? room.bounds.maxX,
+      minY: bounds.minY ?? room.bounds.minY,
+      maxY: bounds.maxY ?? room.bounds.maxY,
+    };
+    return room.bounds;
+  }
+
+  getRoomBounds(roomId: string): RoomBounds {
+    return this.rooms.get(roomId)?.bounds ?? { ...DEFAULT_ROOM_BOUNDS };
+  }
+
+  clampPosition(roomId: string, x: number, y: number): { x: number; y: number } {
+    const bounds = this.getRoomBounds(roomId);
+    return {
+      x: Math.max(bounds.minX, Math.min(bounds.maxX, x)),
+      y: Math.max(bounds.minY, Math.min(bounds.maxY, y)),
+    };
+  }
+
   // ── Player movement ─────────────────────────────────────────────────────────
   movePlayer(
     socketId: string,
@@ -75,8 +115,9 @@ class RoomManager {
     if (!roomId) return;
     const player = this.rooms.get(roomId)?.players.get(socketId);
     if (player) {
-      player.x = x;
-      player.y = y;
+      const clamped = this.clampPosition(roomId, x, y);
+      player.x = clamped.x;
+      player.y = clamped.y;
       player.z = z;
       player.rotY = rotY;
       player.direction = direction as PlayerState['direction'];

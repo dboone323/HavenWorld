@@ -8,8 +8,16 @@ export interface ModerationResult {
   severity: 'none' | 'mild' | 'severe';
 }
 
+export function normalizeAdversarialContent(content: string): string {
+  // Strip zero-width spaces, joiners, and bidirectional override characters
+  const stripped = content.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '');
+  // Unicode NFKC normalization collapses visual homoglyphs
+  return stripped.normalize('NFKC');
+}
+
 export function moderateMessage(content: string): ModerationResult {
-  const trimmed = content.trim();
+  const normalized = normalizeAdversarialContent(content);
+  const trimmed = normalized.trim();
   try {
     // bad-words' clean() splits on /\b|_/ (consuming underscores) and rejoins
     // with the first delimiter, so it silently mangles clean messages

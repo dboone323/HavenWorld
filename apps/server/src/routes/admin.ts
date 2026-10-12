@@ -6,6 +6,9 @@ import { requireAdmin, logAdminAction } from '../middleware/adminAuth';
 import { WeatherService } from '../services/WeatherService';
 import { GlobalEventService } from '../services/GlobalEventService';
 import { AnalyticsService } from '../services/AnalyticsService';
+import { RedisHealthService } from '../services/RedisHealthService';
+import { roomManager } from '../services/RoomManager';
+import { traceSpan } from '../monitoring/sentry';
 import { prisma } from '../prisma';
 
 const router = Router();
@@ -411,6 +414,56 @@ router.get('/analytics/economy-health', async (req, res) => {
 router.get('/analytics/minigame-stats', async (req, res) => {
   const days = parseDaysParam(req.query.days, 7);
   return res.json(await AnalyticsService.minigameStats(days));
+});
+
+// GET /api/admin/system-health — comprehensive diagnostic health check for DB, Redis, and memory
+router.get('/system-health', async (_req, res) => {
+  return await traceSpan('admin.system_health', 'diagnostic', async () => {
+    const startTime = Date.now();
+    let dbStatus: 'ok' | 'error' = 'ok';
+    let dbLatencyMs = 0;
+
+    try {
+      const dbStart = Date.now();
+      await prisma.$queryRaw`SELECT 1`;
+      dbLatencyMs = Date.now() - dbStart;
+    } catch {
+      dbStatus = 'error';
+    }
+
+    const redisReport = await RedisHealthService.getHealthReport();
+    const mem = process.memoryUsage();
+    const occupants = roomManager.getAllRoomOccupants();
+    let totalOnlinePlayers = 0;
+    occupants.forEach((count) => {
+      totalOnlinePlayers += count;
+    });
+
+    const isHealthy = dbStatus === 'ok' && redisReport.isReady;
+    const isDegraded = dbStatus === 'ok' && !redisReport.isReady;
+
+    return res.json({
+      status: isHealthy ? 'HEALTHY' : isDegraded ? 'DEGRADED' : 'DOWN',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      latencyMs: Date.now() - startTime,
+      database: {
+        status: dbStatus,
+        latencyMs: dbLatencyMs,
+      },
+      redis: redisReport,
+      process: {
+        nodeVersion: process.version,
+        memoryUsageMb: {
+          rss: Math.round(mem.rss / 1024 / 1024),
+          heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+          heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        },
+      },
+      activeRooms: occupants.size,
+      totalOnlinePlayers,
+    });
+  });
 });
 
 function logLabel(req: AuthRequest): string {

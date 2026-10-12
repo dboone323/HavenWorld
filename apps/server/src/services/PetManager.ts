@@ -232,18 +232,98 @@ export class PetManager {
   }
 
   /**
+   * Evaluates pet's loyalty level and unlocked perks based on current happiness and hunger
+   */
+  static async getPetLoyalty(petId: string) {
+    const pet = await prisma.pet.findUnique({ where: { id: petId } });
+    if (!pet) throw new Error('Pet not found');
+    return calculatePetLoyalty(pet.happiness, pet.hunger);
+  }
+
+  /**
+   * Decays an individual pet's hunger and happiness with lower-bound clamping at 0
+   */
+  static async decayPet(petId: string, hungerLoss: number = 5, happinessLoss: number = 3) {
+    const pet = await prisma.pet.findUnique({ where: { id: petId } });
+    if (!pet) throw new Error('Pet not found');
+
+    const newHunger = Math.max(0, pet.hunger - hungerLoss);
+    const newHappiness = Math.max(0, pet.happiness - happinessLoss);
+
+    const updated = await prisma.pet.update({
+      where: { id: petId },
+      data: {
+        hunger: newHunger,
+        happiness: newHappiness,
+      },
+    });
+
+    // If starving or sulking, trigger reactive emote
+    if (newHunger <= 20) {
+      this.triggerReaction(petId, '❕');
+    } else if (newHappiness <= 20) {
+      this.triggerReaction(petId, '💤');
+    }
+
+    return updated;
+  }
+
+  /**
    * Hourly decay of hunger and happiness across all pets in the database
    */
-  static async decayAllPets(): Promise<void> {
+  static async decayAllPets(): Promise<number> {
     try {
-      await prisma.$executeRaw`
-        UPDATE "Pet"
+      const count = await prisma.$executeRaw`
+        UPDATE "pets"
         SET "hunger" = GREATEST(0, "hunger" - 5),
             "happiness" = GREATEST(0, "happiness" - 3)
       `;
+      return Number(count);
     } catch (err) {
       console.error('[PetManager] Error decaying pet stats:', err);
+      return 0;
     }
+  }
+}
+
+export type PetLoyaltyLevel = 'ACQUAINTANCE' | 'FRIEND' | 'DEVOTED' | 'BEST_FRIEND' | 'SOULMATE';
+
+export function calculatePetLoyalty(happiness: number, hunger: number): {
+  level: PetLoyaltyLevel;
+  score: number;
+  perks: string[];
+} {
+  const compositeScore = Math.round((happiness * 0.6) + (hunger * 0.4));
+  if (compositeScore >= 90) {
+    return {
+      level: 'SOULMATE',
+      score: compositeScore,
+      perks: ['Exclusive golden aura', 'Faster follow speed', 'Heart emote bursts', '+10% XP bonus'],
+    };
+  } else if (compositeScore >= 75) {
+    return {
+      level: 'BEST_FRIEND',
+      score: compositeScore,
+      perks: ['Playful trick animations', 'Heart emote bursts', '+5% XP bonus'],
+    };
+  } else if (compositeScore >= 50) {
+    return {
+      level: 'DEVOTED',
+      score: compositeScore,
+      perks: ['Follows closely', 'Occasional happy emotes'],
+    };
+  } else if (compositeScore >= 25) {
+    return {
+      level: 'FRIEND',
+      score: compositeScore,
+      perks: ['Standard companionship'],
+    };
+  } else {
+    return {
+      level: 'ACQUAINTANCE',
+      score: compositeScore,
+      perks: ['Needs food and attention'],
+    };
   }
 }
 

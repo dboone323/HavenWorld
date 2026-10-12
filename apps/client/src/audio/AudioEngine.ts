@@ -409,6 +409,59 @@ export class AudioEngine {
     });
   }
 
+  /** Level Up fanfare: ascending triumphant arpeggio (C5 -> E5 -> G5 -> C6) with lingering harmonic ring */
+  playLevelUp(): void {
+    if (!this.canPlay('gameplay')) return;
+    const ctx = this.ctx;
+    if (!ctx || !this.masterGain) return;
+
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    notes.forEach((freq, idx) => {
+      const now = ctx.currentTime + idx * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = idx === 3 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (idx === 3 ? 0.35 : 0.2));
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(now);
+      osc.stop(now + (idx === 3 ? 0.35 : 0.2));
+    });
+  }
+
+  /** Ambient Fountain trickle: dual modulating gentle water droplet splashes */
+  playAmbientFountain(): void {
+    if (!this.canPlay('gameplay')) return;
+    const ctx = this.ctx;
+    if (!ctx || !this.masterGain) return;
+
+    const freqs = [840, 1120];
+    freqs.forEach((freq, idx) => {
+      const now = ctx.currentTime + idx * 0.05;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.75, now + 0.09);
+
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(now);
+      osc.stop(now + 0.09);
+    });
+  }
+
   private canPlay(category: SoundCategory): boolean {
     if (this.settings.isMuted) return false;
     if (!this.settings.categories[category]) return false;

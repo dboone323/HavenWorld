@@ -239,5 +239,15 @@ describe('AudioEngine', () => {
 
     engine.playTradeComplete();
     expect(activeFunctionalContext?.createdOscillators.length).toBe(11);
+
+    engine.playLevelUp();
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(15);
+    const topNoteOsc = activeFunctionalContext!.createdOscillators[14];
+    expect(topNoteOsc.type).toBe('triangle');
+
+    engine.playAmbientFountain();
+    expect(activeFunctionalContext?.createdOscillators.length).toBe(17);
+    const waterOsc = activeFunctionalContext!.createdOscillators[15];
+    expect(waterOsc.type).toBe('sine');
   });
 });
