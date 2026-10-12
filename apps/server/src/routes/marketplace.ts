@@ -64,6 +64,9 @@ router.post('/:id/buy', requireAuth, async (req: AuthRequest, res) => {
     const result = await MarketplaceService.buyListing(req.user!.userId, listingId);
     return res.json(result);
   } catch (err: any) {
+    if (err.message.includes('SNIPING_LOCK_ACTIVE')) {
+      return res.status(409).json({ error: err.message, code: 'SNIPING_LOCK_ACTIVE' });
+    }
     const isClientErr =
       err.message.includes('INSUFFICIENT_FUNDS') ||
       err.message.includes('CANNOT_BUY_OWN') ||

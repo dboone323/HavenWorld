@@ -181,6 +181,50 @@ describe('Track 4 Integration: Economy, Progression, and Trading', () => {
       expect(buyRes.status).toBe(400);
       expect(buyRes.body.error).toMatch(/cannot purchase your own/i);
     });
+
+    it('should reject concurrent purchase attempts when anti-sniping lock is active', async () => {
+      const seller = await createTestUser();
+      const buyer1 = await createTestUser({ havenCoins: 500 });
+      const buyer2 = await createTestUser({ havenCoins: 500 });
+      const item = await createTestItem({ price: 100 });
+
+      await prisma.inventory.create({
+        data: { userId: seller.id, itemId: item.id, quantity: 1 },
+      });
+
+      const sellerToken = generateTestToken(seller.id);
+      const buyer1Token = generateTestToken(buyer1.id);
+      const buyer2Token = generateTestToken(buyer2.id);
+
+      const listRes = await request(app)
+        .post('/api/marketplace')
+        .set('Authorization', `Bearer ${sellerToken}`)
+        .send({ itemId: item.id, priceCoins: 100 });
+      const listingId = listRes.body.id;
+
+      // Lock listing manually as if an active purchase is underway
+      const { MarketplaceService } = await import('../../src/services/MarketplaceService');
+      const lockKey = `lock:marketplace:buy:${listingId}`;
+      await MarketplaceService.acquireLock(lockKey, 5);
+
+      // Attempt purchase while locked
+      const blockedRes = await request(app)
+        .post(`/api/marketplace/${listingId}/buy`)
+        .set('Authorization', `Bearer ${buyer2Token}`);
+
+      expect(blockedRes.status).toBe(409);
+      expect(blockedRes.body.code).toBe('SNIPING_LOCK_ACTIVE');
+
+      // Release lock and buyer1 can now succeed
+      await MarketplaceService.releaseLock(lockKey);
+
+      const successRes = await request(app)
+        .post(`/api/marketplace/${listingId}/buy`)
+        .set('Authorization', `Bearer ${buyer1Token}`);
+
+      expect(successRes.status).toBe(200);
+      expect(successRes.body.success).toBe(true);
+    });
   });
 
   describe('4.9: VIP Subscription / Club Haven', () => {

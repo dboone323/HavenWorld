@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { redisClient } from '../redis';
 import { captureSecurityEvent } from '../monitoring/sentry';
 
 export const MARKETPLACE_TAX_RATE = 0.05; // 5% transaction tax (economic sink)
@@ -12,6 +13,34 @@ export interface MarketplaceFilter {
 }
 
 export class MarketplaceService {
+  private static localLocks = new Set<string>();
+
+  static async acquireLock(key: string, ttlSeconds: number = 5): Promise<boolean> {
+    if (redisClient?.isOpen) {
+      try {
+        const res = await redisClient.set(key, '1', { NX: true, EX: ttlSeconds });
+        return Boolean(res);
+      } catch {
+        /* fallback to in-memory lock */
+      }
+    }
+    if (this.localLocks.has(key)) return false;
+    this.localLocks.add(key);
+    setTimeout(() => this.localLocks.delete(key), ttlSeconds * 1000);
+    return true;
+  }
+
+  static async releaseLock(key: string): Promise<void> {
+    if (redisClient?.isOpen) {
+      try {
+        await redisClient.del(key);
+      } catch {
+        /* ignore */
+      }
+    }
+    this.localLocks.delete(key);
+  }
+
   /**
    * List an item for sale on the player marketplace.
    * Transfers item from player inventory into marketplace escrow.
@@ -145,102 +174,112 @@ export class MarketplaceService {
    * 5. Listing marked SOLD
    */
   static async buyListing(buyerId: string, listingId: string) {
-    return await prisma.$transaction(async (tx) => {
-      const listing = await tx.marketplaceListing.findUnique({
-        where: { id: listingId },
-        include: { item: true },
-      });
+    const lockKey = `lock:marketplace:buy:${listingId}`;
+    const acquired = await this.acquireLock(lockKey, 5);
+    if (!acquired) {
+      throw new Error('SNIPING_LOCK_ACTIVE: Another buyer is currently purchasing this listing.');
+    }
 
-      if (!listing) {
-        throw new Error('LISTING_NOT_FOUND: Listing does not exist.');
-      }
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const listing = await tx.marketplaceListing.findUnique({
+          where: { id: listingId },
+          include: { item: true },
+        });
 
-      if (listing.status !== 'ACTIVE') {
-        throw new Error('LISTING_UNAVAILABLE: Item has already been sold or cancelled.');
-      }
+        if (!listing) {
+          throw new Error('LISTING_NOT_FOUND: Listing does not exist.');
+        }
 
-      if (listing.sellerId === buyerId) {
-        throw new Error('CANNOT_BUY_OWN: You cannot purchase your own listing.');
-      }
+        if (listing.status !== 'ACTIVE') {
+          throw new Error('LISTING_UNAVAILABLE: Item has already been sold or cancelled.');
+        }
 
-      const buyer = await tx.user.findUnique({
-        where: { id: buyerId },
-        select: { id: true, havenCoins: true, isBanned: true },
-      });
+        if (listing.sellerId === buyerId) {
+          throw new Error('CANNOT_BUY_OWN: You cannot purchase your own listing.');
+        }
 
-      if (!buyer || buyer.isBanned) {
-        throw new Error('BUYER_UNAVAILABLE: Account is invalid or suspended.');
-      }
+        const buyer = await tx.user.findUnique({
+          where: { id: buyerId },
+          select: { id: true, havenCoins: true, isBanned: true },
+        });
 
-      if (buyer.havenCoins < listing.priceCoins) {
-        throw new Error('INSUFFICIENT_FUNDS: Not enough HavenCoins for this purchase.');
-      }
+        if (!buyer || buyer.isBanned) {
+          throw new Error('BUYER_UNAVAILABLE: Account is invalid or suspended.');
+        }
 
-      // Calculate economic tax sink (5%)
-      const tax = Math.floor(listing.priceCoins * MARKETPLACE_TAX_RATE);
-      const sellerPayout = listing.priceCoins - tax;
+        if (buyer.havenCoins < listing.priceCoins) {
+          throw new Error('INSUFFICIENT_FUNDS: Not enough HavenCoins for this purchase.');
+        }
 
-      // 1. Deduct full price from buyer
-      const updatedBuyer = await tx.user.update({
-        where: { id: buyerId },
-        data: { havenCoins: { decrement: listing.priceCoins } },
-        select: { havenCoins: true },
-      });
+        // Calculate economic tax sink (5%)
+        const tax = Math.floor(listing.priceCoins * MARKETPLACE_TAX_RATE);
+        const sellerPayout = listing.priceCoins - tax;
 
-      // 2. Credit net payout to seller
-      const updatedSeller = await tx.user.update({
-        where: { id: listing.sellerId },
-        data: { havenCoins: { increment: sellerPayout } },
-        select: { havenCoins: true },
-      });
+        // 1. Deduct full price from buyer
+        const updatedBuyer = await tx.user.update({
+          where: { id: buyerId },
+          data: { havenCoins: { decrement: listing.priceCoins } },
+          select: { havenCoins: true },
+        });
 
-      // 3. Grant item to buyer inventory
-      await tx.inventory.upsert({
-        where: {
-          userId_itemId: {
+        // 2. Credit net payout to seller
+        const updatedSeller = await tx.user.update({
+          where: { id: listing.sellerId },
+          data: { havenCoins: { increment: sellerPayout } },
+          select: { havenCoins: true },
+        });
+
+        // 3. Grant item to buyer inventory
+        await tx.inventory.upsert({
+          where: {
+            userId_itemId: {
+              userId: buyerId,
+              itemId: listing.itemId,
+            },
+          },
+          update: { quantity: { increment: 1 } },
+          create: {
             userId: buyerId,
             itemId: listing.itemId,
+            quantity: 1,
           },
-        },
-        update: { quantity: { increment: 1 } },
-        create: {
-          userId: buyerId,
-          itemId: listing.itemId,
-          quantity: 1,
-        },
-      });
+        });
 
-      // 4. Mark listing SOLD
-      const updatedListing = await tx.marketplaceListing.update({
-        where: { id: listingId },
-        data: {
-          status: 'SOLD',
-          buyerId,
-          purchasedAt: new Date(),
-        },
-      });
+        // 4. Mark listing SOLD
+        const updatedListing = await tx.marketplaceListing.update({
+          where: { id: listingId },
+          data: {
+            status: 'SOLD',
+            buyerId,
+            purchasedAt: new Date(),
+          },
+        });
 
-      // 5. Log transactions for auditing & telemetry
-      await tx.transactionLog.create({
-        data: {
-          senderId: buyerId,
-          receiverId: listing.sellerId,
-          amount: listing.priceCoins,
-          type: 'TRANSFER',
-          source: `MARKETPLACE_PURCHASE:${listingId}:TAX_${tax}`,
-        },
-      });
+        // 5. Log transactions for auditing & telemetry
+        await tx.transactionLog.create({
+          data: {
+            senderId: buyerId,
+            receiverId: listing.sellerId,
+            amount: listing.priceCoins,
+            type: 'TRANSFER',
+            source: `MARKETPLACE_PURCHASE:${listingId}:TAX_${tax}`,
+          },
+        });
 
-      return {
-        success: true,
-        listing: updatedListing,
-        pricePaid: listing.priceCoins,
-        taxSink: tax,
-        sellerPayout,
-        buyerBalance: updatedBuyer.havenCoins,
-        sellerBalance: updatedSeller.havenCoins,
-      };
-    });
+        return {
+          success: true,
+          listing: updatedListing,
+          pricePaid: listing.priceCoins,
+          taxSink: tax,
+          sellerPayout,
+          buyerBalance: updatedBuyer.havenCoins,
+          sellerBalance: updatedSeller.havenCoins,
+        };
+      });
+    } finally {
+      await this.releaseLock(lockKey);
+    }
   }
 
   /**
