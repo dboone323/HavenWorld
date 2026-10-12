@@ -316,5 +316,151 @@ export class ShopService {
       console.error('[ShopService] Error processing flash sales:', err);
     }
   }
+
+  // ─── Batch 49: Dynamic Catalog Rotation, Flash Sales & Stock Quotas ────────
+
+  /**
+   * Active flash sales — { itemId → FlashSaleEntry }
+   * In-memory; keyed by itemId for O(1) lookup.
+   */
+  private static flashSales: Map<string, FlashSaleEntry> = new Map();
+
+  /**
+   * Stock quota ledger — { itemId → remaining stock count }
+   * Once count reaches 0 the item is sold out.
+   */
+  private static stockQuotas: Map<string, number> = new Map();
+
+  /**
+   * Catalog rotation schedule — sorted list of upcoming rotation windows.
+   */
+  private static rotationSchedule: CatalogRotationWindow[] = [];
+
+  /**
+   * Schedules a flash sale for an item with a discount % and duration.
+   * A sale cannot be set below 5% or above 90% discount.
+   */
+  static scheduleFlashSale(
+    itemId: string,
+    discountPercent: number,
+    durationMs: number,
+  ): FlashSaleEntry {
+    if (discountPercent < 5 || discountPercent > 90) {
+      throw new Error('INVALID_DISCOUNT_RANGE');
+    }
+    const entry: FlashSaleEntry = {
+      itemId,
+      discountPercent,
+      startsAt: Date.now(),
+      endsAt: Date.now() + durationMs,
+      active: true,
+    };
+    ShopService.flashSales.set(itemId, entry);
+    return entry;
+  }
+
+  /**
+   * Returns the effective price for an item after applying any active flash sale.
+   * If no sale is active for the item, returns the base coin price.
+   */
+  static getEffectivePrice(itemId: string, now = Date.now()): { price: number; onSale: boolean; discountPercent: number } {
+    const item = CATALOG_ITEMS.find((i) => i.id === itemId);
+    if (!item) throw new Error('ITEM_NOT_FOUND');
+
+    const sale = ShopService.flashSales.get(itemId);
+    if (sale && sale.active && now >= sale.startsAt && now <= sale.endsAt) {
+      const discounted = Math.floor((item.priceCoin ?? 0) * (1 - sale.discountPercent / 100));
+      return { price: discounted, onSale: true, discountPercent: sale.discountPercent };
+    }
+
+    return { price: item.priceCoin ?? 0, onSale: false, discountPercent: 0 };
+  }
+
+  /**
+   * Expires flash sales whose `endsAt` has passed.
+   * Returns the list of itemIds whose sales were expired.
+   */
+  static expireFlashSales(now = Date.now()): string[] {
+    const expired: string[] = [];
+    for (const [itemId, sale] of ShopService.flashSales) {
+      if (sale.active && now > sale.endsAt) {
+        sale.active = false;
+        expired.push(itemId);
+      }
+    }
+    return expired;
+  }
+
+  /**
+   * Sets a stock quota for a limited-edition item.
+   * Throws if quota is <= 0.
+   */
+  static setStockQuota(itemId: string, stock: number): void {
+    if (stock <= 0) throw new Error('INVALID_STOCK_QUOTA');
+    ShopService.stockQuotas.set(itemId, stock);
+  }
+
+  /**
+   * Decrements stock for an item and returns the remaining count.
+   * Throws SOLD_OUT when stock reaches 0.
+   */
+  static consumeStock(itemId: string, qty = 1): number {
+    const current = ShopService.stockQuotas.get(itemId);
+    if (current === undefined) return Infinity; // unlimited stock
+    if (current < qty) throw new Error('SOLD_OUT');
+    const remaining = current - qty;
+    ShopService.stockQuotas.set(itemId, remaining);
+    return remaining;
+  }
+
+  /**
+   * Returns current stock for an item, or null if unlimited.
+   */
+  static getStock(itemId: string): number | null {
+    return ShopService.stockQuotas.has(itemId)
+      ? (ShopService.stockQuotas.get(itemId) ?? 0)
+      : null;
+  }
+
+  /**
+   * Pushes a catalog rotation window into the schedule (chronological order).
+   */
+  static addRotationWindow(window: CatalogRotationWindow): void {
+    ShopService.rotationSchedule.push(window);
+    ShopService.rotationSchedule.sort((a, b) => a.startsAt - b.startsAt);
+  }
+
+  /**
+   * Returns the active rotation window for the given timestamp, or null if none.
+   */
+  static getActiveRotation(now = Date.now()): CatalogRotationWindow | null {
+    return (
+      ShopService.rotationSchedule.find((w) => now >= w.startsAt && now <= w.endsAt) ?? null
+    );
+  }
+
+  /**
+   * Returns all upcoming (not-yet-started) rotation windows.
+   */
+  static getUpcomingRotations(now = Date.now()): CatalogRotationWindow[] {
+    return ShopService.rotationSchedule.filter((w) => w.startsAt > now);
+  }
 }
+
+export interface FlashSaleEntry {
+  itemId: string;
+  discountPercent: number;
+  startsAt: number;
+  endsAt: number;
+  active: boolean;
+}
+
+export interface CatalogRotationWindow {
+  windowId: string;
+  label: string;
+  featuredItemIds: string[];
+  startsAt: number;
+  endsAt: number;
+}
+
 

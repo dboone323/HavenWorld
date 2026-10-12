@@ -13,6 +13,16 @@ redis.on('connect', () => console.log('[Redis] Connected successfully'));
 redis.on('reconnecting', () => console.warn('[Redis] Reconnecting...'));
 
 export const connectRedis = async (): Promise<void> => {
-  await redis.connect();
-  console.log('[Redis] Ready');
+  if (!redis.isOpen) {
+    await redis.connect();
+    console.log('[Redis] Ready');
+  }
 };
+
+export const disconnectRedis = async (): Promise<void> => {
+  if (redis.isOpen) {
+    await redis.quit();
+    console.log('[Redis] Disconnected');
+  }
+};
+

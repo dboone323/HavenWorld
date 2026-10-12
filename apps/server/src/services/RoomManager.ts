@@ -239,6 +239,18 @@ class RoomManager {
     return { ...player, roomId };
   }
 
+  getRoomPlayers(roomId: string): PlayerState[] {
+    const room = this.rooms.get(roomId);
+    if (!room) return [];
+    return Array.from(room.players.values());
+  }
+
+  leaveRoomByUserId(userId: string): { roomId: string; playerId: string } | null {
+    const socketId = this.userToSocket.get(userId);
+    if (!socketId) return null;
+    return this.leaveRoom(socketId);
+  }
+
   // ── Capacity Soft-Caps & Overflow Sharding (Batch 39) ──────────────────────
 
   setRoomCapacityLimits(roomId: string, limits: Partial<RoomCapacityLimits>): RoomCapacityLimits {

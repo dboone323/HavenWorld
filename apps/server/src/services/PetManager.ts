@@ -284,9 +284,196 @@ export class PetManager {
       return 0;
     }
   }
+
+  /**
+   * Performs a trick with the pet companion if loyalty tier and energy permit
+   */
+  static async performTrick(userId: string, petId: string, trick: PetTrick): Promise<{
+    trick: PetTrick;
+    success: boolean;
+    happinessGain: number;
+    message: string;
+  }> {
+    const pet = await prisma.pet.findUnique({ where: { id: petId } });
+    if (!pet || pet.ownerId !== userId) {
+      throw new Error('Pet not found or unauthorized');
+    }
+
+    const loyalty = calculatePetLoyalty(pet.happiness, pet.hunger);
+    const trickDef = PET_TRICKS[trick];
+    if (!trickDef) {
+      throw new Error(`Unknown trick: ${trick}`);
+    }
+
+    const loyaltyOrder: PetLoyaltyLevel[] = ['ACQUAINTANCE', 'FRIEND', 'DEVOTED', 'BEST_FRIEND', 'SOULMATE'];
+    const currentTierIndex = loyaltyOrder.indexOf(loyalty.level);
+    const requiredTierIndex = loyaltyOrder.indexOf(trickDef.requiredLoyalty);
+
+    if (currentTierIndex < requiredTierIndex) {
+      throw new Error(
+        `Pet cannot perform trick '${trickDef.name}'. Requires loyalty ${trickDef.requiredLoyalty} (current: ${loyalty.level})`
+      );
+    }
+
+    if (pet.hunger < 15) {
+      throw new Error(`Pet is too hungry to perform trick '${trickDef.name}'. Feed your pet first!`);
+    }
+
+    // Boost happiness, slightly consume energy
+    const updatedHappiness = Math.min(100, pet.happiness + trickDef.happinessReward);
+    const updatedHunger = Math.max(0, pet.hunger - trickDef.energyCost);
+
+    await prisma.pet.update({
+      where: { id: petId },
+      data: {
+        happiness: updatedHappiness,
+        hunger: updatedHunger,
+      },
+    });
+
+    this.triggerReaction(petId, trickDef.emote);
+
+    return {
+      trick,
+      success: true,
+      happinessGain: trickDef.happinessReward,
+      message: `${pet.name} happily performed ${trickDef.name}!`,
+    };
+  }
+
+  /**
+   * Grooms pet companion to restore happiness and reinforce bond
+   */
+  static async groomPet(userId: string, petId: string): Promise<{
+    happiness: number;
+    cleaned: boolean;
+    message: string;
+  }> {
+    const pet = await prisma.pet.findUnique({ where: { id: petId } });
+    if (!pet || pet.ownerId !== userId) {
+      throw new Error('Pet not found or unauthorized');
+    }
+
+    const updated = await prisma.pet.update({
+      where: { id: petId },
+      data: {
+        happiness: Math.min(100, pet.happiness + 20),
+      },
+    });
+
+    this.triggerReaction(petId, '❤');
+
+    return {
+      happiness: updated.happiness,
+      cleaned: true,
+      message: `${pet.name} feels refreshed and groomed!`,
+    };
+  }
+
+  /**
+   * Feeds pet a specialty treat with custom bonus rewards
+   */
+  static async feedPetTreat(
+    userId: string,
+    petId: string,
+    treat: 'COOKIE' | 'FISH_SNACK' | 'GOLDEN_APPLE'
+  ): Promise<{
+    hunger: number;
+    happiness: number;
+    treat: string;
+    message: string;
+  }> {
+    const pet = await prisma.pet.findUnique({ where: { id: petId } });
+    if (!pet || pet.ownerId !== userId) {
+      throw new Error('Pet not found or unauthorized');
+    }
+
+    let hungerBoost = 25;
+    let happinessBoost = 20;
+    if (treat === 'FISH_SNACK') {
+      hungerBoost = 35;
+      happinessBoost = 25;
+    } else if (treat === 'GOLDEN_APPLE') {
+      hungerBoost = 50;
+      happinessBoost = 40;
+    }
+
+    const updated = await prisma.pet.update({
+      where: { id: petId },
+      data: {
+        hunger: Math.min(100, pet.hunger + hungerBoost),
+        happiness: Math.min(100, pet.happiness + happinessBoost),
+        lastFedAt: new Date(),
+      },
+    });
+
+    this.triggerReaction(petId, '♫');
+    await QuestService.incrementProgress(userId, 'FEED_PET', 1);
+
+    return {
+      hunger: updated.hunger,
+      happiness: updated.happiness,
+      treat,
+      message: `${pet.name} savored the delicious ${treat}!`,
+    };
+  }
 }
 
 export type PetLoyaltyLevel = 'ACQUAINTANCE' | 'FRIEND' | 'DEVOTED' | 'BEST_FRIEND' | 'SOULMATE';
+export type PetTrick = 'SIT' | 'SPIN' | 'BEG' | 'BACKFLIP' | 'DANCE' | 'SLEEP';
+
+export interface PetTrickDefinition {
+  name: string;
+  requiredLoyalty: PetLoyaltyLevel;
+  happinessReward: number;
+  energyCost: number;
+  emote: '❤' | '💤' | '♫' | '❕';
+}
+
+export const PET_TRICKS: Record<PetTrick, PetTrickDefinition> = {
+  SIT: {
+    name: 'Sit & Stay',
+    requiredLoyalty: 'ACQUAINTANCE',
+    happinessReward: 5,
+    energyCost: 2,
+    emote: '❤',
+  },
+  SPIN: {
+    name: 'Joyful Spin',
+    requiredLoyalty: 'FRIEND',
+    happinessReward: 8,
+    energyCost: 4,
+    emote: '♫',
+  },
+  BEG: {
+    name: 'Cute Beg',
+    requiredLoyalty: 'DEVOTED',
+    happinessReward: 10,
+    energyCost: 5,
+    emote: '❤',
+  },
+  BACKFLIP: {
+    name: 'Acrobatic Backflip',
+    requiredLoyalty: 'BEST_FRIEND',
+    happinessReward: 15,
+    energyCost: 8,
+    emote: '❕',
+  },
+  DANCE: {
+    name: 'Victory Dance',
+    requiredLoyalty: 'SOULMATE',
+    happinessReward: 20,
+    energyCost: 10,
+    emote: '♫',
+  },
+  SLEEP: {
+    name: 'Nap Time',
+    requiredLoyalty: 'FRIEND',
+    happinessReward: 6,
+    energyCost: 1,
+    emote: '💤',
+  },
+};
 
 export function calculatePetLoyalty(happiness: number, hunger: number): {
   level: PetLoyaltyLevel;
@@ -326,4 +513,5 @@ export function calculatePetLoyalty(happiness: number, hunger: number): {
     };
   }
 }
+
 

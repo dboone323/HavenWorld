@@ -1,4 +1,4 @@
-export type PlayerPresenceState = 'ACTIVE' | 'IDLE' | 'AFK';
+export type PlayerPresenceState = 'ACTIVE' | 'IDLE' | 'DROWSY' | 'SLEEPING' | 'AFK';
 
 export interface IdleStateListener {
   (state: PlayerPresenceState): void;
@@ -8,11 +8,17 @@ export class IdleStateManager {
   public currentState: PlayerPresenceState = 'ACTIVE';
   public lastActiveTimestamp: number = Date.now();
   public idleTimeoutMs: number;
+  public drowsyTimeoutMs: number;
   public afkTimeoutMs: number;
   private listeners: Set<IdleStateListener> = new Set();
 
-  constructor(idleTimeoutMs: number = 60_000, afkTimeoutMs: number = 300_000) {
+  constructor(
+    idleTimeoutMs: number = 60_000,
+    drowsyTimeoutMs: number = 180_000,
+    afkTimeoutMs: number = 300_000
+  ) {
     this.idleTimeoutMs = idleTimeoutMs;
+    this.drowsyTimeoutMs = drowsyTimeoutMs;
     this.afkTimeoutMs = afkTimeoutMs;
   }
 
@@ -35,6 +41,10 @@ export class IdleStateManager {
     if (elapsed >= this.afkTimeoutMs) {
       if (this.currentState !== 'AFK') {
         this.setState('AFK');
+      }
+    } else if (elapsed >= this.drowsyTimeoutMs) {
+      if (this.currentState !== 'DROWSY') {
+        this.setState('DROWSY');
       }
     } else if (elapsed >= this.idleTimeoutMs) {
       if (this.currentState !== 'IDLE') {

@@ -227,7 +227,7 @@ router.put('/:id/surfaces', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // ── Phase 3B: Trending Lofts & Upvotes (community ratings) ────────────────
-// NOTE: must stay registered above the '/:id' param route so "trending" isn't
+// NOTE: must stay registered above the '/:id' param route so "trending" and "showcase" aren't
 // swallowed as a roomId.
 router.get('/trending', requireAuth, async (req, res) => {
   const raw = parseInt(String(req.query.limit ?? '10'), 10);
@@ -237,6 +237,15 @@ router.get('/trending', requireAuth, async (req, res) => {
   res.json(trending);
 });
 
+router.get('/showcase/leaderboard', requireAuth, async (req, res) => {
+  const weekKey = typeof req.query.week === 'string' ? req.query.week : undefined;
+  const raw = parseInt(String(req.query.limit ?? '10'), 10);
+  const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 25) : 10;
+
+  const leaderboard = await LoftRatingService.getWeeklyLeaderboard(weekKey, limit);
+  res.json(leaderboard);
+});
+
 router.post('/:id/upvote', requireAuth, async (req: AuthRequest, res) => {
   const roomId = req.params.id as string;
   try {
@@ -244,6 +253,33 @@ router.post('/:id/upvote', requireAuth, async (req: AuthRequest, res) => {
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to upvote loft';
+    res.status(400).json({ error: message });
+  }
+});
+
+router.post('/:id/rate', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  const { stars, tags, comment } = req.body || {};
+  try {
+    const result = await LoftRatingService.submitLoftRating(req.user!.userId, roomId, {
+      stars: Number(stars),
+      tags,
+      comment,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to rate loft';
+    res.status(400).json({ error: message });
+  }
+});
+
+router.get('/:id/rating-summary', requireAuth, async (req: AuthRequest, res) => {
+  const roomId = req.params.id as string;
+  try {
+    const summary = await LoftRatingService.getRoomRatingSummary(roomId);
+    res.json(summary);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch rating summary';
     res.status(400).json({ error: message });
   }
 });

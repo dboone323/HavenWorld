@@ -81,7 +81,8 @@ describe('Track 8: Advanced Client Polish & UX', () => {
 
   describe('8.5: AFK & Idle Dimming State', () => {
     it('should transition presence states based on elapsed inactivity', () => {
-      const idleManager = new IdleStateManager(10_000, 30_000); // 10s idle, 30s AFK
+      // Batch 47 introduced a 3-stage progression: IDLE → DROWSY → AFK.
+      const idleManager = new IdleStateManager(10_000, 20_000, 30_000); // 10s idle, 20s drowsy, 30s AFK
       const now = Date.now();
 
       expect(idleManager.currentState).toBe('ACTIVE');
@@ -91,6 +92,9 @@ describe('Track 8: Advanced Client Polish & UX', () => {
 
       // 15s elapsed: becomes IDLE
       expect(idleManager.checkInactivity(now + 15_000)).toBe('IDLE');
+
+      // 25s elapsed: becomes DROWSY
+      expect(idleManager.checkInactivity(now + 25_000)).toBe('DROWSY');
 
       // 35s elapsed: becomes AFK
       expect(idleManager.checkInactivity(now + 35_000)).toBe('AFK');

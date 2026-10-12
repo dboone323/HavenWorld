@@ -271,6 +271,170 @@ export class InventoryService {
       return { success: true, coinsAwarded, currentStreak: newStreak };
     });
   }
+
+  // ─── Batch 48: Bulk Recycling & Salvage System ────────────────────────────
+
+  /**
+   * Scrap yield formula — coins returned based on rarity tier.
+   * COMMON=5, UNCOMMON=15, RARE=40, EPIC=100, LEGENDARY=250
+   */
+  static scrapYieldForRarity(rarity: string): number {
+    const TABLE: Record<string, number> = {
+      COMMON: 5,
+      UNCOMMON: 15,
+      RARE: 40,
+      EPIC: 100,
+      LEGENDARY: 250,
+    };
+    return TABLE[rarity] ?? 5;
+  }
+
+  /**
+   * Recycles a single item from inventory, returning coins proportional to
+   * its rarity. Non-recyclable (default free) items yield 0 coins.
+   * Equipped avatar items cannot be recycled.
+   */
+  async recycleItem(userId: string, itemId: string, quantity = 1): Promise<RecycleResult> {
+    return await this.client.$transaction(async (tx) => {
+      const entry = await tx.inventory.findUnique({
+        where: { userId_itemId: { userId, itemId } },
+        include: { item: true },
+      });
+
+      if (!entry || entry.quantity < quantity) {
+        throw new ItemNotFoundError(`Item ${itemId} not in inventory or insufficient quantity`);
+      }
+
+      // Block recycling of free starter items
+      if (DEFAULT_FREE_ITEM_IDS.includes(itemId)) {
+        throw new Error('STARTER_ITEM_NOT_RECYCLABLE');
+      }
+
+      // Block recycling equipped items
+      const avatar = await tx.avatar.findUnique({ where: { userId } });
+      if (avatar) {
+        const equipped = [
+          avatar.outfitHead, avatar.outfitFace, avatar.outfitBody,
+          avatar.outfitLegs, avatar.outfitFeet, avatar.outfitBack, avatar.outfitHand,
+        ];
+        if (equipped.includes(itemId)) {
+          throw new Error('ITEM_CURRENTLY_EQUIPPED');
+        }
+      }
+
+      const coinsPerUnit = InventoryService.scrapYieldForRarity(entry.item.rarity);
+      const coinsAwarded = coinsPerUnit * quantity;
+
+      // Remove from inventory
+      if (entry.quantity === quantity) {
+        await tx.inventory.delete({ where: { id: entry.id } });
+      } else {
+        await tx.inventory.update({
+          where: { id: entry.id },
+          data: { quantity: { decrement: quantity } },
+        });
+      }
+
+      // Credit coins
+      await tx.user.update({
+        where: { id: userId },
+        data: { havenCoins: { increment: coinsAwarded } },
+      });
+
+      return { itemId, quantityRecycled: quantity, coinsAwarded, rarityTier: entry.item.rarity };
+    });
+  }
+
+  /**
+   * Bulk-recycles multiple items in a single transaction.
+   * Skips starter items and equipped items rather than aborting the whole batch.
+   */
+  async bulkRecycle(
+    userId: string,
+    requests: Array<{ itemId: string; quantity?: number }>,
+  ): Promise<BulkRecycleResult> {
+    const results: RecycleResult[] = [];
+    const skipped: string[] = [];
+    let totalCoins = 0;
+
+    for (const req of requests) {
+      try {
+        const res = await this.recycleItem(userId, req.itemId, req.quantity ?? 1);
+        results.push(res);
+        totalCoins += res.coinsAwarded;
+      } catch {
+        skipped.push(req.itemId);
+      }
+    }
+
+    return { recycled: results, skipped, totalCoinsAwarded: totalCoins };
+  }
+
+  /**
+   * Converts a batch of salvageable materials (duplicates with qty > 1) into
+   * coin value. Returns a summary per rarity tier.
+   */
+  async salvageDuplicates(userId: string): Promise<SalvageSummary> {
+    const inventory = await this.client.inventory.findMany({
+      where: { userId, quantity: { gt: 1 } },
+      include: { item: true },
+    });
+
+    const salvageable = inventory.filter((e) => !DEFAULT_FREE_ITEM_IDS.includes(e.itemId));
+    if (salvageable.length === 0) {
+      return { tierBreakdown: {}, totalCoinsAwarded: 0, itemsSalvaged: 0 };
+    }
+
+    const tierBreakdown: Record<string, { count: number; coins: number }> = {};
+    let totalCoins = 0;
+    let itemsSalvaged = 0;
+
+    for (const entry of salvageable) {
+      // Keep 1, salvage the rest
+      const excessQty = entry.quantity - 1;
+      const coinsPerUnit = InventoryService.scrapYieldForRarity(entry.item.rarity);
+      const coinsAwarded = coinsPerUnit * excessQty;
+      const tier = entry.item.rarity;
+
+      if (!tierBreakdown[tier]) tierBreakdown[tier] = { count: 0, coins: 0 };
+      tierBreakdown[tier].count += excessQty;
+      tierBreakdown[tier].coins += coinsAwarded;
+      totalCoins += coinsAwarded;
+      itemsSalvaged += excessQty;
+
+      await this.client.inventory.update({
+        where: { id: entry.id },
+        data: { quantity: 1 },
+      });
+    }
+
+    // Credit all coins at once
+    await this.client.user.update({
+      where: { id: userId },
+      data: { havenCoins: { increment: totalCoins } },
+    });
+
+    return { tierBreakdown, totalCoinsAwarded: totalCoins, itemsSalvaged };
+  }
+}
+
+export interface RecycleResult {
+  itemId: string;
+  quantityRecycled: number;
+  coinsAwarded: number;
+  rarityTier: string;
+}
+
+export interface BulkRecycleResult {
+  recycled: RecycleResult[];
+  skipped: string[];
+  totalCoinsAwarded: number;
+}
+
+export interface SalvageSummary {
+  tierBreakdown: Record<string, { count: number; coins: number }>;
+  totalCoinsAwarded: number;
+  itemsSalvaged: number;
 }
 
 export const inventoryService = new InventoryService();
