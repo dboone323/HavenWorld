@@ -48,11 +48,11 @@ export class ScavengerHuntService {
   }
 
   /**
-   * Returns all uncollected tickets in a room
+   * Returns all uncollected tickets (filtered by roomId when provided)
    */
-  static getActiveTickets(roomId: string): ScavengerTicket[] {
+  static getActiveTickets(roomId?: string): ScavengerTicket[] {
     return Array.from(this.tickets.values()).filter(
-      (t) => t.roomId === roomId && t.claimedBy === null
+      (t) => (!roomId || t.roomId === roomId) && t.claimedBy === null
     );
   }
 
