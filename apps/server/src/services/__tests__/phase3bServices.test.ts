@@ -24,6 +24,44 @@ describe('Phase 3B WeatherService', () => {
     expect(state.currentWeather).toBe('RAIN');
     expect(state.changedAt).toBeLessThanOrEqual(Date.now());
   });
+
+  it('computes atmospheric visual and audio overlay parameters for every weather condition', () => {
+    WeatherService.setWeather('RAIN', 0.8);
+    let state = WeatherService.getWeather();
+    expect(state.overlay).toBeDefined();
+    expect(state.overlay?.ambientColor).toBe('#4a5568');
+    expect(state.overlay?.particleCount).toBe(400);
+    expect(state.overlay?.soundEffect).toBe('ambient_rain');
+
+    WeatherService.setWeather('SUNNY', 0.5);
+    state = WeatherService.getWeather();
+    expect(state.overlay?.particleCount).toBe(0);
+    expect(state.overlay?.soundEffect).toBeNull();
+
+    WeatherService.setWeather('AURORA', 0.5);
+    state = WeatherService.getWeather();
+    expect(state.overlay?.tint).toBe('#06b6d4');
+    expect(state.overlay?.soundEffect).toBe('ambient_shimmer');
+
+    WeatherService.setWeather('SNOW', 1.0);
+    state = WeatherService.getWeather();
+    expect(state.overlay?.particleCount).toBe(300);
+    expect(state.overlay?.soundEffect).toBe('ambient_wind');
+  });
+
+  it('governs valid transitions in the weather state machine', () => {
+    const sunnyTransitions = WeatherService.getNextPossibleWeather('SUNNY');
+    expect(sunnyTransitions).toContain('RAIN');
+    expect(sunnyTransitions).toContain('AURORA');
+
+    const auroraTransitions = WeatherService.getNextPossibleWeather('AURORA');
+    expect(auroraTransitions).toContain('SUNNY');
+    expect(auroraTransitions).not.toContain('SNOW');
+
+    const nextState = WeatherService.transitionWeather();
+    expect(['SUNNY', 'RAIN', 'AURORA', 'SNOW']).toContain(nextState.currentWeather);
+    expect(nextState.intensity).toBeGreaterThanOrEqual(0.3);
+  });
 });
 
 describe('Phase 3B JukeboxService', () => {
