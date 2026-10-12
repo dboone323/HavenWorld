@@ -12,6 +12,7 @@
 #   ./scripts/beta-gate-check.sh --url https://havenworld-game.pages.dev
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
+cd "$(dirname "$0")/.."
 
 BASE_URL="https://147-224-184-148.nip.io"
 CLIENT_URL="https://havenworld-game.pages.dev"
