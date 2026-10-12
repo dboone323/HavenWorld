@@ -30,6 +30,7 @@ workflow:
 variables:
   NODE_VERSION: "22"
   PNPM_VERSION: "9"
+  WRANGLER_VERSION: "4.149.0" # override via CI variable for upgrades
   PNPM_STORE: "$CI_PROJECT_DIR/.pnpm-store"
   # Service hostnames on GitLab SaaS are `postgres` / `redis` (NOT localhost).
   DATABASE_URL: "postgresql://havenworld_user:test_password@postgres:5432/havenworld_test"
@@ -205,6 +206,7 @@ deploy-server:
     - job: server-test
       optional: true # Duo: manual web-run on a branch without server-test in pipeline
   before_script:
+    - apt-get update -qq && apt-get install -y -qq openssh-client curl ca-certificates >/dev/null
     - *ssh-setup
   script:
     # VM pulls from GitLab now (origin repointed) — no code ships over SSH,
