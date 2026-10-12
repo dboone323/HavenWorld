@@ -1,11 +1,77 @@
 import { prisma } from '../prisma';
+import { redisClient } from '../redis';
 import { moderateMessage } from './ModerationService';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { QuestService } from './QuestService';
 import { AchievementService } from './AchievementService';
 
+export interface SentimentAnalysisResult {
+  allowed: boolean;
+  sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+  spamFlags: string[];
+}
+
 export class GuestbookService {
+  /**
+   * Evaluates text for spam patterns, character flooding, and sentiment
+   */
+  static analyzeSentimentAndSpam(message: string): SentimentAnalysisResult {
+    const spamFlags: string[] = [];
+    const text = (message || '').trim();
+
+    // 1. URL / Link spam detection
+    if (/https?:\/\/|www\.|discord\.gg|t\.me/i.test(text)) {
+      spamFlags.push('LINK_PROHIBITED');
+    }
+
+    // 2. Character repetition flooding (e.g. "aaaaaa", "!!!!!!")
+    if (/(.)\1{4,}/i.test(text)) {
+      spamFlags.push('CHARACTER_FLOODING');
+    }
+
+    // 3. Phishing / Scam phrases
+    if (/free coins|free gems|giveaway scam|hacked/i.test(text)) {
+      spamFlags.push('SPAM_PHRASE');
+    }
+
+    // 4. Sentiment scoring
+    const positiveTokens = ['love', 'awesome', 'great', 'cozy', 'cool', 'beautiful', 'nice', 'welcome', 'favorite', 'clean', 'vibes', 'sweet'];
+    const negativeTokens = ['ugly', 'terrible', 'worst', 'hate', 'boring', 'trash', 'gross', 'bad'];
+
+    const words = text.toLowerCase().split(/\s+/);
+    let positiveScore = 0;
+    let negativeScore = 0;
+
+    for (const word of words) {
+      if (positiveTokens.some((t) => word.includes(t))) positiveScore++;
+      if (negativeTokens.some((t) => word.includes(t))) negativeScore++;
+    }
+
+    let sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' = 'NEUTRAL';
+    if (positiveScore > negativeScore) sentiment = 'POSITIVE';
+    else if (negativeScore > positiveScore) sentiment = 'NEGATIVE';
+
+    return {
+      allowed: spamFlags.length === 0,
+      sentiment,
+      spamFlags,
+    };
+  }
+
+  /**
+   * Checks and sets 30-second rate limit cooldown in Redis
+   */
+  static async checkRateLimit(roomId: string, authorId: string): Promise<boolean> {
+    if (!redisClient.isOpen) return true;
+    const redisKey = `guestbook:ratelimit:${roomId}:${authorId}`;
+    const exists = await redisClient.get(redisKey);
+    if (exists) return false;
+
+    await redisClient.set(redisKey, '1', { EX: 30 }); // 30-second cooldown
+    return true;
+  }
+
   /**
    * Signs a loft's guestbook with a friendly message (max 120 chars)
    */
@@ -15,6 +81,19 @@ export class GuestbookService {
     }
 
     const trimmed = message.trim().slice(0, 120);
+
+    // Spam and sentiment analysis
+    const analysis = this.analyzeSentimentAndSpam(trimmed);
+    if (!analysis.allowed) {
+      throw new Error(`Message rejected due to spam policy: ${analysis.spamFlags.join(', ')}`);
+    }
+
+    // Rate limit cooldown check
+    const allowedByRateLimit = await this.checkRateLimit(roomId, authorId);
+    if (!allowedByRateLimit) {
+      throw new Error('Guestbook cooldown active (please wait before signing again)');
+    }
+
     const cleanedMessage = moderateMessage(trimmed).filtered;
 
     const author = await prisma.user.findUnique({
@@ -75,11 +154,56 @@ export class GuestbookService {
   }
 
   /**
-   * Returns a paginated list of guestbook entries (10 per page, newest first)
+   * Pins an entry to the top of the loft's guestbook (room owner only)
    */
-  static async getPage(roomId: string, page = 1) {
-    const take = 10;
+  static async pinEntry(roomId: string, entryId: string, requesterId: string) {
+    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    if (!room || room.ownerId !== requesterId) {
+      throw new Error('Only the room owner can pin guestbook entries');
+    }
+
+    const entry = await prisma.guestbookEntry.findUnique({ where: { id: entryId } });
+    if (!entry || entry.roomId !== roomId) {
+      throw new Error('Entry not found in this room');
+    }
+
+    const redisKey = `guestbook:pinned:${roomId}`;
+    if (redisClient.isOpen) {
+      await redisClient.set(redisKey, entryId);
+    }
+
+    return { pinned: true, entryId, roomId };
+  }
+
+  /**
+   * Unpins the current pinned guestbook entry (room owner only)
+   */
+  static async unpinEntry(roomId: string, requesterId: string) {
+    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    if (!room || room.ownerId !== requesterId) {
+      throw new Error('Only the room owner can unpin guestbook entries');
+    }
+
+    const redisKey = `guestbook:pinned:${roomId}`;
+    if (redisClient.isOpen) {
+      await redisClient.del(redisKey);
+    }
+
+    return { unpinned: true, roomId };
+  }
+
+  /**
+   * Returns a paginated list of guestbook entries with pinned priority
+   */
+  static async getPage(roomId: string, page = 1, pageSize = 10) {
+    const take = Math.min(50, Math.max(1, pageSize));
     const skip = Math.max(0, (page - 1) * take);
+
+    const redisKey = `guestbook:pinned:${roomId}`;
+    let pinnedId: string | null = null;
+    if (redisClient.isOpen) {
+      pinnedId = await redisClient.get(redisKey);
+    }
 
     const [entries, total] = await Promise.all([
       prisma.guestbookEntry.findMany({
@@ -91,19 +215,27 @@ export class GuestbookService {
       prisma.guestbookEntry.count({ where: { roomId } }),
     ]);
 
+    const formatted = entries.map((e) => ({
+      id: e.id,
+      roomId: e.roomId,
+      authorId: e.authorId,
+      authorName: e.authorName,
+      authorAvatar: e.authorAvatar,
+      message: e.message,
+      createdAt: e.createdAt.toISOString(),
+      isPinned: e.id === pinnedId,
+    }));
+
+    // If pinned entry is present, sort it to the top
+    formatted.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+
     return {
-      entries: entries.map((e) => ({
-        id: e.id,
-        roomId: e.roomId,
-        authorId: e.authorId,
-        authorName: e.authorName,
-        authorAvatar: e.authorAvatar,
-        message: e.message,
-        createdAt: e.createdAt.toISOString(),
-      })),
+      entries: formatted,
       page,
+      pageSize: take,
       totalPages: Math.ceil(total / take) || 1,
       totalEntries: total,
+      pinnedId,
     };
   }
 
