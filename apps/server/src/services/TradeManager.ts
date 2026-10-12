@@ -27,6 +27,27 @@ export class TradeManager {
   private static sessions = new Map<string, ActiveTradeSession>(); // tradeId -> session
   private static userActiveTrades = new Map<string, string>(); // userId -> tradeId
   private static tradeCooldowns = new Map<string, number>(); // "userA:userB" -> timestamp
+  private static lockedItems = new Map<string, string>(); // inventoryItemId -> tradeId
+
+  static isItemLocked(inventoryItemId: string): boolean {
+    return this.lockedItems.has(inventoryItemId);
+  }
+
+  static getLockedItemCount(): number {
+    return this.lockedItems.size;
+  }
+
+  static unlockTradeItems(tradeId: string): void {
+    for (const [itemId, tid] of this.lockedItems.entries()) {
+      if (tid === tradeId) {
+        this.lockedItems.delete(itemId);
+      }
+    }
+  }
+
+  static lockTradeItem(inventoryItemId: string, tradeId: string): void {
+    this.lockedItems.set(inventoryItemId, tradeId);
+  }
 
   /**
    * Request a trade with a nearby player
@@ -147,6 +168,7 @@ export class TradeManager {
     if (session.countdownTimer) clearTimeout(session.countdownTimer);
 
     session.state = 'CANCELLED';
+    this.unlockTradeItems(tradeId);
     this.userActiveTrades.delete(session.initiatorId);
     this.userActiveTrades.delete(session.receiverId);
     this.sessions.delete(tradeId);
@@ -180,6 +202,12 @@ export class TradeManager {
         getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'This item is not tradeable.' });
         return;
       }
+
+      if (this.isItemLocked(inventoryItemId) && this.lockedItems.get(inventoryItemId) !== session.id) {
+        getIO()?.to(`user:${userId}`).emit(SOCKET_EVENTS.ERROR, { message: 'Item is locked in another trade.' });
+        return;
+      }
+      this.lockTradeItem(inventoryItemId, session.id);
 
       // 2. Verify user owns enough copies across all offered slots
       const userInv = await prisma.inventory.findUnique({
@@ -421,6 +449,7 @@ export class TradeManager {
       });
 
       session.state = 'COMPLETED';
+      this.unlockTradeItems(session.id);
       const pairKey = [initiatorId, receiverId].sort().join(':');
       this.tradeCooldowns.set(pairKey, Date.now());
 
