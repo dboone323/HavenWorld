@@ -76,6 +76,12 @@ export class FishingService {
       });
     }
 
+    void AnalyticsService.trackEvent('FISH_CAST', {
+      userId,
+      roomId,
+      payload: { species: fish.name, rarity: fish.rarity },
+    });
+
     // 10 Hz simulation loop
     session.intervalTimer = setInterval(() => {
       this.tickSession(userId);
