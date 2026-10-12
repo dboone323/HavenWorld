@@ -440,4 +440,83 @@ describe('ArcadeService (Real Database Validation)', () => {
       });
     });
   });
+
+  describe('Batch 26: Matchmaking Rematch Handshake & Forfeit Resolution', () => {
+    it('forfeitMatch resolves in-progress match, assigns win to opponent, and settles award', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const match = ArcadeService.startMatch(p1.id, p2.id, 'cab-forfeit');
+
+      // p1 forfeits
+      const forfeited = ArcadeService.forfeitMatch(match.id, p1.id);
+      expect(forfeited.status).toBe('FINISHED');
+      expect(forfeited.winnerId).toBe(p2.id);
+      expect(forfeited.forfeitedBy).toBe(p1.id);
+      expect(forfeited.isDraw).toBe(false);
+
+      // Cannot forfeit twice
+      expect(() => ArcadeService.forfeitMatch(match.id, p1.id)).toThrow(/already finished/i);
+
+      // Settle match awards coins to p2
+      const settlement = await ArcadeService.settleMatch(match.id);
+      expect(settlement.winnerId).toBe(p2.id);
+      expect(settlement.coinsAwarded).toBe(ARCADE_WIN_COINS);
+
+      const dbP2 = await prisma.user.findUniqueOrThrow({ where: { id: p2.id } });
+      expect(dbP2.havenCoins).toBe(500 + ARCADE_WIN_COINS);
+    });
+
+    it('rejects forfeit attempts from users not part of the match', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const bystander = await makeUser(500);
+      const match = ArcadeService.startMatch(p1.id, p2.id, 'cab-bystander');
+
+      expect(() => ArcadeService.forfeitMatch(match.id, bystander.id)).toThrow(/not part of this match/i);
+    });
+
+    it('rematch handshake transitions from PENDING to ACCEPTED when both players confirm', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const match = ArcadeService.startMatch(p1.id, p2.id, 'cab-rematch');
+      ArcadeService.forfeitMatch(match.id, p1.id);
+
+      // Player 1 requests rematch -> PENDING
+      const req1 = ArcadeService.requestRematch(match.id, p1.id);
+      expect(req1.status).toBe('PENDING');
+      expect(req1.newMatch).toBeUndefined();
+
+      const status1 = ArcadeService.getRematchStatus(match.id);
+      expect(status1.status).toBe('PENDING');
+      expect(status1.requestedBy).toContain(p1.id);
+
+      // Player 2 requests rematch -> Handshake complete, ACCEPTED, new match initialized
+      const req2 = ArcadeService.requestRematch(match.id, p2.id);
+      expect(req2.status).toBe('ACCEPTED');
+      expect(req2.newMatch).toBeDefined();
+      expect(req2.newMatch?.cabinetId).toBe('cab-rematch');
+      // Player 2 goes first in rematch
+      expect(req2.newMatch?.player1Id).toBe(p2.id);
+      expect(req2.newMatch?.player2Id).toBe(p1.id);
+      expect(req2.newMatch?.status).toBe('IN_PROGRESS');
+
+      // Rematch registry cleared after accepted
+      const statusAfter = ArcadeService.getRematchStatus(match.id);
+      expect(statusAfter.status).toBe('NONE');
+    });
+
+    it('cancelRematch aborts an open rematch request', async () => {
+      const p1 = await makeUser(500);
+      const p2 = await makeUser(500);
+      const match = ArcadeService.startMatch(p1.id, p2.id, 'cab-cancel');
+      ArcadeService.forfeitMatch(match.id, p2.id);
+
+      ArcadeService.requestRematch(match.id, p1.id);
+      expect(ArcadeService.getRematchStatus(match.id).status).toBe('PENDING');
+
+      const cancelled = ArcadeService.cancelRematch(match.id, p1.id);
+      expect(cancelled).toBe(true);
+      expect(ArcadeService.getRematchStatus(match.id).status).toBe('NONE');
+    });
+  });
 });
