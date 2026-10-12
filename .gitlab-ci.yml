@@ -1,0 +1,270 @@
+# HavenWorld — GitLab CI/CD (migrated from GitHub Actions, 2026-10-12)
+# Replaces: pr-check.yml, client-test.yml, e2e.yml, nightly.yml,
+#           load-test.yml, deploy-client.yml, deploy-server.yml
+#
+# Runner strategy (trial quota): everything Linux `saas-linux-small-amd64`
+# (cost factor 1). No macOS jobs in this repo.
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   ORACLE_HOST      (e.g. ubuntu@147.224.184.148 — deploy/login user)
+#   ORACLE_HOSTNAME  (bare IP/hostname for ssh-keyscan)
+#   ORACLE_SSH_KEY   File type, masked — private key for the deploy user
+#   CF_API_TOKEN     masked — Cloudflare API token (Pages deploy)
+#   CF_ACCOUNT_ID    Cloudflare account id
+#   RESEND_API_KEY   masked — failure notification emails (load-test)
+
+workflow:
+  # Exactly one pipeline per push/MR (no duplicate detached + branch runs),
+  # auto-cancel stale runs on new pushes.
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+variables:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9"
+  PNPM_STORE: "$CI_PROJECT_DIR/.pnpm-store"
+  # Service hostnames on GitLab SaaS are `postgres` / `redis` (NOT localhost).
+  DATABASE_URL: "postgresql://havenworld_user:test_password@postgres:5432/havenworld_test"
+  JWT_SECRET: "ci_jwt_secret_not_for_production"
+  JWT_ACCESS_SECRET: "ci_jwt_secret_not_for_production"
+  JWT_REFRESH_SECRET: "ci_refresh_secret_not_for_production"
+  REDIS_URL: "redis://redis:6379/1"
+  NODE_ENV: "test"
+  PORT: "3001"
+  FF_NETWORK_PER_BUILD: "true"
+
+stages:
+  - test
+  - e2e
+  - deploy
+  - perf
+
+default:
+  image: node:22-bookworm
+  tags: [saas-linux-small-amd64]
+  interruptible: true
+  cache:
+    key:
+      files: [pnpm-lock.yaml]
+    paths: [.pnpm-store/]
+    policy: pull-push
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@${PNPM_VERSION} --activate
+    - pnpm config set store-dir "$PNPM_STORE"
+    - pnpm install --frozen-lockfile
+    - pnpm --filter '@havenworld/shared' build
+
+# ── test stage (mirrors pr-check.yml) ─────────────────────────────────────────
+
+server-test:
+  stage: test
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: havenworld_test
+        POSTGRES_USER: havenworld_user
+        POSTGRES_PASSWORD: test_password
+    - name: redis:7-alpine
+      alias: redis
+  script:
+    - pnpm --filter server exec prisma generate
+    - pnpm --filter server exec prisma db push --accept-data-loss
+    - pnpm --filter server exec npx tsx prisma/seed.ts
+    - pnpm --filter server exec tsc --noEmit --project tsconfig.test.json
+    - pnpm --filter server run test:coverage
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths: [apps/server/coverage/]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+client-test:
+  stage: test
+  script:
+    - pnpm --filter client exec tsc --noEmit
+    - pnpm --filter client lint
+    - pnpm --filter client run test:coverage
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths: [apps/client/coverage/]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [apps/client/**/*, packages/shared/**/*]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [apps/client/**/*, packages/shared/**/*]
+    # Still run on MRs that don't touch client files? No — skip to save
+    # minutes. Manual trigger covers the exception.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+
+security-audit:
+  stage: test
+  script:
+    - pnpm audit --audit-level=high
+  allow_failure: true # 5 pre-existing dev-dep advisories (matches main); tighten later
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ── e2e stage (mirrors e2e.yml — Chromium only on MR/main) ────────────────────
+
+e2e-chromium:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.63.0-noble
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: havenworld_test
+        POSTGRES_USER: havenworld_user
+        POSTGRES_PASSWORD: test_password
+    - name: redis:7-alpine
+      alias: redis
+  variables:
+    PORT: "3000"
+    SERVER_AUTOSTART: "true"
+    BASE_URL: "http://localhost:5173"
+  script:
+    - corepack enable
+    - corepack prepare pnpm@${PNPM_VERSION} --activate
+    - pnpm config set store-dir "$PNPM_STORE"
+    - pnpm install --frozen-lockfile
+    - pnpm --filter '@havenworld/shared' build
+    - pnpm --filter server exec prisma generate
+    - pnpm --filter server exec prisma db push --accept-data-loss
+    - pnpm --filter server exec ts-node prisma/seed.ts
+    - npx playwright test --project=chromium
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths: [playwright-report/]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [apps/**/*, packages/**/*, e2e/**/*, playwright.config.ts, .gitlab-ci.yml]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [apps/**/*, packages/**/*, e2e/**/*, playwright.config.ts, .gitlab-ci.yml]
+
+# Full 5-browser matrix: scheduled only (weekly), never per-push.
+# Create at Build → Pipeline schedules, cron `0 4 * * 0`, variable MATRIX_WEEKLY=1.
+e2e-matrix:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.63.0-noble
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: havenworld_test
+        POSTGRES_USER: havenworld_user
+        POSTGRES_PASSWORD: test_password
+    - name: redis:7-alpine
+      alias: redis
+  variables:
+    PORT: "3000"
+    SERVER_AUTOSTART: "true"
+    BASE_URL: "http://localhost:5173"
+  parallel:
+    matrix:
+      - PROJECT: [chromium, firefox, webkit, mobile-chrome, mobile-safari]
+  script:
+    - corepack enable
+    - corepack prepare pnpm@${PNPM_VERSION} --activate
+    - pnpm config set store-dir "$PNPM_STORE"
+    - pnpm install --frozen-lockfile
+    - pnpm --filter '@havenworld/shared' build
+    - pnpm --filter server exec prisma generate
+    - pnpm --filter server exec prisma db push --accept-data-loss
+    - pnpm --filter server exec npx tsx prisma/seed.ts
+    - npx playwright test --project=$PROJECT
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths: [playwright-report/]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+# ── deploy stage (mirrors deploy-server.yml / deploy-client.yml) ─────────────
+
+.ssh-setup: &ssh-setup
+  - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+  - cp "$ORACLE_SSH_KEY" ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+  - ssh-keyscan -H "$ORACLE_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
+  - printf 'Host oracle-vm\n\tHostName %s\n\tUser %s\n\tIdentityFile ~/.ssh/deploy_key\n\tStrictHostKeyChecking yes\n' "$ORACLE_HOSTNAME" "$ORACLE_USER" > ~/.ssh/config
+
+deploy-server:
+  stage: deploy
+  image: node:22-bookworm
+  variables:
+    ORACLE_USER: ubuntu # login user; deploy script sudo's to havenworld on the VM
+  needs: [server-test]
+  before_script:
+    - *ssh-setup
+  script:
+    # VM pulls from GitLab now (origin repointed) — no code ships over SSH,
+    # only the trigger. Deploy body lives in scripts/remote-deploy.sh.
+    - ssh oracle-vm 'sudo -u havenworld -H bash /opt/havenworld/scripts/remote-deploy.sh </dev/null'
+    - sleep 10
+    - curl -fsS https://147-224-184-148.nip.io/health | head -c 500
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [apps/server/**/*, packages/shared/**/*, scripts/remote-deploy.sh, .gitlab-ci.yml]
+    - if: $CI_PIPELINE_SOURCE == "web" # manual "Run pipeline" from UI
+      when: manual
+
+deploy-client:
+  stage: deploy
+  needs: [client-test]
+  script:
+    - pnpm --filter client build
+    - npx wrangler pages deploy apps/client/dist
+      --project-name=havenworld-game
+      --commit-hash=$CI_COMMIT_SHA
+      --commit-dirty=true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [apps/client/**/*, packages/shared/**/*, .gitlab-ci.yml]
+  environment:
+    name: production-client
+    url: https://havenworld-game.pages.dev
+
+# ── perf stage (mirrors load-test.yml — manual only) ──────────────────────────
+
+load-test:
+  stage: perf
+  image: node:22-bookworm
+  variables:
+    ORACLE_USER: havenworld
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq openssh-client >/dev/null
+    - *ssh-setup
+  script:
+    - scp -r load-tests/ oracle-vm:/home/havenworld/load-tests/
+    - ssh oracle-vm 'mkdir -p load-test-results && k6 run --out json=load-test-results/ws-$(date +%Y%m%d).json load-tests/ws-concurrent.js && k6 run -e BASE_URL=http://localhost:3000 --out json=load-test-results/auth-$(date +%Y%m%d).json load-tests/api-auth.js && k6 run --out json=load-test-results/fishing-$(date +%Y%m%d).json load-tests/fishing-concurrent.js && echo ALL LOAD TESTS COMPLETE'
+    - mkdir -p load-test-results && scp 'oracle-vm:/home/havenworld/load-test-results/*.json' load-test-results/
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [load-test-results/]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: manual
+  # Failure email via Resend (replaces the curl step in load-test.yml).
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" = "failed" ] && [ -n "${RESEND_API_KEY:-}" ]; then
+        curl -s -X POST https://api.resend.com/emails \
+          -H "Authorization: Bearer $RESEND_API_KEY" \
+          -H 'Content-Type: application/json' \
+          -d "{\"from\":\"noreply@havenworld.gg\",\"to\":[\"daniel@havenworld.gg\"],\"subject\":\"HavenWorld GitLab load-test FAILED — $CI_PIPELINE_ID\",\"text\":\"Job $CI_JOB_URL failed.\"}" >/dev/null || true
+      fi
