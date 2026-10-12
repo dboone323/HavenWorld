@@ -132,6 +132,10 @@ export class AchievementService {
           if (admitCount >= 10) await award('Good Neighbor');
           break;
         }
+
+        case 'DISCOVER_SECRET_ROOM':
+          await award('Secret Explorer');
+          break;
       }
     } catch (err) {
       console.error('[AchievementService] Error checking achievement:', err);
