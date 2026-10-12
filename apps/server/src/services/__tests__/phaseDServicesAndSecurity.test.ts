@@ -3,6 +3,8 @@ import { SeasonalThemeService } from '../SeasonalThemeService';
 import { TransitService } from '../TransitService';
 import { verifyStartupSecurityAssertions } from '../../middleware/security';
 import { generateAccessToken, verifyAccessToken } from '../../auth/tokens';
+import { prisma } from '../../prisma';
+import { createTestUser } from '../../../__tests__/helpers/factories';
 
 describe('Phase D: Security Hardening & Service Wiring Validations', () => {
   const originalEnv = { ...process.env };
@@ -75,6 +77,59 @@ describe('Phase D: Security Hardening & Service Wiring Validations', () => {
       const leaveRes = TransitService.leaveTram('rider-1');
       expect(leaveRes.success).toBe(true);
       expect(leaveRes.passengerCount).toBe(0);
+    });
+
+    it('provides dynamic multi-station schedules and atmospheric announcements across route transitions', () => {
+      const schedule = TransitService.getStationSchedule();
+      expect(schedule.length).toBe(4);
+      expect(schedule[0].station).toBe('Plaza Central Station');
+      expect(schedule[0].isCurrent).toBe(true);
+      expect(schedule[1].station).toBe('Sanctuary Isles');
+      expect(schedule[1].isNext).toBe(true);
+
+      // Check announcements across states
+      const boardingAnnouncement = TransitService.getAnnouncement();
+      expect(boardingAnnouncement.audioChime).toBe('chime_boarding');
+      expect(boardingAnnouncement.message).toContain('Plaza Central Station');
+
+      TransitService.advanceState(); // -> DEPARTING
+      const departingAnnouncement = TransitService.getAnnouncement();
+      expect(departingAnnouncement.audioChime).toBe('chime_departing');
+
+      TransitService.advanceState(); // -> IN_TRANSIT
+      const inTransitAnnouncement = TransitService.getAnnouncement();
+      expect(inTransitAnnouncement.audioChime).toBe('ambient_transit_hum');
+
+      TransitService.advanceState(); // -> ARRIVED (advances station to Sanctuary Isles)
+      const arrivedAnnouncement = TransitService.getAnnouncement();
+      expect(arrivedAnnouncement.audioChime).toBe('chime_arrival');
+      expect(arrivedAnnouncement.station).toBe('Sanctuary Isles');
+      expect(TransitService.currentStation).toBe('Sanctuary Isles');
+    });
+
+    it('purchases transit tickets and enforces ticketing requirements on boarding', async () => {
+      const rider = await createTestUser({ havenCoins: 50 });
+
+      // Cannot board with ticket requirement when no ticket purchased
+      expect(() =>
+        TransitService.boardTram(rider.id, 'Plaza Central Station', { requireTicket: true })
+      ).toThrow(/ticket required/i);
+
+      // Purchase valid ticket
+      const ticketRes = await TransitService.purchaseTicket(rider.id);
+      expect(ticketRes.cost).toBe(TransitService.TICKET_PRICE);
+      expect(TransitService.hasValidTicket(rider.id)).toBe(true);
+
+      // Coin balance deducted in real DB
+      const updatedRider = await prisma.user.findUniqueOrThrow({ where: { id: rider.id } });
+      expect(updatedRider.havenCoins).toBe(50 - TransitService.TICKET_PRICE);
+
+      // Boarding succeeds with valid ticket
+      const boardRes = TransitService.boardTram(rider.id, 'Plaza Central Station', {
+        requireTicket: true,
+      });
+      expect(boardRes.success).toBe(true);
+      expect(boardRes.passengerCount).toBe(1);
     });
   });
 });
