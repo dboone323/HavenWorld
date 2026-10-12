@@ -50,9 +50,71 @@ export class SeasonalEventService {
   }
 
   /**
-   * Cron entry point (daily): closes events whose end date has passed and converts
-   * every participant's leftover seasonal currency into HavenCoins at 1:1, per the
-   * Part 6 §12 design ("converts to HavenCoins 1:1 at event end").
+   * Retrieves live seasonal event leaderboard sorted by tier desc, currency desc
+   */
+  static async getLeaderboard(eventId: string, limit: number = 50) {
+    return await prisma.seasonalProgress.findMany({
+      where: { eventId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+      },
+      orderBy: [{ tier: 'desc' }, { currency: 'desc' }],
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+  }
+
+  /**
+   * Archives leaderboard on event close and awards podium bonuses:
+   * Rank 1: 500 HavenCoins
+   * Rank 2: 300 HavenCoins
+   * Rank 3: 150 HavenCoins
+   */
+  static async archiveLeaderboard(eventId: string) {
+    const leaderboard = await this.getLeaderboard(eventId, 10);
+    const bonuses = [500, 300, 150];
+
+    const podiumAwards = [];
+    for (let i = 0; i < Math.min(leaderboard.length, bonuses.length); i++) {
+      const entry = leaderboard[i];
+      const bonus = bonuses[i];
+      await prisma.user.update({
+        where: { id: entry.userId },
+        data: { havenCoins: { increment: bonus } },
+      });
+      await prisma.transactionLog.create({
+        data: {
+          receiverId: entry.userId,
+          amount: bonus,
+          type: 'SEASONAL_PODIUM_AWARD',
+          source: `${eventId} Rank ${i + 1}`,
+        },
+      });
+      podiumAwards.push({
+        rank: i + 1,
+        userId: entry.userId,
+        username: entry.user.username,
+        bonusCoins: bonus,
+      });
+    }
+
+    return {
+      eventId,
+      archivedAt: new Date(),
+      totalParticipants: leaderboard.length,
+      podiumAwards,
+    };
+  }
+
+  /**
+   * Cron entry point (daily): closes events whose end date has passed, archives
+   * leaderboards with podium awards, and converts leftover seasonal currency into
+   * HavenCoins at 1:1, per Part 6 §12 design.
    */
   static async convertExpiredEvents(now: Date = new Date()) {
     const expired = await prisma.seasonalEvent.findMany({
@@ -64,6 +126,8 @@ export class SeasonalEventService {
     let coinsIssued = 0;
 
     for (const event of expired) {
+      await this.archiveLeaderboard(event.id);
+
       await prisma.$transaction(async (tx) => {
         for (const progress of event.progress) {
           if (progress.currency <= 0) continue;
