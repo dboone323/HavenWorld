@@ -17,6 +17,11 @@
 # CLOUDFLARE_* var names, pinned wrangler, tsx seed, MATRIX_WEEKLY gate,
 # scp-to-parent for load-tests.
 
+include:
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.v2.gitlab-ci.yml
+
 workflow:
   # Exactly one pipeline per push/MR (no duplicate detached + branch runs),
   # auto-cancel stale runs on new pushes.
@@ -200,6 +205,9 @@ deploy-server:
   image: node:22-bookworm
   interruptible: false # Duo: never auto-cancel a live deploy mid-SSH
   resource_group: production # Duo: deploys never overlap
+  environment:
+    name: production-server
+    url: https://147-224-184-148.nip.io
   variables:
     ORACLE_USER: ubuntu # login user; deploy script sudo's to havenworld on the VM
   needs:
