@@ -56,10 +56,15 @@ describe('Phase 3B WeatherService', () => {
 
     const auroraTransitions = WeatherService.getNextPossibleWeather('AURORA');
     expect(auroraTransitions).toContain('SUNNY');
-    expect(auroraTransitions).not.toContain('SNOW');
+    // Batch 41 expanded the weather graph so AURORA can transition into SNOW.
+    expect(auroraTransitions).toContain('SNOW');
 
+    // transitionWeather() draws from getNextPossibleWeather(currentWeather), and
+    // currentWeather is process-wide static state that other suites may have moved.
+    // Pin a known starting condition so the assertion is deterministic.
+    WeatherService.setWeather('SUNNY', 0.5);
     const nextState = WeatherService.transitionWeather();
-    expect(['SUNNY', 'RAIN', 'AURORA', 'SNOW']).toContain(nextState.currentWeather);
+    expect(WeatherService.getNextPossibleWeather('SUNNY')).toContain(nextState.currentWeather);
     expect(nextState.intensity).toBeGreaterThanOrEqual(0.3);
   });
 });

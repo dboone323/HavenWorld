@@ -1,11 +1,17 @@
 import { prisma } from '../../prisma';
 import { LoftRatingService } from '../LoftRatingService';
-import { connectRedis, disconnectRedis } from '../../redis';
+import { redis, connectRedis, disconnectRedis } from '../../redis';
 
 describe('Batch 45: Loft Showcase Visitor Ratings & Weekly Leaderboards', () => {
   let ownerUser: any;
   let visitorUser: any;
   let testRoom: any;
+
+  // The weekly showcase leaderboard is a Redis sorted-set keyed by ISO week with
+  // no TTL. Prior runs leave stale room members behind, which can push this run's
+  // room out of the top-N window and make the leaderboard assertion flaky. Clear
+  // the current week's key up front so the suite is hermetic and deterministic.
+  let weeklyKey: string;
 
   beforeAll(async () => {
     await connectRedis();
@@ -32,6 +38,9 @@ describe('Batch 45: Loft Showcase Visitor Ratings & Weekly Leaderboards', () => 
         ownerId: ownerUser.id,
       },
     });
+
+    weeklyKey = `loft:showcase:weekly:${(LoftRatingService as any).getCurrentWeekKey()}`;
+    await redis.del(weeklyKey).catch(() => {});
   });
 
   afterAll(async () => {
@@ -39,8 +48,13 @@ describe('Batch 45: Loft Showcase Visitor Ratings & Weekly Leaderboards', () => 
       await prisma.gameEvent.deleteMany({ where: { roomId: testRoom.id } }).catch(() => {});
       await prisma.room.delete({ where: { id: testRoom.id } }).catch(() => {});
     }
-    if (visitorUser?.id) await prisma.user.delete({ where: { id: visitorUser.id } }).catch(() => {});
+    if (visitorUser?.id) {
+      // Clear the 24h rating cooldown so repeated runs stay deterministic.
+      await redis.del(`loft:review:cooldown:${visitorUser.id}:${testRoom?.id}`).catch(() => {});
+      await prisma.user.delete({ where: { id: visitorUser.id } }).catch(() => {});
+    }
     if (ownerUser?.id) await prisma.user.delete({ where: { id: ownerUser.id } }).catch(() => {});
+    if (weeklyKey) await redis.del(weeklyKey).catch(() => {});
     await disconnectRedis();
   });
 
