@@ -78,6 +78,8 @@ default:
 server-test:
   stage: test
   before_script: *node-setup
+  variables:
+    NODE_OPTIONS: "--max-old-space-size=4096"
   services:
     - name: postgres:16-alpine
       alias: postgres
