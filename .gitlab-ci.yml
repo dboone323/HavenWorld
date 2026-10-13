@@ -23,16 +23,19 @@ include:
   - template: Jobs/Dependency-Scanning.v2.gitlab-ci.yml
 
 workflow:
-  # Exactly one pipeline per push/MR (no duplicate detached + branch runs),
-  # auto-cancel stale runs on new pushes.
+  # Exactly one pipeline per push/MR: when an MR exists, run MR pipeline only.
   auto_cancel:
     on_new_commit: interruptible
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
     - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
 
 variables:
+  SAST_EXCLUDED_ANALYZERS: "gitlab-advanced-sast" # Use fast Semgrep analyzer, avoid 40-minute GLAS engine
+  SEARCH_MAX_CHARACTERS: "1000"
   NODE_VERSION: "22"
   PNPM_VERSION: "9"
   WRANGLER_VERSION: "4.149.0" # override via CI variable for upgrades
