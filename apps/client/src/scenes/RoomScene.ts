@@ -175,6 +175,9 @@ export async function createRoomScene(
     try {
       const loadResult = await roomLoader.load(glbId);
       roomMeshes = loadResult.allMeshes || [];
+      if (roomMeshes.length === 0) {
+        throw new Error('GLB file returned 0 meshes (404 or empty)');
+      }
     } catch (err) {
       console.warn(
         `[RoomScene] Room GLB load failed for "${roomId}" ` +

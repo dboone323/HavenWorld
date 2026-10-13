@@ -292,7 +292,7 @@ body {
 #chat-panel {
   position:      absolute;
   bottom:        1rem;
-  right:         1rem;
+  right:         76px;
   width:         340px;
   max-width:     calc(100vw - 2rem);
   z-index:       25;
@@ -570,7 +570,7 @@ body {
 .hud-room-controls {
   position: absolute;
   bottom: 16px;
-  left: 16px;
+  left: 76px;
   width: 175px;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(16px);

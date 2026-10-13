@@ -177,13 +177,12 @@ export class RoomPage {
   }
 
   async navigateToTownSquare(): Promise<void> {
-    await this.page.evaluate(() => {
+    await this.page.evaluate(async () => {
       const sm = (window as any).__havenSceneManager;
       if (sm) {
-        sm.switchTo('room', { roomId: 'room-town-square' });
+        await sm.switchTo('room', { roomId: 'room-town-square' });
       }
     });
-    await this.waitForRoomReady();
     await this.page.waitForFunction(
       () => (window as any).__havenRoomId === 'room-town-square' && (window as any).__havenRoomReady === true,
       { timeout: 20_000 }
