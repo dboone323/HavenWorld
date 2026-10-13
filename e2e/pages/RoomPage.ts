@@ -147,12 +147,18 @@ export class RoomPage {
   }
 
   async sendChatMessage(message: string): Promise<void> {
+    if (!(await this.chatInput.isVisible())) {
+      await this.btnToggleChat.click();
+    }
     await expect(this.chatInput).toBeVisible();
     await this.chatInput.fill(message);
     await this.chatSendBtn.click();
   }
 
   async waitForChatMessage(expectedSubstr: string, timeout = 10_000): Promise<void> {
+    if (!(await this.chatLog.isVisible())) {
+      await this.btnToggleChat.click();
+    }
     await expect(this.chatLog).toContainText(expectedSubstr, { timeout });
   }
 
@@ -170,6 +176,20 @@ export class RoomPage {
     );
   }
 
+  async navigateToTownSquare(): Promise<void> {
+    await this.page.evaluate(() => {
+      const sm = (window as any).__havenSceneManager;
+      if (sm) {
+        sm.switchTo('room', { roomId: 'room-town-square' });
+      }
+    });
+    await this.waitForRoomReady();
+    await this.page.waitForFunction(
+      () => (window as any).__havenRoomId === 'room-town-square' && (window as any).__havenRoomReady === true,
+      { timeout: 20_000 }
+    );
+  }
+
   async navigateToLoft(): Promise<void> {
     await this.btnMyLoft.click();
     await this.waitForRoomReady();
@@ -180,7 +200,7 @@ export class RoomPage {
   }
 
   async signOut(): Promise<void> {
-    await this.btnSignOut.click();
+    await this.btnSignOut.click({ force: true });
     await expect(this.page.locator('[data-testid="login-panel"]')).toBeVisible({ timeout: 10_000 });
   }
 

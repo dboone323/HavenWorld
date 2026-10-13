@@ -9,7 +9,7 @@ import { EmoteWheel } from './ui/EmoteWheel';
 import { QuestHUD } from './ui/QuestHUD';
 import { ShopModal } from './ui/ShopModal';
 import { MarketplacePanel } from './ui/MarketplacePanel';
-import { ClubPanel } from './ui/ClubPanel';
+import { ClubPanel } from './clubs/ClubPanel';
 import { LeaderboardPanel } from './ui/LeaderboardPanel';
 import { DoorbellPrompt } from './ui/DoorbellPrompt';
 import { TutorialOverlay } from './ui/TutorialOverlay';

@@ -110,16 +110,16 @@ test.describe('Tier 5: Resilience', () => {
     const pageErrors: Error[] = [];
     page.on('pageerror', (err) => pageErrors.push(err));
 
-    // Force every room GLB to 404, then travel to the park. The room must
+    // Force every room GLB to 404, then travel to the town square. The room must
     // still load (procedural prefab) instead of throwing.
     await page.route('**/assets/rooms/*.glb', (route) =>
       route.fulfill({ status: 404, contentType: 'model/gltf-binary', body: '' })
     );
-    await roomPage.navigateToPark();
+    await roomPage.navigateToTownSquare();
 
     await expect(roomPage.canvas).toBeVisible();
     expect(warnings.some((w) => w.includes('Room GLB load failed'))).toBe(true);
-    expect(warnings.some((w) => w.includes('/assets/rooms/room-park.glb'))).toBe(true);
+    expect(warnings.some((w) => w.includes('/assets/rooms/town_square.glb'))).toBe(true);
     expect(pageErrors).toEqual([]);
 
     await page.unrouteAll({ behavior: 'wait' });

@@ -16,6 +16,10 @@ interface ClubSummary {
 export class ClubPanel {
   private static overlay: HTMLElement | null = null;
 
+  static async open(): Promise<void> {
+    return this.show();
+  }
+
   static async show(): Promise<void> {
     if (this.overlay) return;
 
