@@ -30,6 +30,27 @@ export const RECIPES: Record<string, { order: string[]; maxMs: number }> = {
 
 export class MinigameService {
   private static userCombos = new Map<string, number>();
+  private static activeOrderTimers = new Map<string, { recipe: string; startedAt: number }>();
+
+  public static readonly MIN_PHYSICAL_DURATION_MS = 1500;
+
+  /**
+   * Records the server-side start timestamp when a player begins assembling a pizza order.
+   */
+  static startOrder(
+    userId: string,
+    recipe: 'margherita' | 'funghi_rustica' | 'green_garden' | 'seasonal'
+  ): void {
+    this.activeOrderTimers.set(userId, { recipe, startedAt: Date.now() });
+  }
+
+  static getActiveOrder(userId: string): { recipe: string; startedAt: number } | undefined {
+    return this.activeOrderTimers.get(userId);
+  }
+
+  static clearActiveOrder(userId: string): void {
+    this.activeOrderTimers.delete(userId);
+  }
 
   /**
    * Validates pizza order assembly server-side and awards coins up to weekly cap
@@ -37,6 +58,31 @@ export class MinigameService {
   static async submitPizzaOrder(userId: string, data: PizzaOrderPayload) {
     const recipeConfig = RECIPES[data.recipe];
     if (!recipeConfig) throw new Error('Unknown recipe');
+
+    // Anti-bot / time-attack validation:
+    // Reject submissions faster than physically possible (< 1500ms or < 350ms per ingredient)
+    const minRequiredMs = Math.max(
+      this.MIN_PHYSICAL_DURATION_MS,
+      recipeConfig.order.length * 350
+    );
+    if (data.durationMs < minRequiredMs) {
+      throw new Error(
+        `ORDER_TOO_FAST: Mini-game completed in ${data.durationMs}ms, faster than physically possible (${minRequiredMs}ms minimum).`
+      );
+    }
+
+    const tracked = this.activeOrderTimers.get(userId);
+    if (tracked) {
+      const serverElapsedMs = Date.now() - tracked.startedAt;
+      this.activeOrderTimers.delete(userId);
+
+      // Verify server-side elapsed time prevents spoofed client durationMs
+      if (serverElapsedMs < minRequiredMs * 0.8) {
+        throw new Error(
+          `ORDER_TOO_FAST: Server recorded elapsed time of ${serverElapsedMs}ms (minimum ${minRequiredMs}ms).`
+        );
+      }
+    }
 
     // Validate ingredient order
     const isCorrectOrder =

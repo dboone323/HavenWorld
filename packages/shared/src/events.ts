@@ -2,6 +2,7 @@ export const SOCKET_EVENTS = {
   // Authentication & Session
   AUTH_JOIN:  'auth:join',
   AUTH_ERROR: 'auth:error',
+  SERVER_RESTARTING: 'server:restarting',
 
   // Room & State
   ROOM_STATE:         'room:state',
@@ -110,6 +111,7 @@ export const SOCKET_EVENTS = {
   PET_ADOPTED:          'pet:adopted',
 
   // ── Phase 3: Pizza Chef Mini-Game (§8) ───────────────────────────────────
+  PIZZA_ORDER_START:  'minigame:pizza_start',
   PIZZA_ORDER_SUBMIT: 'minigame:pizza_submit',
   PIZZA_ORDER_RESULT: 'minigame:pizza_result',
 

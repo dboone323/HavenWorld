@@ -166,10 +166,14 @@ export const FeedPetSchema = z.object({
 });
 
 // ── Pizza mini-game ──────────────────────────────────────────────────────────
+export const PizzaOrderStartSchema = z.object({
+  recipe: z.enum(['margherita', 'funghi_rustica', 'green_garden', 'seasonal']),
+});
+
 export const PizzaOrderSchema = z.object({
   recipe: z.enum(['margherita', 'funghi_rustica', 'green_garden', 'seasonal']),
   ingredients: z.array(z.string().max(50)).max(20),
-  durationMs: z.number().int().min(0).max(120000),
+  durationMs: z.number().int().min(1500).max(120000),
 });
 
 // ── Workshop crafting ─────────────────────────────────────────────────────────

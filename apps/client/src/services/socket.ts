@@ -140,6 +140,11 @@ export const socketService = {
       }
     });
 
+    _socket.on(SOCKET_EVENTS.SERVER_RESTARTING, (data: { message?: string }) => {
+      console.warn('[Socket] Server is restarting for maintenance or an update:', data?.message);
+      emitStatus('reconnecting', 1);
+    });
+
     _socket.on('connect_error', (err) => {
       console.error('[Socket] Connection error:', err.message);
       if (_status.status !== 'reconnecting' && _status.status !== 'reconnect_failed') {

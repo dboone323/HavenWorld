@@ -42,7 +42,7 @@ import { FishingService } from './services/FishingService';
 import { ShopService } from './services/ShopService';
 import { WorkshopService } from './services/WorkshopService';
 import { SeasonalEventService } from './services/SeasonalEventService';
-import { registerSocketHandlers } from './sockets';
+import { registerSocketHandlers, flushArcadeSettlements } from './sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { DelayedMailService } from './services/DelayedMailService';
 import { WeatherService } from './services/WeatherService';
@@ -244,6 +244,26 @@ async function shutdown(signal: string): Promise<void> {
     console.error('[Server] Shutdown timed out after 10s — forcing exit');
     process.exit(1);
   }, 10_000);
+
+  try {
+    // 1. Broadcast server_restarting notice so clients pause input & display notice
+    io.emit(SOCKET_EVENTS.SERVER_RESTARTING, {
+      message: 'Server is restarting for maintenance or an update. Reconnecting momentarily...',
+      timestamp: Date.now(),
+    });
+    io.emit(SOCKET_EVENTS.ERROR, {
+      code: 'SERVER_RESTARTING',
+      message: 'Server is restarting for maintenance or an update. Reconnecting momentarily...',
+    });
+
+    // 2. Flush pending arcade settlements and dirty state
+    await flushArcadeSettlements(io);
+  } catch (err) {
+    console.error('[Shutdown] Pre-shutdown flush error:', err);
+  }
+
+  // Brief pause (500ms) to allow final frames to flush to clients before socket disconnect
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // io.close() disconnects all sockets and closes the underlying HTTP server.
   io.close(async () => {

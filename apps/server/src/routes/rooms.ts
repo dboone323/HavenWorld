@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { prisma } from '../prisma';
 import { roomManager } from '../services/RoomManager';
 import { LoftRatingService } from '../services/LoftRatingService';
+import { inventoryService } from '../services/InventoryService';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 
@@ -329,17 +330,6 @@ router.post('/:id/furniture', requireAuth, async (req: AuthRequest, res) => {
   }
 
   const roomId = req.params.id as string;
-  const room = await prisma.room.findUnique({ where: { id: roomId } });
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
-
-  const allowed = await canDecorateRoom(req.user!.userId, roomId);
-  if (!allowed) {
-    return res.status(403).json({
-      error: 'You do not have decorator permissions in this room.',
-      code: 'NOT_ROOM_DECORATOR',
-    });
-  }
-
   const { itemId, x, y, z = 0, rotation = 0, layer: rawLayer } = parsed.data;
   const layer =
     typeof rawLayer === 'number'
@@ -348,74 +338,75 @@ router.post('/:id/furniture', requireAuth, async (req: AuthRequest, res) => {
         ? Number.parseInt(rawLayer, 10) || 0
         : 0;
 
-  // Verify item is in the user's inventory
-  const owned = await prisma.inventory.findUnique({
-    where: {
-      userId_itemId: {
-        userId: req.user!.userId,
-        itemId,
-      },
-    },
-  });
-
-  if (!owned) {
-    return res.status(403).json({
-      error: 'You do not own this item.',
-      code: 'ITEM_NOT_OWNED',
-    });
-  }
-
-  const placed = await prisma.roomFurniture.create({
-    data: {
-      roomId,
+  try {
+    const placed = await inventoryService.placeFurnitureItem(req.user!.userId, roomId, {
       itemId,
-      placedBy: req.user!.userId,
       x,
       y,
       z,
       rotation,
       layer,
-    },
-    include: { item: true },
-  });
+    });
 
-  // Update RoomManager cached furniture list
-  const item = placed.item;
-  roomManager.addFurniture(roomId, {
-    id: placed.id,
-    itemId,
-    spriteKey: item.spriteKey,
-    x,
-    y,
-    z,
-    rotation,
-    layer,
-  });
+    // Update RoomManager cached furniture list
+    roomManager.addFurniture(roomId, {
+      id: placed.id,
+      itemId,
+      spriteKey: placed.item.spriteKey,
+      x,
+      y,
+      z,
+      rotation,
+      layer,
+    });
 
-  return res.status(201).json(placed);
+    return res.status(201).json(placed);
+  } catch (err: any) {
+    if (err?.message === 'ROOM_NOT_FOUND') {
+      return res.status(404).json({ error: 'Room not found.' });
+    }
+    if (err?.message === 'NOT_ROOM_DECORATOR') {
+      return res.status(403).json({
+        error: 'You do not have decorator permissions in this room.',
+        code: 'NOT_ROOM_DECORATOR',
+      });
+    }
+    if (err?.message === 'ITEM_NOT_OWNED') {
+      return res.status(403).json({
+        error: 'You do not own this item in sufficient quantity.',
+        code: 'ITEM_NOT_OWNED',
+      });
+    }
+    return res.status(500).json({ error: err?.message || 'Failed to place furniture' });
+  }
 });
 
 // DELETE /api/rooms/:id/furniture/:furnitureId — remove furniture
 router.delete('/:id/furniture/:furnitureId', requireAuth, async (req: AuthRequest, res) => {
   const roomId = req.params.id as string;
   const furnitureId = req.params.furnitureId as string;
-  const room = await prisma.room.findUnique({ where: { id: roomId } });
-  if (!room) return res.status(404).json({ error: 'Room not found.' });
 
-  const allowed = await canDecorateRoom(req.user!.userId, roomId);
-  if (!allowed) {
-    return res.status(403).json({
-      error: 'You do not have decorator permissions in this room.',
-      code: 'NOT_ROOM_DECORATOR',
-    });
+  try {
+    const removed = await inventoryService.pickupFurnitureItem(
+      req.user!.userId,
+      roomId,
+      furnitureId
+    );
+
+    roomManager.removeFurniture(roomId, furnitureId);
+    return res.json({ message: 'Furniture removed.', item: removed });
+  } catch (err: any) {
+    if (err?.message === 'FURNITURE_NOT_FOUND') {
+      return res.status(404).json({ error: 'Furniture item not found.' });
+    }
+    if (err?.message === 'NOT_ROOM_DECORATOR') {
+      return res.status(403).json({
+        error: 'You do not have decorator permissions in this room.',
+        code: 'NOT_ROOM_DECORATOR',
+      });
+    }
+    return res.status(500).json({ error: err?.message || 'Failed to remove furniture' });
   }
-
-  await prisma.roomFurniture.delete({
-    where: { id: furnitureId },
-  });
-
-  roomManager.removeFurniture(roomId, furnitureId);
-  return res.json({ message: 'Furniture removed.' });
 });
 
 // ── Track 3.5: Room Expansions ──────────────────────────────────────────────

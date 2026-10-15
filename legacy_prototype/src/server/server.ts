@@ -315,10 +315,29 @@ app.get('/api/auth/player/:playerId', async (req, res) => {
   res.json({ success: true, profile });
 });
 
-// --- WebSocket Connection Handler ---
+export interface AliveWebSocket extends WebSocket {
+  isAlive?: boolean;
+}
+
+// Cloudflare Tunnel 100s idle disconnect prevention (§5.1):
+// Ping active WebSocket clients every 30s; terminate dead peers that miss a pong.
+const wsPingInterval = setInterval(() => {
+  wss.clients.forEach((ws: WebSocket) => {
+    const aliveWs = ws as AliveWebSocket;
+    if (aliveWs.isAlive === false) return aliveWs.terminate();
+    aliveWs.isAlive = false;
+    aliveWs.ping();
+  });
+}, 30_000);
+wsPingInterval.unref();
 
 wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
-  try { await handleConnection(ws, req); }
+  const aliveWs = ws as AliveWebSocket;
+  aliveWs.isAlive = true;
+  aliveWs.on('pong', () => {
+    aliveWs.isAlive = true;
+  });
+  try { await handleConnection(aliveWs, req); }
   catch (e) { console.error('WebSocket connection error:', e instanceof Error ? e.message : e); }
 });
 
@@ -560,6 +579,22 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage): Promi
 }
 
 export { db };
+
+function handleShutdown(signal: string): void {
+  console.log(`[Server] ${signal} received — shutting down WebSocket server gracefully`);
+  clearInterval(wsPingInterval);
+  wss.close(() => {
+    server.close(() => {
+      process.exit(0);
+    });
+  });
+  setTimeout(() => process.exit(0), 4000).unref();
+}
+
+if (typeof process !== 'undefined') {
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+}
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {

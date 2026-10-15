@@ -978,7 +978,9 @@ export class RoomEditor {
           list.appendChild(btn);
         });
       } catch (err) {
-        console.error('[RoomEditor] Error loading inventory:', err);
+        if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+          console.error('[RoomEditor] Error loading inventory:', err);
+        }
         list.innerHTML = '<p style="color:#ef4444; font-size:9pt;">Error loading inventory</p>';
       }
     };

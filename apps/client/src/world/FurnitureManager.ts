@@ -55,7 +55,9 @@ export class FurnitureManager {
         console.log(`[FurnitureManager] Loaded ${items.length} furniture items.`);
       }
     } catch (err) {
-      console.error('[FurnitureManager] Error loading furniture:', err);
+      if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+        console.error('[FurnitureManager] Error loading furniture:', err);
+      }
     }
   }
 

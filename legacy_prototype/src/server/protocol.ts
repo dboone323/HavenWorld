@@ -24,6 +24,7 @@ import type { WebSocket } from 'ws';
 
 export const shardManager = new ShardManager();
 const playerFishingCooldowns = new Map<string, number>();
+const playerMinigameStartTimes = new Map<string, number>();
 const chatRateLimits = new Map<string, { count: number; resetAt: number }>();
 
 export interface DispatchContext {
@@ -704,7 +705,27 @@ export async function handleMessage(msg: { type: string; payload?: Record<string
       break;
     }
 
+    case 'MINIGAME_START': {
+      playerMinigameStartTimes.set(player.id, Date.now());
+      rooms.send(player.ws, {
+        type: 'MINIGAME_STARTED',
+        payload: { startedAt: Date.now() },
+      });
+      break;
+    }
+
     case 'MINIGAME_SCORE': {
+      const now = Date.now();
+      const startedAt = playerMinigameStartTimes.get(player.id);
+      if (startedAt && now - startedAt < 1500) {
+        rooms.send(player.ws, {
+          type: 'MINIGAME_ERROR',
+          payload: { reason: 'ORDER_TOO_FAST', message: 'Score submitted faster than physically possible.' }
+        });
+        break;
+      }
+      playerMinigameStartTimes.delete(player.id);
+
       const score = msg.payload?.score;
       if (typeof score !== 'number' || !Number.isFinite(score) || score < 0) return;
       const reward = Math.max(50, Math.min(500, Math.floor(score / 2)));

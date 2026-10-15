@@ -416,6 +416,124 @@ export class InventoryService {
 
     return { tierBreakdown, totalCoinsAwarded: totalCoins, itemsSalvaged };
   }
+
+  /**
+   * Places an item from user inventory into room furniture atomically inside a transaction.
+   * Decrements inventory quantity (or deletes row if 0) and creates roomFurniture.
+   */
+  async placeFurnitureItem(
+    userId: string,
+    roomId: string,
+    placement: {
+      itemId: string;
+      x: number;
+      y: number;
+      z?: number;
+      rotation?: number;
+      rotY?: number;
+      layer?: number;
+      scaleX?: number;
+      scaleY?: number;
+      scaleZ?: number;
+    }
+  ) {
+    return await this.client.$transaction(async (tx) => {
+      // 1. Verify user has decorator or owner permissions
+      const room = await tx.room.findUnique({
+        where: { id: roomId },
+        include: { decorators: true },
+      });
+      if (!room) {
+        throw new Error('ROOM_NOT_FOUND');
+      }
+      const canDecorate =
+        room.ownerId === userId || room.decorators.some((d) => d.userId === userId);
+      if (!canDecorate) {
+        throw new Error('NOT_ROOM_DECORATOR');
+      }
+
+      // 2. Verify and atomically decrement inventory
+      const inv = await tx.inventory.findUnique({
+        where: { userId_itemId: { userId, itemId: placement.itemId } },
+      });
+      if (!inv || inv.quantity < 1) {
+        throw new Error('ITEM_NOT_OWNED');
+      }
+
+      if (inv.quantity === 1) {
+        await tx.inventory.delete({ where: { id: inv.id } });
+      } else {
+        await tx.inventory.update({
+          where: { id: inv.id },
+          data: { quantity: { decrement: 1 } },
+        });
+      }
+
+      // 3. Create placed furniture
+      const placed = await tx.roomFurniture.create({
+        data: {
+          roomId,
+          itemId: placement.itemId,
+          placedBy: userId,
+          x: placement.x,
+          y: placement.y,
+          z: placement.z ?? 0,
+          rotation: placement.rotation ?? placement.rotY ?? 0,
+          layer: placement.layer ?? 0,
+          scaleX: placement.scaleX ?? 1,
+          scaleY: placement.scaleY ?? 1,
+          scaleZ: placement.scaleZ ?? 1,
+        },
+        include: { item: true },
+      });
+
+      return placed;
+    });
+  }
+
+  /**
+   * Removes placed furniture and atomically returns it to the placer's inventory.
+   */
+  async pickupFurnitureItem(userId: string, roomId: string, furnitureId: string) {
+    return await this.client.$transaction(async (tx) => {
+      const [item, room] = await Promise.all([
+        tx.roomFurniture.findUnique({ where: { id: furnitureId }, include: { item: true } }),
+        tx.room.findUnique({ where: { id: roomId }, include: { decorators: true } }),
+      ]);
+
+      if (!item) {
+        throw new Error('FURNITURE_NOT_FOUND');
+      }
+
+      const canRemove =
+        item.placedBy === userId ||
+        room?.ownerId === userId ||
+        room?.decorators.some((d) => d.userId === userId);
+
+      if (!canRemove) {
+        throw new Error('NOT_ROOM_DECORATOR');
+      }
+
+      // Delete from room
+      await tx.roomFurniture.delete({ where: { id: furnitureId } });
+
+      // Return item to placer inventory atomically
+      const returnToUser = item.placedBy || userId;
+      await tx.inventory.upsert({
+        where: { userId_itemId: { userId: returnToUser, itemId: item.itemId } },
+        create: {
+          userId: returnToUser,
+          itemId: item.itemId,
+          quantity: 1,
+        },
+        update: {
+          quantity: { increment: 1 },
+        },
+      });
+
+      return item;
+    });
+  }
 }
 
 export interface RecycleResult {

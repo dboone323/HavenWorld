@@ -129,6 +129,9 @@ export class PizzaScene {
     this.selectedIngredients = [];
     this.submitInFlight = false;
     this.startTime = Date.now();
+    socketService.emit(SOCKET_EVENTS.PIZZA_ORDER_START, {
+      recipe: this.currentRecipe.id,
+    });
   }
 
   private addIngredient(ing: string): void {

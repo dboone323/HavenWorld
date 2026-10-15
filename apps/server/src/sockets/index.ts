@@ -15,7 +15,7 @@ import {
   GuestbookSignSchema, TipSchema, GetGuestbookSchema, DeleteGuestbookEntrySchema,
   TradeRequestSchema, OfferItemSchema, OfferCoinsSchema,
   AdoptPetSchema, NamePetSchema, FeedPetSchema,
-  PizzaOrderSchema, RecycleItemSchema, StartCraftSchema, ClaimCraftSchema,
+  PizzaOrderStartSchema, PizzaOrderSchema, RecycleItemSchema, StartCraftSchema, ClaimCraftSchema,
   SetMoodSchema, EmoteSchema, ClubChatSchema,
   DMSendSchema, DMReadSchema,
   SitSchema,
@@ -25,6 +25,7 @@ import {
   LoftStockSchema, LoftShopListQuerySchema, LoftPurchaseSchema,
   ParcelSendSchema, NpcTalkSchema,
 } from './socketSchemas';
+import { inventoryService } from '../services/InventoryService';
 import { FishingService } from '../services/FishingService';
 import { PrivacyManager } from '../services/PrivacyManager';
 import { GuestbookService } from '../services/GuestbookService';
@@ -887,41 +888,7 @@ export function registerSocketHandlers(io: Server): void {
         }
         const { roomId, placement } = parsed.data;
         try {
-          const room = await prisma.room.findUnique({
-            where: { id: roomId },
-            include: { decorators: true },
-          });
-          const canDecorate =
-            room &&
-            (room.ownerId === userId || room.decorators.some((d) => d.userId === userId));
-          if (!canDecorate) {
-            socket.emit('error', { message: 'Not authorized to place furniture in this room' });
-            return;
-          }
-
-          const owned = await prisma.inventory.findUnique({
-            where: { userId_itemId: { userId, itemId: placement.itemId } },
-          });
-          if (!owned || owned.quantity < 1) {
-            socket.emit('error', { message: 'You do not own this furniture item in your inventory' });
-            return;
-          }
-
-          const created = await prisma.roomFurniture.create({
-            data: {
-              roomId,
-              itemId: placement.itemId,
-              placedBy: userId,
-              x: placement.x,
-              y: placement.y,
-              z: placement.z ?? 0,
-              rotation: placement.rotY ?? 0,
-              scaleX: placement.scaleX ?? 1,
-              scaleY: placement.scaleY ?? 1,
-              scaleZ: placement.scaleZ ?? 1,
-            },
-            include: { item: true },
-          });
+          const created = await inventoryService.placeFurnitureItem(userId, roomId, placement);
 
           roomManager.addFurniture(roomId, {
             id: created.id,
@@ -942,8 +909,9 @@ export function registerSocketHandlers(io: Server): void {
             action: 'place',
             item: created,
           });
-        } catch (err) {
+        } catch (err: any) {
           console.error('[Socket] furniture:place error:', err);
+          socket.emit('error', { message: err?.message || 'Failed to place furniture' });
         }
       }
     );
@@ -959,29 +927,17 @@ export function registerSocketHandlers(io: Server): void {
         }
         const { roomId, furnitureId } = parsed.data;
         try {
-          const [item, room] = await Promise.all([
-            prisma.roomFurniture.findUnique({ where: { id: furnitureId } }),
-            prisma.room.findUnique({ where: { id: roomId }, include: { decorators: true } }),
-          ]);
-          const canRemove =
-            item &&
-            (item.placedBy === userId ||
-              room?.ownerId === userId ||
-              room?.decorators.some((d) => d.userId === userId));
-          if (!canRemove) {
-            socket.emit('error', { message: 'Not authorized to remove this item' });
-            return;
-          }
-
-          await prisma.roomFurniture.delete({ where: { id: furnitureId } });
+          const removed = await inventoryService.pickupFurnitureItem(userId, roomId, furnitureId);
           roomManager.removeFurniture(roomId, furnitureId);
           io.to(roomId).emit(SOCKET_EVENTS.ROOM_FURNITURE_UPDATED, {
             roomId,
             action: 'remove',
             furnitureId,
+            itemId: removed.itemId,
           });
-        } catch (err) {
+        } catch (err: any) {
           console.error('[Socket] furniture:remove error:', err);
+          socket.emit('error', { message: err?.message || 'Failed to remove furniture' });
         }
       }
     );
@@ -1171,6 +1127,12 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // ── Phase 3: Pizza Chef Mini-Game (§8) ───────────────────────────────────
+    socket.on(SOCKET_EVENTS.PIZZA_ORDER_START, (rawData: unknown) => {
+      const parsed = PizzaOrderStartSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      MinigameService.startOrder(userId, parsed.data.recipe);
+    });
+
     socket.on(SOCKET_EVENTS.PIZZA_ORDER_SUBMIT, async (rawData: unknown) => {
       const parsed = PizzaOrderSchema.safeParse(rawData);
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }

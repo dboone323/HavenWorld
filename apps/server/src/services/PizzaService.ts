@@ -83,6 +83,17 @@ export class PizzaService extends MinigameService {
     const recipeConfig = RECIPES[data.recipe];
     if (!recipeConfig) throw new Error('Unknown recipe');
 
+    // Anti-bot / time-attack validation:
+    const minRequiredMs = Math.max(
+      this.MIN_PHYSICAL_DURATION_MS,
+      recipeConfig.order.length * 350
+    );
+    if (data.durationMs < minRequiredMs) {
+      throw new Error(
+        `ORDER_TOO_FAST: Mini-game completed in ${data.durationMs}ms, faster than physically possible (${minRequiredMs}ms minimum).`
+      );
+    }
+
     const isCorrectOrder =
       data.ingredients.length === recipeConfig.order.length &&
       data.ingredients.every((ing, idx) => ing.toLowerCase() === recipeConfig.order[idx]);

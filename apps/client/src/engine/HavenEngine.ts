@@ -1,5 +1,6 @@
 import { Engine, Scene, HavokPlugin } from '@babylonjs/core';
 import HavokPhysics from '@babylonjs/havok';
+import { socketService } from '../services/socket';
 
 export type PerformanceQuality = 'HIGH' | 'MEDIUM' | 'LOW' | 'BATTERY_SAVER';
 export type AvatarLOD = 'FULL' | 'REDUCED' | 'CULLED';
@@ -254,6 +255,14 @@ export class HavenEngine {
         this._engine.setHardwareScalingLevel(2.0); // 0.5x resolution
       } else {
         this._updateHardwareScaling();
+        // Foreground resume: Check WebSocket connectivity and dispatch resume event
+        if (!socketService.connected) {
+          console.info('[HavenEngine] Resuming from background: Reconnecting socket...');
+          socketService.connect();
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('haven:app-resume'));
+        }
       }
     }
   };

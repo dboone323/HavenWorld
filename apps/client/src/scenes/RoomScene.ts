@@ -34,7 +34,7 @@ import { LoftShopModal } from '../ui/LoftShopModal';
 import { buildPublicSpaceProps, buildLoftProps } from '../world/PublicSpaceProps';
 import { InputController } from '../engine/InputController';
 import { ChatOverlay } from '../ui/ChatOverlay';
-import { socketService } from '../services/socket';
+import { socketService, type SocketStatusDetail } from '../services/socket';
 import { authService } from '../services/auth';
 import { API_URL, SERVER_URL, assetUrl } from '../config';
 import { DailyLoginModal } from '../ui/DailyLoginModal';
@@ -1131,6 +1131,35 @@ export async function createRoomScene(
       }
     )
   );
+
+  // ── Mobile background resume & socket reconnect synchronization ───────────
+  const resyncRoom = (): void => {
+    if (socketService.connected) {
+      console.info(`[RoomScene] Resynchronizing room state for ${roomId}...`);
+      socketService.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId });
+      socketService.emit(SOCKET_EVENTS.WEATHER_GET);
+    }
+  };
+
+  const onAppResume = (): void => {
+    resyncRoom();
+  };
+
+  const onSocketStatus = (e: Event): void => {
+    const detail = (e as CustomEvent<SocketStatusDetail>).detail;
+    if (detail?.status === 'connected') {
+      resyncRoom();
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('haven:app-resume', onAppResume);
+    window.addEventListener('socket:status', onSocketStatus);
+    unsubs.push(() => {
+      window.removeEventListener('haven:app-resume', onAppResume);
+      window.removeEventListener('socket:status', onSocketStatus);
+    });
+  }
 
   // ── Phase 3B: World Weather Atmosphere & Jukebox ───────────────────────────
   type WeatherId = 'SUNNY' | 'RAIN' | 'AURORA' | 'SNOW' | 'SAKURA_BLOSSOM' | 'SANDSTORM' | 'FOG';
