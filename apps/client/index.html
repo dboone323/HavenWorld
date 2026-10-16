@@ -35,8 +35,9 @@
         <label for="login-email">Email or Username</label>
         <input id="login-email" type="text" autocomplete="username" placeholder="you@example.com or Username" data-testid="login-email" required />
       </div>
-      <div class="form-group">
+      <div class="form-group" style="position:relative;">
         <label for="login-password">Password</label>
+        <button id="btn-forgot-password" type="button" style="position:absolute; right:0; top:0; background:none; border:none; color:#4ecdc4; cursor:pointer; font-size:0.8rem; text-decoration:underline;">Forgot?</button>
         <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" data-testid="login-password" required />
       </div>
       <button id="login-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Sign In" data-testid="login-submit">Sign In</button>
@@ -65,6 +66,36 @@
         <input id="reg-invite" type="text" autocomplete="off" placeholder="Optional — leave blank for open beta" data-testid="reg-invite" />
       </div>
       <button id="reg-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Create Account" data-testid="reg-submit">Create Account</button>
+    </form>
+
+    <!-- Forgot password form -->
+    <form id="form-forgot" class="hidden" data-testid="form-forgot">
+      <p style="color:#aaa; font-size:0.85rem; margin-bottom:1rem; line-height:1.4;">
+        Enter your registered email address and we'll send you a link to reset your password.
+      </p>
+      <div class="form-group">
+        <label for="forgot-email">Email</label>
+        <input id="forgot-email" type="email" autocomplete="email" placeholder="you@example.com" data-testid="forgot-email" required />
+      </div>
+      <button id="forgot-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Send Reset Link" data-testid="forgot-submit">Send Reset Link</button>
+      <button id="forgot-cancel" type="button" class="btn btn--ghost" style="width:100%; margin-top:0.5rem;" data-testid="forgot-cancel">Back to Sign In</button>
+    </form>
+
+    <!-- Reset password form -->
+    <form id="form-reset" class="hidden" data-testid="form-reset">
+      <p style="color:#aaa; font-size:0.85rem; margin-bottom:1rem; line-height:1.4;">
+        Enter a new secure password for your HavenWorld account.
+      </p>
+      <input id="reset-token" type="hidden" />
+      <div class="form-group">
+        <label for="reset-password">New Password</label>
+        <input id="reset-password" type="password" autocomplete="new-password" placeholder="Min 8 characters, 1 uppercase, 1 number" data-testid="reset-password" required />
+      </div>
+      <div class="form-group">
+        <label for="reset-confirm">Confirm New Password</label>
+        <input id="reset-confirm" type="password" autocomplete="new-password" placeholder="Repeat new password" data-testid="reset-confirm" required />
+      </div>
+      <button id="reset-submit" type="submit" class="btn btn--teal" style="width:100%; margin-top:0.5rem;" data-label="Reset Password" data-testid="reset-submit">Update Password</button>
     </form>
 
     <p id="login-error" class="error-text" style="min-height:1.2em;" data-testid="login-error"></p>

@@ -1,13 +1,14 @@
 import { authService } from '../services/auth';
 import { SceneManager } from '../engine/SceneManager';
 
-type FormMode = 'login' | 'register';
+type FormMode = 'login' | 'register' | 'forgot' | 'reset';
 
 /**
  * loginUI — mounts on DOMContentLoaded.
  *
  * Handles:
  * - Tab switching between login / register forms
+ * - Forgot password and token reset flows
  * - Input validation
  * - API calls via authService
  * - Transition to LobbyScene or RoomScene on success
@@ -18,6 +19,11 @@ export function mountLoginUI(): void {
   const tabRegister = document.getElementById('tab-register')!;
   const formLogin   = document.getElementById('form-login')!;
   const formReg     = document.getElementById('form-register')!;
+  const formForgot  = document.getElementById('form-forgot');
+  const formReset   = document.getElementById('form-reset');
+  const btnForgot   = document.getElementById('btn-forgot-password');
+  const btnCancelForgot = document.getElementById('forgot-cancel');
+  const resetTokenInput = document.getElementById('reset-token') as HTMLInputElement | null;
   const errEl       = document.getElementById('login-error')!;
 
   let mode: FormMode = 'login';
@@ -28,9 +34,17 @@ export function mountLoginUI(): void {
     errEl.textContent = 'Email verified successfully! Please sign in.';
   }
 
+  const resetTokenParam = params.get('token') || params.get('resetToken');
+  if (resetTokenParam && resetTokenInput) {
+    resetTokenInput.value = resetTokenParam;
+    setMode('reset');
+  }
+
   // ── Tab switching ─────────────────────────────────────────────────────────
   tabLogin.addEventListener('click', () => setMode('login'));
   tabRegister.addEventListener('click', () => setMode('register'));
+  btnForgot?.addEventListener('click', () => setMode('forgot'));
+  btnCancelForgot?.addEventListener('click', () => setMode('login'));
 
   function setMode(m: FormMode): void {
     mode = m;
@@ -38,6 +52,14 @@ export function mountLoginUI(): void {
     tabRegister.classList.toggle('tab--active', m === 'register');
     formLogin.classList.toggle('hidden', m !== 'login');
     formReg.classList.toggle('hidden', m !== 'register');
+    formForgot?.classList.toggle('hidden', m !== 'forgot');
+    formReset?.classList.toggle('hidden', m !== 'reset');
+
+    const tabsContainer = panel.querySelector<HTMLElement>('.login-tabs');
+    if (tabsContainer) {
+      tabsContainer.style.display = (m === 'forgot' || m === 'reset') ? 'none' : 'flex';
+    }
+
     errEl.textContent = '';
     document.getElementById('btn-resend-verification')?.remove();
   }
@@ -140,6 +162,70 @@ export function mountLoginUI(): void {
     } catch (err) {
       errEl.style.color = '';
       showError(err instanceof Error ? err.message : 'Registration failed.');
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  // ── Forgot password form ──────────────────────────────────────────────────
+  formForgot?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = (document.getElementById('forgot-email') as HTMLInputElement).value.trim();
+    if (!email) {
+      errEl.style.color = '#f87171';
+      showError('Please enter your email address.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await authService.forgotPassword(email);
+      errEl.style.color = '#4ecdc4';
+      showError(res.message || 'If an account exists with that email, a password reset link has been sent.');
+    } catch (err) {
+      errEl.style.color = '#f87171';
+      showError(err instanceof Error ? err.message : 'Request failed.');
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  // ── Reset password form ───────────────────────────────────────────────────
+  formReset?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = resetTokenInput?.value || '';
+    const password = (document.getElementById('reset-password') as HTMLInputElement).value;
+    const confirm = (document.getElementById('reset-confirm') as HTMLInputElement).value;
+
+    if (!token) {
+      errEl.style.color = '#f87171';
+      showError('Reset token missing. Please use the link provided in your email.');
+      return;
+    }
+    if (password.length < 8) {
+      errEl.style.color = '#f87171';
+      showError('Password must be at least 8 characters.');
+      return;
+    }
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      errEl.style.color = '#f87171';
+      showError('Password must contain at least one uppercase letter and one number.');
+      return;
+    }
+    if (password !== confirm) {
+      errEl.style.color = '#f87171';
+      showError('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await authService.resetPassword(token, password);
+      errEl.style.color = '#4ecdc4';
+      showError(res.message || 'Password reset successfully. Please sign in.');
+      setMode('login');
+    } catch (err) {
+      errEl.style.color = '#f87171';
+      showError(err instanceof Error ? err.message : 'Password reset failed.');
     } finally {
       setLoading(false);
     }

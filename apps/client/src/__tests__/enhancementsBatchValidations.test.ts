@@ -249,4 +249,62 @@ describe('Enhancements & Security Hardening Real Functional Validations', () => 
       expect(document.getElementById('help-modal-overlay')).toBeNull();
     });
   });
+
+  describe('6. Password Recovery & Reset Flow (§9.1)', () => {
+    it('handles forgotPassword API request and response serialization', async () => {
+      const auth = new AuthService('http://localhost:3000/api');
+
+      // Intercept via native test fetch
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = (async (url: string, init?: RequestInit) => {
+          expect(url).toBe('http://localhost:3000/api/auth/forgot-password');
+          expect(init?.method).toBe('POST');
+          const body = JSON.parse(init?.body as string);
+          expect(body.email).toBe('citizen@haven.world');
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: 'If an account exists with that email, a password reset link has been sent.',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }) as typeof fetch;
+
+        const res = await auth.forgotPassword('citizen@haven.world');
+        expect(res.success).toBe(true);
+        expect(res.message).toContain('password reset link has been sent');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('handles resetPassword API request with token and new password', async () => {
+      const auth = new AuthService('http://localhost:3000/api');
+
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = (async (url: string, init?: RequestInit) => {
+          expect(url).toBe('http://localhost:3000/api/auth/reset-password');
+          expect(init?.method).toBe('POST');
+          const body = JSON.parse(init?.body as string);
+          expect(body.token).toBe('reset_tok_abc123');
+          expect(body.newPassword).toBe('NewSecurePass123!');
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: 'Password has been successfully reset. Please log in with your new password.',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }) as typeof fetch;
+
+        const res = await auth.resetPassword('reset_tok_abc123', 'NewSecurePass123!');
+        expect(res.success).toBe(true);
+        expect(res.message).toContain('Password has been successfully reset');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
 });

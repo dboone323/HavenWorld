@@ -277,6 +277,37 @@ export class AuthService {
     }
   }
 
+  async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${this._apiUrl}/auth/forgot-password`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Request failed' }));
+      throw new AuthError(err.error || err.message || 'Request failed');
+    }
+    return res.json();
+  }
+
+  async resetPassword(
+    token: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${this._apiUrl}/auth/reset-password`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Password reset failed' }));
+      throw new AuthError(err.error || err.message || 'Password reset failed');
+    }
+    return res.json();
+  }
+
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     const token = await this.getToken();
     const res = await fetch(`${this._apiUrl}/auth/change-password`, {

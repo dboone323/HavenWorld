@@ -476,6 +476,97 @@ router.post('/change-password', requireAuth, async (req: AuthRequest, res: Respo
   });
 });
 
+// ── POST /api/auth/forgot-password ───────────────────────────────────────────
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid email address.' });
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Uniform timing / anti-enumeration: always return same message
+  if (user && user.status === 'ACTIVE' && !user.isBanned) {
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    // Store in Redis with 1 hour (3600 seconds) expiration
+    await redis.setEx(`pwdreset:${resetToken}`, 3600, user.id);
+    await EmailService.sendPasswordResetEmail(user.email, user.username, resetToken);
+  }
+
+  return res.json({
+    success: true,
+    message: 'If an account exists with that email, a password reset link has been sent.',
+  });
+});
+
+// ── POST /api/auth/reset-password ─────────────────────────────────────────────
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  newPassword: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(128, 'Password cannot exceed 128 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+});
+
+router.post('/reset-password', async (req: Request, res: Response) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      fields: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const { token, newPassword } = parsed.data;
+  const userId = await redis.get(`pwdreset:${token}`);
+
+  if (!userId) {
+    return res.status(400).json({
+      error: 'INVALID_OR_EXPIRED_TOKEN',
+      message: 'Password reset link is invalid or has expired.',
+    });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.status === 'BANNED' || user.isBanned) {
+    await redis.del(`pwdreset:${token}`);
+    return res.status(400).json({
+      error: 'ACCOUNT_UNAVAILABLE',
+      message: 'This account cannot be reset.',
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash },
+  });
+
+  // Consume token so it cannot be reused
+  await redis.del(`pwdreset:${token}`);
+
+  // Invalidate all active sessions across all devices
+  await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+  await redis.del(`refresh:${user.id}`);
+
+  // Clear refresh and CSRF cookies on current client
+  res.clearCookie('refresh_token', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+  res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+  res.clearCookie('csrf_token');
+
+  return res.json({
+    success: true,
+    message: 'Password has been successfully reset. Please log in with your new password.',
+  });
+});
+
 // ── POST /api/auth/refresh ────────────────────────────────────────────────────
 router.post('/refresh', async (req: Request, res: Response) => {
   const incomingToken = req.cookies?.refresh_token || req.cookies?.refreshToken;

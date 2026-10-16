@@ -371,4 +371,78 @@ describe('Auth Integration — Full HTTP Flow', () => {
       .send({ email: 'changepw@test.com', password: 'NewPass123!' });
     expect(newPw.status).toBe(200);
   });
+
+  it('handles forgot-password and reset-password flow through Redis token lifecycle', async () => {
+    const invite = await createTestInviteCode({ code: 'RESET_INVITE_001', used: false });
+    await request(app).post('/api/auth/register').send({
+      email: 'resetuser@test.com',
+      username: 'resetuser',
+      password: 'OldPassword123!',
+      inviteCode: invite.code,
+    });
+
+    // 1. Invalid email format -> 400
+    const badEmail = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: 'not-an-email' });
+    expect(badEmail.status).toBe(400);
+
+    // 2. Non-existent email -> 200 (anti-enumeration)
+    const unknownEmail = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: 'nonexistent@test.com' });
+    expect(unknownEmail.status).toBe(200);
+    expect(unknownEmail.body.success).toBe(true);
+
+    // 3. Valid registered email -> 200
+    const validForgot = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: 'resetuser@test.com' });
+    expect(validForgot.status).toBe(200);
+    expect(validForgot.body.success).toBe(true);
+
+    // 4. Reset with non-existent / expired token -> 400
+    const invalidToken = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: 'fake-token-999', newPassword: 'BrandNewPass123!' });
+    expect(invalidToken.status).toBe(400);
+    expect(invalidToken.body.error).toBe('INVALID_OR_EXPIRED_TOKEN');
+
+    // 5. Weak new password -> 400
+    const weakNewPw = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: 'fake-token-999', newPassword: 'weak' });
+    expect(weakNewPw.status).toBe(400);
+
+    // 6. Test with a real Redis-backed token
+    const testUser = await prisma.user.findUnique({ where: { email: 'resetuser@test.com' } });
+    expect(testUser).not.toBeNull();
+    const realToken = 'live_test_token_' + Date.now();
+    const { redis } = await import('../../src/redis');
+    await redis.setEx(`pwdreset:${realToken}`, 300, testUser!.id);
+
+    // Execute reset password
+    const resetOk = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: realToken, newPassword: 'BrandNewPass123!' });
+    expect(resetOk.status).toBe(200);
+    expect(resetOk.body.success).toBe(true);
+
+    // Token must be consumed from Redis (single-use)
+    const tokenInRedis = await redis.get(`pwdreset:${realToken}`);
+    expect(tokenInRedis).toBeNull();
+
+    // Old password must fail
+    const oldLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'resetuser@test.com', password: 'OldPassword123!' });
+    expect(oldLogin.status).toBe(401);
+
+    // New password must succeed
+    const newLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'resetuser@test.com', password: 'BrandNewPass123!' });
+    expect(newLogin.status).toBe(200);
+    expect(newLogin.body).toHaveProperty('accessToken');
+  });
 });
