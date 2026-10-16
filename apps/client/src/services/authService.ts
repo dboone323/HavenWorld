@@ -36,15 +36,14 @@ export class AuthService {
 
   constructor(apiUrl?: string) {
     this._apiUrl = apiUrl || API_URL;
+    // Tokens are kept strictly in-memory; clean up any legacy token in localStorage
     if (typeof localStorage !== 'undefined') {
-      this._accessToken = localStorage.getItem('haven_token');
+      localStorage.removeItem('haven_token');
+      localStorage.removeItem('accessToken');
     }
   }
 
   get token(): string | null {
-    if (!this._accessToken && typeof localStorage !== 'undefined') {
-      this._accessToken = localStorage.getItem('haven_token');
-    }
     return this._accessToken;
   }
 
@@ -60,11 +59,12 @@ export class AuthService {
     return this._user;
   }
 
-  async me(): Promise<AuthUser | null> {
-    if (!this._accessToken && typeof localStorage !== 'undefined') {
-      this._accessToken = localStorage.getItem('haven_token');
-    }
+  setSession(accessToken: string | null, user: AuthUser | null = null): void {
+    this._accessToken = accessToken;
+    this._user = user;
+  }
 
+  async me(): Promise<AuthUser | null> {
     // If not authenticated, try silent refresh once
     if (!this._accessToken) {
       const refreshed = await this.refresh();
@@ -89,9 +89,6 @@ export class AuthService {
   }
 
   isAuthenticated(): boolean {
-    if (!this._accessToken && typeof localStorage !== 'undefined') {
-      this._accessToken = localStorage.getItem('haven_token');
-    }
     if (!this._accessToken) return false;
     const exp = parseJwtExp(this._accessToken);
     if (!exp) return false;
@@ -107,10 +104,10 @@ export class AuthService {
   }
 
   async getToken(): Promise<string | null> {
-    if (!this._accessToken && typeof localStorage !== 'undefined') {
-      this._accessToken = localStorage.getItem('haven_token');
+    if (!this._accessToken) {
+      const refreshed = await this.refresh();
+      if (!refreshed || !this._accessToken) return null;
     }
-    if (!this._accessToken) return null;
 
     const exp = parseJwtExp(this._accessToken);
     const nowSeconds = Math.floor(Date.now() / 1000);
@@ -119,9 +116,6 @@ export class AuthService {
     if (!exp || exp - nowSeconds <= 60) {
       const refreshed = await this.refresh();
       if (!refreshed) {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem('haven_token');
-        }
         this._accessToken = null;
         return null;
       }
@@ -149,9 +143,6 @@ export class AuthService {
     const data = await res.json();
     if (data.accessToken) {
       this._accessToken = data.accessToken;
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('haven_token', data.accessToken);
-      }
       this._user = data.user ?? null;
       // Session established via register (auto-verified accounts get an
       // access token) — UI that depends on auth should reload its user data.
@@ -185,9 +176,6 @@ export class AuthService {
     const data = await res.json();
     if (data.accessToken) {
       this._accessToken = data.accessToken;
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('haven_token', data.accessToken);
-      }
       this._user = data.user ?? null;
       // Session established via login — UI that depends on auth (QuestHUD,
       // etc.) should reload its user data now.
@@ -234,9 +222,6 @@ export class AuthService {
       const data = await res.json();
       if (data.accessToken) {
         this._accessToken = data.accessToken;
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('haven_token', data.accessToken);
-        }
         if (data.user) this._user = data.user;
         // Let services/socket.ts re-attach the new token to the handshake.
         if (typeof window !== 'undefined') {

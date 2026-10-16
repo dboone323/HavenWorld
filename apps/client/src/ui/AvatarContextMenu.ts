@@ -2,6 +2,7 @@ import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { PassportModal } from '../passport/PassportModal';
 import { authService } from '../services/auth';
+import { blockService } from '../services/blockService';
 import { SERVER_URL } from '../config';
 import { showToast } from './ToastNotification';
 import { SceneManager } from '../engine/SceneManager';
@@ -193,6 +194,31 @@ export class AvatarContextMenu {
         AvatarContextMenu.dismiss();
       });
       menu.appendChild(btnReport);
+
+      // Block / Unblock Player Button
+      const isBlocked = blockService.isBlocked(options.targetUserId);
+      const btnBlock = document.createElement('button');
+      btnBlock.className = 'context-menu-item danger';
+      btnBlock.innerHTML = isBlocked ? '<span>🔓</span> Unblock Player' : '<span>🚫</span> Block Player';
+      btnBlock.addEventListener('click', async () => {
+        AvatarContextMenu.dismiss();
+        if (isBlocked) {
+          const success = await blockService.unblockUser(options.targetUserId);
+          if (success) {
+            showToast({ icon: '🔓', title: 'Player Unblocked', subtitle: `Unblocked ${options.targetUsername}` });
+          } else {
+            showToast({ icon: '⚠️', title: 'Unblock Failed', subtitle: 'Could not unblock player' });
+          }
+        } else {
+          const success = await blockService.blockUser(options.targetUserId);
+          if (success) {
+            showToast({ icon: '🚫', title: 'Player Blocked', subtitle: `Muted & blocked ${options.targetUsername}` });
+          } else {
+            showToast({ icon: '⚠️', title: 'Block Failed', subtitle: 'Could not block player' });
+          }
+        }
+      });
+      menu.appendChild(btnBlock);
     }
 
     document.body.appendChild(menu);

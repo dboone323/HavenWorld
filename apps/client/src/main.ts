@@ -20,6 +20,7 @@ import { PizzaScene } from './minigame/PizzaScene';
 import { authService } from './services/auth';
 import { socketService } from './services/socket';
 import { DailyLoginModal } from './ui/DailyLoginModal';
+import { HelpModal } from './ui/HelpModal';
 import { initPwa } from './ui/InstallPrompt';
 import { ConnectionBanner } from './ui/ConnectionBanner';
 import {
@@ -161,6 +162,21 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-mailbox')?.addEventListener('click', () => {
     MailboxPanel.show();
+  });
+
+  document.getElementById('btn-help')?.addEventListener('click', () => {
+    HelpModal.toggle();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (targetTag === 'input' || targetTag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) {
+      return;
+    }
+    if (e.key === '?' || (e.shiftKey && e.key === '/') || e.key === 'F1') {
+      e.preventDefault();
+      HelpModal.toggle();
+    }
   });
 
   // §3d — first-run onboarding nudge (once per session, dismissible)

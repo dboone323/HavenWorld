@@ -2,6 +2,7 @@ import type { ChatMessage } from '@havenworld/shared';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
+import { blockService } from '../services/blockService';
 import { escapeHtml } from '../utils/escapeHtml';
 import { TypingIndicatorManager } from './TypingIndicatorManager';
 import { StreamerModeManager } from './StreamerModeManager';
@@ -120,6 +121,11 @@ export class ChatOverlay {
   }
 
   public appendMessage(msg: ChatMessage): void {
+    const senderId = msg.senderId || msg.playerId;
+    if (senderId && blockService.isBlocked(senderId)) {
+      return;
+    }
+
     const log = document.getElementById('chat-log');
     if (!log) return;
 

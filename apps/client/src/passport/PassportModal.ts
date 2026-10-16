@@ -1,6 +1,6 @@
 import { authService } from '../services/auth';
-import type { PassportData } from '@havenworld/shared';
-import { SERVER_URL } from '../config';
+import type { PassportData, AvatarData } from '@havenworld/shared';
+import { SERVER_URL, assetUrl } from '../config';
 import { escapeHtml } from '../utils/escapeHtml';
 import { DraggablePanel } from '../ui/DraggablePanel';
 
@@ -59,6 +59,56 @@ export class PassportModal {
     this.overlay = null;
   }
 
+  public renderAvatarBadge(avatar?: AvatarData): string {
+    const sheetW = 1774;
+    const sheetH = 887;
+    const cols = 6;
+    const rows = 3;
+    const cellRow = 0;
+    const cellCol = 0;
+    const sourceX0 = Math.round(cellCol * sheetW / cols);
+    const sourceX1 = Math.round((cellCol + 1) * sheetW / cols);
+    const sourceY0 = Math.round(cellRow * sheetH / rows);
+    const sourceY1 = Math.round((cellRow + 1) * sheetH / rows);
+    const sourceCellHeight = sourceY1 - sourceY0;
+
+    const displayW = 54;
+    const displayH = 68;
+    const scale = (displayH * 1.5) / sourceCellHeight;
+    const sourceCellCenterX = (sourceX0 + sourceX1) / 2;
+    const bgX = (displayW / 2) - (sourceCellCenterX * scale);
+    const bgY = -(sourceY0 * scale) + 4;
+
+    const bgSize = `${sheetW * scale}px ${sheetH * scale}px`;
+    const bgPos = `${bgX}px ${bgY}px`;
+
+    const layerStyle = `position: absolute; inset: 0; width: 100%; height: 100%; background-repeat: no-repeat; background-size: ${bgSize}; background-position: ${bgPos};`;
+
+    const baseSrc = assetUrl('/assets/sprites/avatar/wearables/MiPlanet Character Base Sprite.png');
+    const topSrc = avatar?.outfitBody && avatar.outfitBody !== 'none' && avatar.outfitBody !== 'underwear'
+      ? assetUrl('/assets/sprites/avatar/wearables/MiPlanet Pink Llama Sweater.png')
+      : '';
+    const hairSrc = avatar?.hairStyle && avatar.hairStyle !== 'none' && avatar.hairStyle !== 'bald'
+      ? assetUrl('/assets/sprites/avatar/wearables/MiPlanet Wavy Golden Hair.png')
+      : '';
+    const hatSrc = avatar?.outfitHead && avatar.outfitHead !== 'none'
+      ? assetUrl('/assets/sprites/avatar/wearables/MiPlanet Trapper Hat.png')
+      : '';
+    const eyesSrc = avatar?.eyes
+      ? assetUrl('/assets/sprites/avatar/wearables/MiPlanet Basic Blue Eyes.png')
+      : '';
+
+    return `
+      <div class="passport-avatar-badge" style="position: relative; width: 54px; height: 68px; border-radius: 8px; overflow: hidden; background: radial-gradient(circle, #312e81 0%, #1e1b4b 100%); border: 2px solid #818cf8; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.4);">
+        <div style="${layerStyle} background-image: url('${baseSrc}');"></div>
+        ${topSrc ? `<div style="${layerStyle} background-image: url('${topSrc}');"></div>` : ''}
+        ${eyesSrc ? `<div style="${layerStyle} background-image: url('${eyesSrc}');"></div>` : ''}
+        ${hairSrc ? `<div style="${layerStyle} background-image: url('${hairSrc}');"></div>` : ''}
+        ${hatSrc ? `<div style="${layerStyle} background-image: url('${hatSrc}');"></div>` : ''}
+      </div>
+    `;
+  }
+
   private render(passport: PassportData): void {
     this.overlay?.remove();
 
@@ -92,12 +142,12 @@ export class PassportModal {
       box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
     `;
 
+    const avatar = passport.avatar || authService.user?.avatar;
+
     panel.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 50px; height: 50px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.6rem;">
-            🛂
-          </div>
+        <div style="display: flex; align-items: center; gap: 14px;">
+          ${this.renderAvatarBadge(avatar)}
           <div>
             <h2 style="margin: 0; font-size: 1.4rem; color: #a5b4fc;">${escapeHtml(passport.username)}'s Passport</h2>
             <div style="font-size: 0.8rem; color: #94a3b8;">Citizen since ${escapeHtml(joinDateStr)} · ${passport.stamps.length}/${allStampNames.length} Stamps</div>

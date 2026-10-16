@@ -2,6 +2,7 @@ import * as BABYLON from '@babylonjs/core';
 import { socketService } from '../services/socket';
 import { SOCKET_EVENTS, type ChatMessage } from '@havenworld/shared';
 import { authService } from '../services/auth';
+import { blockService } from '../services/blockService';
 
 interface ActiveBubble {
   element: HTMLElement;
@@ -67,12 +68,14 @@ export class InWorldSpeechBubbles {
       const name = msg.senderName || msg.username || authService.user?.username || 'Citizen';
       const text = msg.text || msg.content || '';
       if (!userId || !text) return;
+      if (blockService.isBlocked(userId)) return;
       this.showBubble(userId, name, text);
     });
   }
 
   showBubble(userId: string, senderName: string, text: string): void {
     if (typeof document === 'undefined') return;
+    if (blockService.isBlocked(userId)) return;
 
     // Remove any previous bubble for this user
     this.removeBubble(userId);

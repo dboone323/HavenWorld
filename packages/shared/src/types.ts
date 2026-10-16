@@ -343,6 +343,7 @@ export interface PassportData {
   joinDate: string;
   isVIP: boolean;
   frameId: string;
+  avatar?: AvatarData;
   stamps: AchievementStampData[];
   fishCount: number;
   totalTips: number;

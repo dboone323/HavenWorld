@@ -154,6 +154,7 @@ export class AchievementService {
         username: true,
         createdAt: true,
         isVIP: true,
+        avatar: true,
         passportFrame: true,
         achievements: {
           select: { stamp: true, earnedAt: true },
@@ -196,6 +197,7 @@ export class AchievementService {
       frameId: user.passportFrame?.frameId || 'default',
       featuredBadge: featuredBadge || milestone.badge,
       milestone,
+      avatar: (user.avatar as any) || undefined,
       stamps: stampsList,
       fishCount: user._count.fishCatches,
       totalTips: user._count.tipsReceived,
