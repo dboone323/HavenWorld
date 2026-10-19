@@ -147,6 +147,21 @@ export const socketService = {
 
     _socket.on('connect_error', (err) => {
       console.error('[Socket] Connection error:', err.message);
+      if (err.message === 'AUTH_REQUIRED' || err.message === 'AUTH_INVALID') {
+        void authService.refresh().then((ok) => {
+          if (ok) {
+            socketService.updateAuth();
+          } else {
+            console.warn('[Socket] Auth failed and token refresh unsuccessful — disconnecting.');
+            socketService.disconnect();
+          }
+        });
+        return;
+      }
+      if (err.message === 'USER_BANNED' || err.message === 'ORIGIN_FORBIDDEN') {
+        socketService.disconnect();
+        return;
+      }
       if (_status.status !== 'reconnecting' && _status.status !== 'reconnect_failed') {
         emitStatus('connecting');
       }
@@ -162,7 +177,12 @@ export const socketService = {
       // handshake carries a live token. refresh() is single-flight, and the
       // function-form `auth` above picks the new token up automatically.
       void authService.refresh().then((ok) => {
-        if (ok) socketService.updateAuth();
+        if (ok) {
+          socketService.updateAuth();
+        } else if (!authService.token) {
+          console.warn('[Socket] No valid auth session during reconnect; aborting reconnect loop.');
+          socketService.disconnect();
+        }
       });
     });
 

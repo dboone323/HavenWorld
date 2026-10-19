@@ -3,6 +3,7 @@ import { authService } from '../services/auth';
 import { SOCKET_EVENTS, type DirectMessagePayload, type UnreadDMsPayload } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
 import { escapeHtml } from '../utils/escapeHtml';
+import { StreamerModeManager } from './StreamerModeManager';
 
 export interface DMConversation {
   userId: string;
@@ -65,8 +66,8 @@ export class DirectMessagePanel {
     const partnerId = isIncoming ? dm.senderId : dm.receiverId;
     const partnerName = isIncoming ? dm.senderUsername : (dm.receiverUsername || 'User');
 
-    // Trigger head speech bubble if incoming
-    if (isIncoming && this._onSpeechTrigger) {
+    // Trigger head speech bubble if incoming and streamer mode is not active
+    if (isIncoming && this._onSpeechTrigger && !StreamerModeManager.getIsEnabled()) {
       this._onSpeechTrigger(dm.senderId, dm.content);
     }
 

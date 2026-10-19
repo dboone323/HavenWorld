@@ -4,11 +4,11 @@ import { verifyAccessToken } from '../auth/tokens';
 import { redis } from '../redis';
 import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
-import { SOCKET_EVENTS, normalizeGender } from '@havenworld/shared';
+import { SOCKET_EVENTS, normalizeGender, GATHERING_NODES } from '@havenworld/shared';
 import { AnalyticsService } from '../services/AnalyticsService';
 import type { PlayerState, FurnitureState, AvatarData, ChatMessage, DirectMessagePayload } from '@havenworld/shared';
 import {
-  JoinRoomSchema, MoveSchema, ChatSchema,
+  JoinRoomSchema, MoveSchema, ChatSchema, ChatTypingSchema,
   FurniturePlaceSchema, FurnitureRemoveSchema,
   CastLineSchema, ReelPositionSchema,
   SetPrivacySchema, DoorbellSchema, DoorbellDecisionSchema, GrantDecoratorSchema,
@@ -671,6 +671,19 @@ export function registerSocketHandlers(io: Server): void {
       }
     );
 
+    // ── chat:typing ───────────────────────────────────────────────────────────
+    socket.on(SOCKET_EVENTS.CHAT_TYPING, (rawData: unknown) => {
+      const parsed = ChatTypingSchema.safeParse(rawData);
+      if (!parsed.success) return;
+      const currentRoomId = roomManager.getPlayerRoom(socket.id);
+      if (!currentRoomId) return;
+      socket.to(currentRoomId).emit(SOCKET_EVENTS.CHAT_TYPING, {
+        userId,
+        username,
+        isTyping: parsed.data.isTyping,
+      });
+    });
+
     // ── 1:1 Direct Messages ──────────────────────────────────────────────────
     socket.on(SOCKET_EVENTS.DM_SEND, async (rawData: unknown) => {
       const parsed = DMSendSchema.safeParse(rawData);
@@ -1290,6 +1303,31 @@ export function registerSocketHandlers(io: Server): void {
     socket.on(SOCKET_EVENTS.GATHER_NODE, async (rawData: unknown) => {
       const parsed = HarvestSchema.safeParse(rawData);
       if (!parsed.success) return;
+      const node = GATHERING_NODES[parsed.data.nodeId];
+      if (!node) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'INVALID_NODE', message: 'Unknown resource node' });
+        return;
+      }
+
+      const activePlayer = roomManager.getPlayer(userId);
+      const currentRoom = roomManager.getPlayerRoom(socket.id);
+
+      if (activePlayer) {
+        if (activePlayer.roomId !== node.roomKey && currentRoom !== node.roomKey) {
+          socket.emit(SOCKET_EVENTS.ERROR, { code: 'WRONG_ROOM', message: 'You are not in the room with this resource node.' });
+          return;
+        }
+        // Distance check: node.spot is (x, z)
+        const dist = Math.hypot(activePlayer.x - node.spot.x, (activePlayer.z ?? activePlayer.y) - node.spot.z);
+        if (dist > 3.5) {
+          socket.emit(SOCKET_EVENTS.ERROR, { code: 'TOO_FAR', message: 'You are too far from the resource node to gather it.' });
+          return;
+        }
+      } else if (currentRoom && currentRoom !== node.roomKey) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'WRONG_ROOM', message: 'You are not in the room with this resource node.' });
+        return;
+      }
+
       try {
         const result = await GatheringService.harvestNode(userId, parsed.data.nodeId);
         socket.emit(SOCKET_EVENTS.GATHERING_RESULT, {

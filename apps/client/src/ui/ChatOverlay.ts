@@ -36,7 +36,7 @@ export class ChatOverlay {
       if (isTyping) {
         InWorldSpeechBubbles.getInstance().showBubble(userId, username, '...');
       }
-      socketService.emit('chat:typing' as any, { isTyping });
+      socketService.emit(SOCKET_EVENTS.CHAT_TYPING, { isTyping });
     });
     this._unsubs.push(unsubTyping);
 

@@ -20,10 +20,10 @@ export class GatheringService {
     const cooldownKey = `gather:cooldown:${userId}:${nodeId}`;
     const now = Date.now();
 
-    // Check cooldown via Redis or fallback memory
+    // Check & set cooldown via Redis NX or fallback memory atomically
     if (redisClient.isOpen) {
-      const exists = await redisClient.get(cooldownKey);
-      if (exists) {
+      const acquired = await redisClient.set(cooldownKey, '1', { NX: true, EX: node.cooldownSeconds });
+      if (!acquired) {
         throw new Error(`Node '${node.name}' is on cooldown. Please wait before harvesting again.`);
       }
     } else {
@@ -31,12 +31,6 @@ export class GatheringService {
       if (now < expiresAt) {
         throw new Error(`Node '${node.name}' is on cooldown. Please wait before harvesting again.`);
       }
-    }
-
-    // Set cooldown
-    if (redisClient.isOpen) {
-      await redisClient.set(cooldownKey, '1', { EX: node.cooldownSeconds });
-    } else {
       this.memoryCooldowns.set(cooldownKey, now + node.cooldownSeconds * 1000);
     }
 

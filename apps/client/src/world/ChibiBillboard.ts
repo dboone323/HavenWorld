@@ -16,6 +16,7 @@ export class ChibiBillboard {
   private avatarData?: AvatarData;
   private beforeRenderObserver: (() => void) | null = null;
   private _lastRenderKey: string = '';
+  private _avatarHash: string = '';
 
   constructor(name: string, scene: BABYLON.Scene, parent?: BABYLON.Node | null) {
     this.scene = scene;
@@ -97,6 +98,7 @@ export class ChibiBillboard {
 
   public setAvatarData(data: AvatarData): void {
     this.avatarData = data;
+    this._avatarHash = data ? JSON.stringify(data) : '';
     this.render();
   }
 
@@ -113,7 +115,7 @@ export class ChibiBillboard {
     const img = atlas.getImage();
     if (!img) return;
 
-    const renderKey = `${this.currentAction}_${this.currentDirection}_${this.currentFrame}_${this.avatarData ? JSON.stringify(this.avatarData) : ''}`;
+    const renderKey = `${this.currentAction}_${this.currentDirection}_${this.currentFrame}_${this._avatarHash}`;
     if (renderKey === this._lastRenderKey) return;
     this._lastRenderKey = renderKey;
 

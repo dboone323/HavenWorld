@@ -761,6 +761,7 @@ export async function createRoomScene(
   inputController = new InputController(scene, avatarController, camera);
   const dmPanel = DirectMessagePanel.getInstance() || new DirectMessagePanel();
   dmPanel.setSpeechTrigger((senderId: string, content: string) => {
+    if (StreamerModeManager.getIsEnabled()) return;
     const remote = remoteAvatars.get(senderId);
     if (remote) {
       remote.showSpeech(`✉️ ${content}`);

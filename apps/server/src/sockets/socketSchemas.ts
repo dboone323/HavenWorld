@@ -52,6 +52,11 @@ export const ChatSchema = z.object({
   roomId: z.string().min(1).max(128).optional(),
 });
 
+export const ChatTypingSchema = z.object({
+  isTyping: z.boolean(),
+  roomId: z.string().min(1).max(128).optional(),
+});
+
 // ── Furniture ─────────────────────────────────────────────────────────────────
 export const FurniturePlaceSchema = z.object({
   roomId: z.string().min(1).max(128),

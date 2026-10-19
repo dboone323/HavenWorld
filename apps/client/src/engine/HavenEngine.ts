@@ -1,5 +1,6 @@
 import { Engine, Scene } from '@babylonjs/core';
 import { socketService } from '../services/socket';
+import { authService } from '../services/auth';
 
 export type PerformanceQuality = 'HIGH' | 'MEDIUM' | 'LOW' | 'BATTERY_SAVER';
 export type AvatarLOD = 'FULL' | 'REDUCED' | 'CULLED';
@@ -44,7 +45,7 @@ export class HavenEngine {
     }
 
     this._engine = new Engine(canvas, true, {
-      preserveDrawingBuffer: true,
+      preserveDrawingBuffer: false,
       stencil: true,
       disableWebGL2Support: false,
     });
@@ -242,7 +243,7 @@ export class HavenEngine {
       } else {
         this._updateHardwareScaling();
         // Foreground resume: Check WebSocket connectivity and dispatch resume event
-        if (!socketService.connected) {
+        if (!socketService.connected && authService.isLoggedIn) {
           console.info('[HavenEngine] Resuming from background: Reconnecting socket...');
           socketService.connect();
         }

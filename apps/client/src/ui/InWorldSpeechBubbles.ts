@@ -71,6 +71,23 @@ export class InWorldSpeechBubbles {
       if (blockService.isBlocked(userId)) return;
       this.showBubble(userId, name, text);
     });
+
+    socketService.on<{ userId: string; username: string; isTyping: boolean }>(
+      SOCKET_EVENTS.CHAT_TYPING,
+      (data) => {
+        if (!data || !data.userId) return;
+        if (data.userId === authService.user?.id) return;
+        if (blockService.isBlocked(data.userId)) return;
+        if (data.isTyping) {
+          this.showBubble(data.userId, data.username || 'Citizen', '...');
+        } else {
+          const b = this.bubbles.get(data.userId);
+          if (b && b.element.querySelector('span')?.textContent === '...') {
+            this.removeBubble(data.userId);
+          }
+        }
+      }
+    );
   }
 
   showBubble(userId: string, senderName: string, text: string): void {

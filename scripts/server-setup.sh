@@ -97,7 +97,7 @@ else
 \\tserver_tokens off;\\
 \\tlimit_req_zone \$binary_remote_addr zone=login:10m rate=5r/m;\\
 \\tlimit_req_zone \$binary_remote_addr zone=api:10m rate=100r/m;\\
-\\tlimit_req_zone \$binary_remote_addr zone=ws:10m rate=10r/m;" "$NGINX_CONF"
+\\tlimit_req_zone \$binary_remote_addr zone=ws:10m rate=30r/s;" "$NGINX_CONF"
   ok "Rate-limit zones injected"
 fi
 

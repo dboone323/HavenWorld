@@ -20,6 +20,7 @@ export const SOCKET_EVENTS = {
   CHAT_SEND:    'chat:send',
   CHAT_MESSAGE: 'chat:message',
   CHAT_ERROR:   'chat:error',
+  CHAT_TYPING:  'chat:typing',
 
   // 1:1 Direct Messages
   DM_SEND:    'dm:send',
