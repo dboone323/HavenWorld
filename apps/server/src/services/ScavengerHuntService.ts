@@ -3,6 +3,7 @@ import { prisma } from '../prisma';
 import { getIO } from '../sockets';
 import { AnalyticsService } from './AnalyticsService';
 import { SeasonalThemeService } from './SeasonalThemeService';
+import { roomManager } from './RoomManager';
 
 export interface ScavengerTicket {
   id: string;
@@ -255,13 +256,28 @@ export class ScavengerHuntService {
   /**
    * Claims a hidden ticket by proximity
    */
-  static async claimTicket(ticketId: string, userId: string, playerX: number, playerY: number) {
+  static async claimTicket(ticketId: string, userId: string, playerX?: number, playerY?: number) {
     const ticket = this.tickets.get(ticketId);
     if (!ticket) throw new Error('Scavenger ticket not found');
     if (ticket.claimedBy) throw new Error('Ticket has already been claimed');
 
+    // Server-authoritative presence verification
+    const activePlayer = roomManager.getPlayer(userId);
+    let resolvedX = playerX ?? 0;
+    let resolvedY = playerY ?? 0;
+
+    if (activePlayer) {
+      if (activePlayer.roomId !== ticket.roomId) {
+        throw new Error('Player is not in the room containing this ticket');
+      }
+      resolvedX = activePlayer.x;
+      resolvedY = activePlayer.y;
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new Error('Player must be connected to room to collect ticket');
+    }
+
     // Proximity check (within 2.5 tiles)
-    const dist = Math.hypot(playerX - ticket.x, playerY - ticket.y);
+    const dist = Math.hypot(resolvedX - ticket.x, resolvedY - ticket.y);
     if (dist > 2.5) {
       throw new Error('Too far away from ticket to collect');
     }

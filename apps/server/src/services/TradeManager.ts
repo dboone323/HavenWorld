@@ -383,13 +383,21 @@ export class TradeManager {
         if (userA.havenCoins < initiatorCoins) throw new Error(`${userA.username} has insufficient coins`);
         if (userB.havenCoins < receiverCoins) throw new Error(`${userB.username} has insufficient coins`);
 
-        // Swap coins
+        // Swap coins atomically
         if (initiatorCoins > 0) {
-          await tx.user.update({ where: { id: initiatorId }, data: { havenCoins: { decrement: initiatorCoins } } });
+          const resA = await tx.user.updateMany({
+            where: { id: initiatorId, havenCoins: { gte: initiatorCoins } },
+            data: { havenCoins: { decrement: initiatorCoins } },
+          });
+          if (resA.count === 0) throw new Error(`${userA.username} has insufficient coins`);
           await tx.user.update({ where: { id: receiverId }, data: { havenCoins: { increment: initiatorCoins } } });
         }
         if (receiverCoins > 0) {
-          await tx.user.update({ where: { id: receiverId }, data: { havenCoins: { decrement: receiverCoins } } });
+          const resB = await tx.user.updateMany({
+            where: { id: receiverId, havenCoins: { gte: receiverCoins } },
+            data: { havenCoins: { decrement: receiverCoins } },
+          });
+          if (resB.count === 0) throw new Error(`${userB.username} has insufficient coins`);
           await tx.user.update({ where: { id: initiatorId }, data: { havenCoins: { increment: receiverCoins } } });
         }
 

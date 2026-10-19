@@ -192,7 +192,23 @@ export const ClaimCraftSchema = z.object({
 // ── Room mood ─────────────────────────────────────────────────────────────────
 export const SetMoodSchema = z.object({
   roomId: z.string().min(1).max(128),
-  mood: z.enum(['COZY', 'PARTY', 'SPOOKY', 'SERENE', 'ROMANTIC', 'TROPICAL', 'NONE']),
+  mood: z.enum([
+    'day',
+    'dusk',
+    'night',
+    'cyber_neon',
+    'golden_hour',
+    'haunted',
+    'arctic',
+    'cozy_evening',
+    'COZY',
+    'PARTY',
+    'SPOOKY',
+    'SERENE',
+    'ROMANTIC',
+    'TROPICAL',
+    'NONE',
+  ]),
 });
 
 // ── Emotes ────────────────────────────────────────────────────────────────────

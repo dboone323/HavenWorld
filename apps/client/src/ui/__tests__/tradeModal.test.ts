@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TradeModal } from '../TradeModal';
 import { socketService } from '../../services/socket';
 import { SOCKET_EVENTS, type TradeStateData } from '@havenworld/shared';
@@ -9,13 +9,12 @@ describe('TradeModal (Real Functional UI Validation)', () => {
 
   beforeEach(() => {
     document.body.innerHTML = '';
-    // User credentials for authService
     (authService as any)._user = {
       id: 'test-user-a',
       username: 'Alice',
       avatar: { outfitBody: 'equipped-shirt-id' },
     };
-    (authService as any)._accessToken = 'mock-token';
+    (authService as any)._accessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ0ZXN0LXVzZXItYSJ9.signature';
     modal = new TradeModal();
   });
 
@@ -25,16 +24,10 @@ describe('TradeModal (Real Functional UI Validation)', () => {
   });
 
   it('renders incoming trade prompt and emits TRADE_ACCEPT when accepted', () => {
-    const emitSpy = vi.spyOn(socketService, 'emit');
-
-    // Trigger incoming trade request
-    (socketService as any)._emitter?.emit
-      ? (socketService as any)._emitter.emit(SOCKET_EVENTS.TRADE_REQUESTED, {
-          tradeId: 't1',
-          initiatorId: 'other-user',
-          initiatorName: 'Bob',
-        })
-      : null;
+    const emitted: Array<{ event: string; args: unknown[] }> = [];
+    const unsub = socketService.onEmit((event, args) => {
+      emitted.push({ event, args });
+    });
 
     // Direct invocation via private method or via DOM verification
     (modal as any).showIncomingPrompt('Bob');
@@ -47,8 +40,9 @@ describe('TradeModal (Real Functional UI Validation)', () => {
     expect(acceptBtn).not.toBeNull();
     acceptBtn?.click();
 
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.TRADE_ACCEPT, {});
+    expect(emitted.some((e) => e.event === SOCKET_EVENTS.TRADE_ACCEPT)).toBe(true);
     expect(document.getElementById('trade-incoming-prompt')).toBeNull();
+    unsub();
   });
 
   it('renders 8 slots for both players and updates ready/confirm buttons', async () => {
@@ -94,14 +88,19 @@ describe('TradeModal (Real Functional UI Validation)', () => {
   });
 
   it('dismisses modal cleanly when cancel button is clicked', async () => {
-    const emitSpy = vi.spyOn(socketService, 'emit');
+    const emitted: Array<{ event: string; args: unknown[] }> = [];
+    const unsub = socketService.onEmit((event, args) => {
+      emitted.push({ event, args });
+    });
+
     await modal.open();
 
     const cancelBtn = document.getElementById('btn-trade-cancel');
     expect(cancelBtn).not.toBeNull();
     cancelBtn?.click();
 
-    expect(emitSpy).toHaveBeenCalledWith(SOCKET_EVENTS.TRADE_CANCEL, {});
+    expect(emitted.some((e) => e.event === SOCKET_EVENTS.TRADE_CANCEL)).toBe(true);
     expect(document.getElementById('trade-modal-overlay')).toBeNull();
+    unsub();
   });
 });

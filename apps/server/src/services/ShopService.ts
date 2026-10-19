@@ -42,21 +42,21 @@ export class ShopService {
       if (!user) throw new Error('User not found');
 
       if (currency === 'GEM') {
-        if (user.havenGems < price) {
-          throw new Error('Insufficient HavenGems');
-        }
-        await tx.user.update({
-          where: { id: userId },
+        const updateRes = await tx.user.updateMany({
+          where: { id: userId, havenGems: { gte: price } },
           data: { havenGems: { decrement: price } },
         });
-      } else {
-        if (user.havenCoins < price) {
-          throw new Error('Insufficient HavenCoins');
+        if (updateRes.count === 0) {
+          throw new Error('Insufficient HavenGems');
         }
-        await tx.user.update({
-          where: { id: userId },
+      } else {
+        const updateRes = await tx.user.updateMany({
+          where: { id: userId, havenCoins: { gte: price } },
           data: { havenCoins: { decrement: price } },
         });
+        if (updateRes.count === 0) {
+          throw new Error('Insufficient HavenCoins');
+        }
       }
 
       // Ensure item exists in DB items table

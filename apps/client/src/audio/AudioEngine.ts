@@ -112,6 +112,18 @@ export class AudioEngine {
     return this.settings.masterVolume;
   }
 
+  /** Guarantees Web Audio nodes are disconnected from master gain when finished to prevent memory leaks */
+  private safeCleanup(osc: OscillatorNode, gain: GainNode): void {
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {
+        // Ignored
+      }
+    };
+  }
+
   // ── Procedural Sound Synthesizers ──────────────────────────────────────────
 
   /** Footstep: low frequency sine burst (80 Hz, 40ms) */
@@ -132,6 +144,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start();
     osc.stop(ctx.currentTime + 0.04);
@@ -157,6 +170,7 @@ export class AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.safeCleanup(osc, gain);
 
       osc.start(now);
       osc.stop(now + 0.15);
@@ -182,6 +196,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.08);
@@ -206,6 +221,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.2);
@@ -230,6 +246,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.35);
@@ -255,6 +272,7 @@ export class AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.safeCleanup(osc, gain);
 
       osc.start(now);
       osc.stop(now + 0.08);
@@ -281,6 +299,7 @@ export class AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.safeCleanup(osc, gain);
 
       osc.start(now);
       osc.stop(now + 0.15);
@@ -306,6 +325,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.08);
@@ -330,6 +350,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.3);
@@ -354,6 +375,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.03);
@@ -378,6 +400,7 @@ export class AudioEngine {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.safeCleanup(osc, gain);
 
     osc.start(now);
     osc.stop(now + 0.18);
@@ -403,6 +426,7 @@ export class AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.safeCleanup(osc, gain);
 
       osc.start(now);
       osc.stop(now + 0.16);
@@ -429,6 +453,7 @@ export class AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.safeCleanup(osc, gain);
 
       osc.start(now);
       osc.stop(now + (idx === 3 ? 0.35 : 0.2));
@@ -456,6 +481,7 @@ export class AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.safeCleanup(osc, gain);
 
       osc.start(now);
       osc.stop(now + 0.09);

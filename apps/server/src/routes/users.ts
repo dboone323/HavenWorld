@@ -152,6 +152,7 @@ router.get('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
     bodyType: avatar.bodyTypeVal,
     height: avatar.heightVal,
     build: avatar.buildVal,
+    eyes: avatar.eyeStyle,
   });
 });
 
@@ -166,6 +167,7 @@ const avatarDataSchema = z.object({
   bottomColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   hairStyle: z.string().optional(),
   eyeStyle: z.string().optional(),
+  eyes: z.string().optional(),
   gender: z.string().optional(),
   // Equipped wardrobe item ids (validated against inventory by the socket handler
   // and by the explicit inventory check below before they are persisted).
@@ -251,7 +253,7 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
       heightVal: d.height ?? 0.5,
       buildVal: d.build ?? 0.5,
       hairStyle: d.hairStyle ?? 'hair-short-01',
-      eyeStyle: d.eyeStyle ?? 'eyes-default',
+      eyeStyle: d.eyeStyle ?? d.eyes ?? 'eyes-default',
       gender: normalizeGender(d.gender),
       outfitHead: d.outfitHead ?? null,
       outfitFace: d.outfitFace ?? null,
@@ -271,7 +273,7 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
       heightVal: d.height,
       buildVal: d.build,
       hairStyle: d.hairStyle,
-      eyeStyle: d.eyeStyle,
+      eyeStyle: d.eyeStyle ?? d.eyes,
       gender: d.gender ? normalizeGender(d.gender) : undefined,
       outfitHead: d.outfitHead,
       outfitFace: d.outfitFace,

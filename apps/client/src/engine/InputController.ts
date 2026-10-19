@@ -56,6 +56,10 @@ export class InputController {
   private _highlightLayer: HighlightLayer | null = null;
   private _hoveredMesh: Mesh | null = null;
   private _enabled = true;
+  private _keysDown = new Set<string>();
+  private _keyboardObserver: (() => void) | null = null;
+  private _renderObserver: Observer<Scene> | null = null;
+  private _lastKeyboardMoveTime = 0;
 
   constructor(scene: Scene, avatar: AvatarController, camera: Camera) {
     this._scene = scene;
@@ -69,6 +73,7 @@ export class InputController {
       // Graceful fallback for test/headless environments
     }
     this._initPointer();
+    this._initKeyboard();
   }
 
   private _initPointer(): void {
@@ -244,11 +249,94 @@ export class InputController {
     this._enabled = enabled;
   }
 
+  private _initKeyboard(): void {
+    if (typeof window === 'undefined') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!this._enabled) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const code = e.code;
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
+        this._keysDown.add(code);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      this._keysDown.delete(e.code);
+    };
+
+    const handleBlur = () => {
+      this._keysDown.clear();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    this._keyboardObserver = () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+
+    this._renderObserver = this._scene.onBeforeRenderObservable.add(() => {
+      if (!this._enabled || this._keysDown.size === 0) return;
+
+      const editor = (window as unknown as Record<string, unknown>).__havenRoomEditor as
+        | { inEditMode?: boolean }
+        | undefined;
+      if (editor?.inEditMode) return;
+
+      const now = performance.now();
+      if (now - this._lastKeyboardMoveTime < 180) return;
+
+      let dx = 0;
+      let dz = 0;
+
+      if (this._keysDown.has('KeyW') || this._keysDown.has('ArrowUp')) dz += 1;
+      if (this._keysDown.has('KeyS') || this._keysDown.has('ArrowDown')) dz -= 1;
+      if (this._keysDown.has('KeyA') || this._keysDown.has('ArrowLeft')) dx -= 1;
+      if (this._keysDown.has('KeyD') || this._keysDown.has('ArrowRight')) dx += 1;
+
+      if (dx === 0 && dz === 0) return;
+
+      const len = Math.hypot(dx, dz);
+      dx = (dx / len) * 1.5;
+      dz = (dz / len) * 1.5;
+
+      const currentPos = this._avatar.position;
+      const targetPos = currentPos.clone();
+      targetPos.x = Math.max(-6.4, Math.min(6.4, currentPos.x + dx));
+      targetPos.z = Math.max(-6.4, Math.min(6.4, currentPos.z + dz));
+
+      this._avatar.moveTo(targetPos);
+      this._lastKeyboardMoveTime = now;
+    });
+  }
+
   public dispose(): void {
     if (this._pointerObserver) {
       this._scene.onPointerObservable.remove(this._pointerObserver);
       this._pointerObserver = null;
     }
+    if (this._renderObserver) {
+      this._scene.onBeforeRenderObservable.remove(this._renderObserver);
+      this._renderObserver = null;
+    }
+    if (this._keyboardObserver) {
+      this._keyboardObserver();
+      this._keyboardObserver = null;
+    }
+    this._keysDown.clear();
     if (this._hoveredMesh && this._highlightLayer) {
       try {
         this._highlightLayer.removeMesh(this._hoveredMesh);

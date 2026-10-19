@@ -15,14 +15,12 @@ export class ClubService {
       const existingMembership = await tx.clubMember.findUnique({ where: { userId: ownerId } });
       if (existingMembership) throw new Error('You are already a member of a club');
 
-      const owner = await tx.user.findUnique({ where: { id: ownerId } });
-      if (!owner || owner.havenCoins < 500) throw new Error('Insufficient HavenCoins (500 required)');
-
-      // Deduct fee
-      await tx.user.update({
-        where: { id: ownerId },
+      // Deduct fee atomically
+      const updated = await tx.user.updateMany({
+        where: { id: ownerId, havenCoins: { gte: 500 } },
         data: { havenCoins: { decrement: 500 } },
       });
+      if (updated.count === 0) throw new Error('Insufficient HavenCoins (500 required)');
 
       // Create dedicated clubhouse room
       const clubRoom = await tx.room.create({

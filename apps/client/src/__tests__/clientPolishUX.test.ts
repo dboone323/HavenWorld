@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SmoothCamera } from '../world/SmoothCamera';
 import { DraggablePanel } from '../ui/DraggablePanel';
 import { MinimapRadar } from '../ui/MinimapRadar';
@@ -147,16 +147,8 @@ describe('Track 8: Advanced Client Polish & UX', () => {
   });
 
   describe('8.11: Chat Typing Indicators', () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it('should manage debounced typing states', () => {
-      const typingManager = new TypingIndicatorManager(500);
+    it('should manage debounced typing states', async () => {
+      const typingManager = new TypingIndicatorManager(30);
       let isTypingReported = false;
 
       typingManager.subscribe((typing) => {
@@ -168,8 +160,8 @@ describe('Track 8: Advanced Client Polish & UX', () => {
       expect(typingManager.getIsTyping()).toBe(true);
       expect(isTypingReported).toBe(true);
 
-      // Fast forward past debounce window (500ms)
-      vi.advanceTimersByTime(600);
+      // Wait past debounce window (30ms) using real time
+      await new Promise((r) => setTimeout(r, 45));
       expect(typingManager.getIsTyping()).toBe(false);
       expect(isTypingReported).toBe(false);
 

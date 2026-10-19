@@ -163,14 +163,14 @@ export class InventoryService {
         select: { id: true, havenCoins: true },
       });
 
-      if (!sender || sender.havenCoins < opts.amount) {
-        throw new InsufficientFundsError('Sender has insufficient HavenCoins');
-      }
-
-      await tx.user.update({
-        where: { id: opts.fromUserId },
+      const updateRes = await tx.user.updateMany({
+        where: { id: opts.fromUserId, havenCoins: { gte: opts.amount } },
         data: { havenCoins: { decrement: opts.amount } },
       });
+
+      if (updateRes.count === 0) {
+        throw new InsufficientFundsError('Sender has insufficient HavenCoins');
+      }
 
       await tx.user.update({
         where: { id: opts.toUserId },

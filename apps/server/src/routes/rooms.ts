@@ -114,18 +114,58 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
   const { layout } = parsed.data;
   const activeItems = layout.filter((p) => !p.isRemoved);
 
-  // Enforce item ownership check: all items must exist in decorator/owner inventory
-  if (activeItems.length > 0) {
-    const itemIds = [...new Set(activeItems.map((p) => p.itemId))];
+  // Fetch currently placed furniture in this room
+  const currentFurniture = await prisma.roomFurniture.findMany({
+    where: { roomId },
+  });
+  const currentById = new Map(currentFurniture.map((f) => [f.id, f]));
+
+  // Count current placed items by user: Map<itemId, number>
+  const currentCounts = new Map<string, number>();
+  for (const item of currentFurniture) {
+    if (item.placedBy === userId) {
+      currentCounts.set(item.itemId, (currentCounts.get(item.itemId) || 0) + 1);
+    }
+  }
+
+  // Count target new placements by user
+  const newCounts = new Map<string, number>();
+  for (const item of activeItems) {
+    newCounts.set(item.itemId, (newCounts.get(item.itemId) || 0) + 1);
+  }
+
+  // Calculate net deltas (positive = requires inventory deduction; negative = return to inventory)
+  const allItemIds = new Set([...currentCounts.keys(), ...newCounts.keys()]);
+  const inventoryDeltas = new Map<string, number>();
+  for (const itemId of allItemIds) {
+    const prev = currentCounts.get(itemId) || 0;
+    const next = newCounts.get(itemId) || 0;
+    const delta = next - prev;
+    if (delta !== 0) {
+      inventoryDeltas.set(itemId, delta);
+    }
+  }
+
+  // Verify inventory for any net additions (delta > 0)
+  const additions = [...inventoryDeltas.entries()].filter(([_, d]) => d > 0);
+  if (additions.length > 0) {
+    const neededItemIds = additions.map(([itemId]) => itemId);
     const userInventory = await prisma.inventory.findMany({
       where: {
         userId,
-        itemId: { in: itemIds },
+        itemId: { in: neededItemIds },
       },
-      select: { itemId: true },
     });
-    const ownedIds = new Set(userInventory.map((i) => i.itemId));
-    const missing = itemIds.filter((id) => !ownedIds.has(id));
+    const invMap = new Map(userInventory.map((i) => [i.itemId, i.quantity]));
+    const missing: string[] = [];
+
+    for (const [itemId, needed] of additions) {
+      const available = invMap.get(itemId) || 0;
+      if (available < needed) {
+        missing.push(itemId);
+      }
+    }
+
     if (missing.length > 0) {
       return res.status(403).json({
         error: 'You do not own all placed furniture items in your inventory.',
@@ -135,23 +175,64 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
     }
   }
 
-  await prisma.$transaction([
-    prisma.roomFurniture.deleteMany({ where: { roomId } }),
-    prisma.roomFurniture.createMany({
-      data: activeItems.map((p) => ({
-        roomId,
-        itemId: p.itemId,
-        placedBy: userId,
-        x: p.x,
-        y: p.y,
-        z: p.z,
-        rotation: p.rotY,
-        scaleX: p.scaleX,
-        scaleY: p.scaleY,
-        scaleZ: p.scaleZ,
-      })),
-    }),
-  ]);
+  // Atomically apply inventory adjustments and update room furniture
+  await prisma.$transaction(async (tx) => {
+    for (const [itemId, delta] of inventoryDeltas.entries()) {
+      if (delta > 0) {
+        const inv = await tx.inventory.findUnique({
+          where: { userId_itemId: { userId, itemId } },
+        });
+        if (!inv || inv.quantity < delta) {
+          throw new Error(`INSUFFICIENT_INVENTORY: Missing ${itemId}`);
+        }
+        if (inv.quantity === delta) {
+          await tx.inventory.delete({ where: { id: inv.id } });
+        } else {
+          await tx.inventory.update({
+            where: { id: inv.id },
+            data: { quantity: { decrement: delta } },
+          });
+        }
+      } else if (delta < 0) {
+        const returnCount = Math.abs(delta);
+        const inv = await tx.inventory.findUnique({
+          where: { userId_itemId: { userId, itemId } },
+        });
+        if (inv) {
+          await tx.inventory.update({
+            where: { id: inv.id },
+            data: { quantity: { increment: returnCount } },
+          });
+        } else {
+          await tx.inventory.create({
+            data: { userId, itemId, quantity: returnCount },
+          });
+        }
+      }
+    }
+
+    await tx.roomFurniture.deleteMany({ where: { roomId } });
+    if (activeItems.length > 0) {
+      await tx.roomFurniture.createMany({
+        data: activeItems.map((p) => {
+          const existing = p.id ? currentById.get(p.id) : undefined;
+          const placedBy = existing ? existing.placedBy : userId;
+          return {
+            roomId,
+            itemId: p.itemId,
+            placedBy,
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            rotation: p.rotY,
+            scaleX: p.scaleX,
+            scaleY: p.scaleY,
+            scaleZ: p.scaleZ,
+          };
+        }),
+      });
+    }
+  });
 
   const refreshed = await prisma.roomFurniture.findMany({
     where: { roomId },

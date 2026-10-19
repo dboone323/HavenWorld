@@ -20,7 +20,10 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 const WS_BASE = BASE_URL.replace(/^http/, 'ws');
-const TEST_TOKEN = __ENV.TEST_JWT || 'dummy_token';
+const TEST_TOKEN = __ENV.TEST_JWT;
+if (!TEST_TOKEN) {
+  throw new Error('TEST_JWT environment variable required. Pass -e TEST_JWT=<token>');
+}
 const WS_URL = `${WS_BASE}/socket.io/?EIO=4&transport=websocket&token=${TEST_TOKEN}`;
 
 export default function () {

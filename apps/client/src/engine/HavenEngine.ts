@@ -1,5 +1,4 @@
-import { Engine, Scene, HavokPlugin } from '@babylonjs/core';
-import HavokPhysics from '@babylonjs/havok';
+import { Engine, Scene } from '@babylonjs/core';
 import { socketService } from '../services/socket';
 
 export type PerformanceQuality = 'HIGH' | 'MEDIUM' | 'LOW' | 'BATTERY_SAVER';
@@ -108,25 +107,12 @@ export class HavenEngine {
         throw new Error('[HavenEngine] Canvas required for first initialization.');
       }
       HavenEngine._instance = new HavenEngine(canvas);
-      await HavenEngine._instance._initPhysics();
 
       if (import.meta.env.DEV) {
         await HavenEngine._instance._loadInspector();
       }
     }
     return HavenEngine._instance;
-  }
-
-  /** Initialize Havok physics plugin and attach to global scope for scene use. */
-  private async _initPhysics(): Promise<void> {
-    try {
-      const havokInstance = await HavokPhysics();
-      const plugin = new HavokPlugin(true, havokInstance);
-      (window as unknown as Record<string, unknown>).__havenHavokPlugin = plugin;
-      console.log('[HavenEngine] Havok physics initialized.');
-    } catch (err) {
-      console.warn('[HavenEngine] Havok physics failed to load. Physics disabled.', err);
-    }
   }
 
   /** Dynamically import the Inspector in dev mode only — excluded from prod bundle. */

@@ -6,6 +6,7 @@ import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { QuestService } from './QuestService';
 import { AchievementService } from './AchievementService';
+import { inventoryService } from './InventoryService';
 
 interface ActiveFishingSession {
   userId: string;
@@ -226,11 +227,8 @@ export class FishingService {
         },
       });
 
-      // Award coins to player
-      await prisma.user.update({
-        where: { id: session.userId },
-        data: { havenCoins: { increment: coins } },
-      });
+      // Award coins to player respecting weekly earnings cap
+      await inventoryService.earnCoins(session.userId, coins, 2000);
 
       // Update weekly leaderboard
       const startOfWeek = new Date();

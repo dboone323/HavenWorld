@@ -216,12 +216,15 @@ export class MarketplaceService {
         const tax = Math.floor(listing.priceCoins * MARKETPLACE_TAX_RATE);
         const sellerPayout = listing.priceCoins - tax;
 
-        // 1. Deduct full price from buyer
-        const updatedBuyer = await tx.user.update({
-          where: { id: buyerId },
+        // 1. Deduct full price from buyer atomically
+        const buyerRes = await tx.user.updateMany({
+          where: { id: buyerId, havenCoins: { gte: listing.priceCoins } },
           data: { havenCoins: { decrement: listing.priceCoins } },
-          select: { havenCoins: true },
         });
+        if (buyerRes.count === 0) {
+          throw new Error('INSUFFICIENT_FUNDS: Not enough HavenCoins for this purchase.');
+        }
+        const updatedBuyer = { havenCoins: buyer.havenCoins - listing.priceCoins };
 
         // 2. Credit net payout to seller
         const updatedSeller = await tx.user.update({
