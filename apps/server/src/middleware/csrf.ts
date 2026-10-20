@@ -31,22 +31,27 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   }
 
   // Allow auth flow routes to bypass CSRF (login/register issue CSRF tokens,
-  // refresh manages refresh cookies). resend-verification is pre-auth and must
-  // work for anonymous visitors who have NO csrf cookie yet — otherwise the
-  // resend button 403s for exactly the users locked out without an email.
-  // It is rate-limited by authRateLimiter. Logout is intentionally NOT
-  // bypassed: it clears cookies via httpOnly tokens, so an attacker who can
-  // force a logout has achieved a denial-of-service. CSRF protection prevents
-  // this because the attacker cannot read the non-httpOnly csrf_token cookie.
+  // refresh manages refresh cookies). resend-verification, forgot-password,
+  // and reset-password are pre-auth (account recovery for logged-out users who
+  // have NO csrf cookie yet) — otherwise the resend/reset flows 403 for exactly
+  // the users locked out without a session. reset-password is authorized by the
+  // single-use emailed token itself; all are rate-limited by authRateLimiter.
+  // Logout is intentionally NOT bypassed: it clears cookies via httpOnly tokens,
+  // so an attacker who can force a logout has achieved a denial-of-service. CSRF
+  // protection prevents this because the attacker cannot read the non-httpOnly csrf_token cookie.
   if (
     req.path === '/api/auth/login' ||
     req.path === '/api/auth/register' ||
     req.path === '/api/auth/refresh' ||
     req.path === '/api/auth/resend-verification' ||
+    req.path === '/api/auth/forgot-password' ||
+    req.path === '/api/auth/reset-password' ||
     req.path === '/login' ||
     req.path === '/register' ||
     req.path === '/refresh' ||
-    req.path === '/resend-verification'
+    req.path === '/resend-verification' ||
+    req.path === '/forgot-password' ||
+    req.path === '/reset-password'
   ) {
     return next();
   }
