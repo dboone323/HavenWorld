@@ -30,7 +30,8 @@
   },
   "pnpm": {
     "overrides": {
-      "deepmerge-ts": ">=8.0.0"
+      "deepmerge-ts": ">=8.0.0",
+      "handlebars": ">=4.7.10"
     }
   }
 }
