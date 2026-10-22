@@ -39,3 +39,21 @@ logpath = /var/log/nginx/access.log
 maxretry = 10
 findtime = 600
 bantime = 3600
+
+[nginx-botsearch]
+enabled = true
+port = http,https
+filter = nginx-botsearch
+logpath = /var/log/nginx/access.log
+maxretry = 3
+findtime = 600
+bantime = 86400
+
+[havenworld-php-probe]
+enabled = true
+port = http,https
+filter = havenworld-php-probe
+logpath = /var/log/nginx/access.log
+maxretry = 2
+findtime = 600
+bantime = 86400

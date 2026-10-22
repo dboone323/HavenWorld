@@ -251,4 +251,33 @@ describe('Part 8: Security Audit & Hardening Integration Tests', () => {
       expect(dbUser?.weeklyEarnings).toBe(400);
     });
   });
+
+  describe('6. PHP Exploit & Malicious Probe Blocking', () => {
+    it('should reject PHP script probe requests with 404 before route evaluation', async () => {
+      const probePaths = [
+        '/index.php',
+        '/_phpinfo.php',
+        '/old_phpinfo.php',
+        '/server-info.php',
+        '/wp-login.php',
+        '/eval-stdin.php',
+        '/phpmyadmin/index.php',
+      ];
+
+      for (const p of probePaths) {
+        const res = await request(app).get(p);
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe('NOT_FOUND');
+      }
+    });
+
+    it('should reject POST payloads targeting PHP unauthenticated execution', async () => {
+      const res = await request(app)
+        .post('/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php')
+        .send('<?php phpinfo(); ?>');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('NOT_FOUND');
+    });
+  });
 });

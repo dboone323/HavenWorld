@@ -83,7 +83,7 @@ fi
 sudo -u "$HAVENWORLD_USER" pm2 save --force
 ok "PM2 dump saved for $HAVENWORLD_USER"
 
-# ── 4. Nginx: inject rate-limit zones into http block ─────────────────────────
+# ── 4. Nginx: inject rate-limit zones and connection settings into nginx.conf ─
 NGINX_CONF="/etc/nginx/nginx.conf"
 RATE_LIMIT_MARKER="# havenworld-rate-limits"
 
@@ -101,6 +101,16 @@ else
   ok "Rate-limit zones injected"
 fi
 
+# Tune worker_connections and multi_accept for high concurrency
+sudo sed -i 's/worker_connections [0-9]\+;/worker_connections 4096;/g' "$NGINX_CONF"
+sudo sed -i 's/# multi_accept on;/multi_accept on;/g' "$NGINX_CONF"
+
+# Install global connection-upgrade mapping into /etc/nginx/conf.d/
+if [ -f "$APP_DIR/deploy/nginx/connection-upgrade.conf" ]; then
+  sudo cp "$APP_DIR/deploy/nginx/connection-upgrade.conf" /etc/nginx/conf.d/connection-upgrade.conf
+  ok "Installed connection-upgrade map in /etc/nginx/conf.d/"
+fi
+
 # ── 5. Nginx: replace site config with hardened version ───────────────────────
 SITE_SRC="$APP_DIR/deploy/nginx/havenworld-production.conf"
 SITE_DEST="/etc/nginx/sites-available/havenworld"
@@ -112,7 +122,18 @@ sudo nginx -t
 sudo systemctl reload nginx
 ok "Nginx config reloaded"
 
-# ── 6. server_tokens verification ─────────────────────────────────────────────
+# ── 6. Fail2ban: apply hardened jails & anti-probe filters ───────────────────
+info "Configuring fail2ban jails and anti-probe filters..."
+if [ -d "$APP_DIR/deploy/fail2ban" ]; then
+  sudo cp -r "$APP_DIR/deploy/fail2ban/filter.d/." /etc/fail2ban/filter.d/
+  sudo cp "$APP_DIR/deploy/fail2ban/jail.local" /etc/fail2ban/jail.local
+  if systemctl is-active fail2ban >/dev/null 2>&1; then
+    sudo fail2ban-client reload || sudo systemctl restart fail2ban
+    ok "Fail2ban reloaded with botsearch & php-probe protection"
+  fi
+fi
+
+# ── 7. server_tokens verification ─────────────────────────────────────────────
 info "Verifying server_tokens is off..."
 if sudo nginx -T 2>/dev/null | grep -q 'server_tokens off'; then
   ok "server_tokens off confirmed"
@@ -120,7 +141,7 @@ else
   warn "server_tokens may not be off — verify $NGINX_CONF"
 fi
 
-# ── 7. Backup script: ensure executable ───────────────────────────────────────
+# ── 8. Backup script: ensure executable ───────────────────────────────────────
 info "Ensuring backup.sh is executable..."
 chmod +x "$APP_DIR/scripts/backup.sh"
 chmod +x "$APP_DIR/scripts/remote-deploy.sh"
@@ -128,7 +149,7 @@ chmod +x "$APP_DIR/scripts/run-load-tests.sh"
 chmod +x "$APP_DIR/scripts/beta-gate-check.sh"
 ok "Scripts are executable"
 
-# ── 8. Summary ────────────────────────────────────────────────────────────────
+# ── 9. Summary ────────────────────────────────────────────────────────────────
 echo ""
 echo "=============================="
 echo "  Server setup complete ✓"

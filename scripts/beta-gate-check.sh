@@ -120,6 +120,22 @@ check_header() {
 check_header 'strict-transport-security'
 check_header 'x-content-type-options'
 
+# Verify PHP and script probes are rejected/dropped at the edge and not served
+PHP_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/_phpinfo.php" 2>/dev/null || true)"
+if [ "$PHP_STATUS" = "404" ] || [ "$PHP_STATUS" = "000" ] || [ "$PHP_STATUS" = "403" ] || [ -z "$PHP_STATUS" ]; then
+  pass "PHP/script exploit probes blocked/dropped at edge (status: ${PHP_STATUS:-drop})"
+else
+  fail "PHP probe returned unexpected status: $PHP_STATUS"
+fi
+
+# Verify standard HTTP responses do not advertise spurious upgrade connections
+CONN_UPGRADE="$(printf '%s' "$HEADERS" | grep -i '^connection:' | grep -i 'upgrade' || true)"
+if [ -z "$CONN_UPGRADE" ]; then
+  pass 'HTTP health endpoint does not improperly send Connection: upgrade'
+else
+  fail "HTTP health endpoint sent invalid Connection: upgrade header ($CONN_UPGRADE)"
+fi
+
 legal_ok=0
 for spec in '/privacy.html:Privacy Policy' '/terms.html:Terms of Service'; do
   path="${spec%%:*}"

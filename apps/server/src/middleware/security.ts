@@ -89,11 +89,34 @@ export function verifyStartupSecurityAssertions(): void {
   }
 }
 
+export function blockMaliciousScriptProbes(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+): void {
+  const url = req.path.toLowerCase();
+  if (
+    url.endsWith('.php') ||
+    url.includes('.php/') ||
+    url.includes('wp-login') ||
+    url.includes('phpinfo') ||
+    url.includes('phpmyadmin') ||
+    url.includes('eval-stdin')
+  ) {
+    res.status(404).json({ error: 'NOT_FOUND' });
+    return;
+  }
+  next();
+}
+
 export function applySecurityMiddleware(app: Application): void {
   // 1. Trust Nginx as the single trusted proxy for correct IP extraction
   app.set('trust proxy', 1);
 
-  // 2. Helmet security headers
+  // 2. Reject malicious PHP/script reconnaissance probes immediately
+  app.use(blockMaliciousScriptProbes);
+
+  // 3. Helmet security headers
   app.use(
     helmet({
       contentSecurityPolicy: false, // CSP managed at Nginx layer
@@ -102,14 +125,14 @@ export function applySecurityMiddleware(app: Application): void {
     })
   );
 
-  // 3. CORS
+  // 4. CORS
   app.use(cors(corsOptions));
 
-  // 4. Body parser with strict size limit (50kb)
+  // 5. Body parser with strict size limit (50kb)
   app.use(express.json({ limit: '50kb' }));
   app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 
-  // 5. Rate limiters
+  // 6. Rate limiters
   app.use('/api/', apiRateLimiter);
   app.use('/api/auth/', authRateLimiter);
 }
