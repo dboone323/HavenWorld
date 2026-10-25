@@ -27,7 +27,7 @@ export class FurnitureManager {
     this.currentUserId = currentUserId;
   }
 
-  private _isLoading = false;
+  private _currentLoadPromise: Promise<void> | null = null;
 
   public registerTemplate(itemId: string, mesh: BABYLON.AbstractMesh): void {
     mesh.setEnabled(false);
@@ -37,36 +37,40 @@ export class FurnitureManager {
 
   // ─── Load Room Furniture ──────────────────────────────────────────────────
   async loadRoomFurniture(roomId: string): Promise<void> {
-    if (this._isLoading) return;
-    this._isLoading = true;
-    try {
-      const token = authService.token || (await authService.getToken()) || '';
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/furniture`, {
-        headers,
-        cache: 'no-store',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        console.warn(`[FurnitureManager] Furniture for room ${roomId} returned ${res.status}`);
-        return;
-      }
-      const items = await res.json();
-      if (Array.isArray(items)) {
-        this.clear();
-        await Promise.all(items.map((item: FurniturePlacementData) => this.placeItem(item)));
-        console.log(`[FurnitureManager] Loaded ${items.length} furniture items.`);
-      }
-    } catch (err) {
-      if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
-        console.error('[FurnitureManager] Error loading furniture:', err);
-      }
-    } finally {
-      this._isLoading = false;
+    if (this._currentLoadPromise) {
+      return this._currentLoadPromise;
     }
+    this._currentLoadPromise = (async () => {
+      try {
+        const token = authService.token || (await authService.getToken()) || '';
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/furniture`, {
+          headers,
+          cache: 'no-store',
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          console.warn(`[FurnitureManager] Furniture for room ${roomId} returned ${res.status}`);
+          return;
+        }
+        const items = await res.json();
+        if (Array.isArray(items)) {
+          this.clear();
+          await Promise.all(items.map((item: FurniturePlacementData) => this.placeItem(item)));
+          console.log(`[FurnitureManager] Loaded ${items.length} furniture items.`);
+        }
+      } catch (err) {
+        if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+          console.error('[FurnitureManager] Error loading furniture:', err);
+        }
+      } finally {
+        this._currentLoadPromise = null;
+      }
+    })();
+    return this._currentLoadPromise;
   }
 
   private instantiateTemplate(template: BABYLON.AbstractMesh, id: string, itemId: string): BABYLON.AbstractMesh {

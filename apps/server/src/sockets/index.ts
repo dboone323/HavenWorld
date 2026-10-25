@@ -844,25 +844,47 @@ export function registerSocketHandlers(io: Server): void {
           const effectiveHair = avatarData.hairStyle || avatarData.hair;
           const effectiveEyes = avatarData.eyeStyle || avatarData.eyes;
 
-          // Save new avatar config to database
-          await prisma.avatar.update({
+          // Save new avatar config to database (upsert so missing rows are created)
+          await prisma.avatar.upsert({
             where: { userId },
-            data: {
+            create: {
+              userId,
+              bodyType: 'default',
+              bodyTypeVal: 0.5,
+              heightVal: 0.5,
+              buildVal: 0.5,
+              skinTone: effectiveSkin || '#F5CBA7',
+              hairColor: avatarData.hairColor || '#1C1C1C',
+              eyeColor: avatarData.eyeColor || '#4A3728',
+              topColor: avatarData.topColor || '#4169E1',
+              bottomColor: avatarData.bottomColor || '#2E8B57',
+              hairStyle: effectiveHair || 'hair-short-01',
+              eyeStyle: effectiveEyes || 'eyes-default',
+              gender: avatarData.gender ? normalizeGender(avatarData.gender) : 'unspecified',
+              outfitHead: avatarData.outfitHead !== undefined ? avatarData.outfitHead : null,
+              outfitFace: avatarData.outfitFace !== undefined ? avatarData.outfitFace : null,
+              outfitBody: avatarData.outfitBody !== undefined ? avatarData.outfitBody : null,
+              outfitLegs: avatarData.outfitLegs !== undefined ? avatarData.outfitLegs : null,
+              outfitFeet: avatarData.outfitFeet !== undefined ? avatarData.outfitFeet : null,
+              outfitBack: avatarData.outfitBack !== undefined ? avatarData.outfitBack : null,
+              outfitHand: avatarData.outfitHand !== undefined ? avatarData.outfitHand : null,
+            },
+            update: {
               ...(effectiveSkin ? { skinTone: effectiveSkin } : {}),
-              ...(effectiveHair ? { hairStyle: effectiveHair } : {}),
               ...(avatarData.hairColor ? { hairColor: avatarData.hairColor } : {}),
-              ...(effectiveEyes ? { eyeStyle: effectiveEyes } : {}),
               ...(avatarData.eyeColor ? { eyeColor: avatarData.eyeColor } : {}),
-              gender: avatarData.gender ? normalizeGender(avatarData.gender) : undefined,
-              topColor: avatarData.topColor ?? undefined,
-              bottomColor: avatarData.bottomColor ?? undefined,
-              outfitHead: avatarData.outfitHead !== undefined ? avatarData.outfitHead : undefined,
-              outfitFace: avatarData.outfitFace !== undefined ? avatarData.outfitFace : undefined,
-              outfitBody: avatarData.outfitBody !== undefined ? avatarData.outfitBody : undefined,
-              outfitLegs: avatarData.outfitLegs !== undefined ? avatarData.outfitLegs : undefined,
-              outfitFeet: avatarData.outfitFeet !== undefined ? avatarData.outfitFeet : undefined,
-              outfitBack: avatarData.outfitBack !== undefined ? avatarData.outfitBack : undefined,
-              outfitHand: avatarData.outfitHand !== undefined ? avatarData.outfitHand : undefined,
+              ...(avatarData.topColor ? { topColor: avatarData.topColor } : {}),
+              ...(avatarData.bottomColor ? { bottomColor: avatarData.bottomColor } : {}),
+              ...(effectiveHair ? { hairStyle: effectiveHair } : {}),
+              ...(effectiveEyes ? { eyeStyle: effectiveEyes } : {}),
+              ...(avatarData.gender ? { gender: normalizeGender(avatarData.gender) } : {}),
+              ...(avatarData.outfitHead !== undefined ? { outfitHead: avatarData.outfitHead } : {}),
+              ...(avatarData.outfitFace !== undefined ? { outfitFace: avatarData.outfitFace } : {}),
+              ...(avatarData.outfitBody !== undefined ? { outfitBody: avatarData.outfitBody } : {}),
+              ...(avatarData.outfitLegs !== undefined ? { outfitLegs: avatarData.outfitLegs } : {}),
+              ...(avatarData.outfitFeet !== undefined ? { outfitFeet: avatarData.outfitFeet } : {}),
+              ...(avatarData.outfitBack !== undefined ? { outfitBack: avatarData.outfitBack } : {}),
+              ...(avatarData.outfitHand !== undefined ? { outfitHand: avatarData.outfitHand } : {}),
             },
           });
 

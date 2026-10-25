@@ -163,7 +163,7 @@ export class RoomEditor {
   }
 
   public hasPendingChanges(): boolean {
-    return this.pendingChanges.size > 0;
+    return this.pendingChanges.size > 0 || Boolean(this.ghostMesh && this.ghostItemId);
   }
 
   public addPendingPlacement(placement: FurniturePlacement): void {
