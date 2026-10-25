@@ -563,7 +563,11 @@ export async function createRoomScene(
   const toggleDecorate = () => {
     if (!roomEditor) return;
     if (roomEditor.inEditMode) {
-      roomEditor.exitEditMode();
+      if (roomEditor.hasPendingChanges()) {
+        roomEditor.saveLayout().catch(console.error);
+      } else {
+        roomEditor.exitEditMode();
+      }
     } else {
       roomEditor.enterEditMode();
     }
@@ -878,11 +882,11 @@ export async function createRoomScene(
   // Phase 3B: pull the current world weather so the atmosphere applies on entry
   socketService.emit(SOCKET_EVENTS.WEATHER_GET);
 
-  // Initial room state (players list)
+  // Initial room state (players list & furniture sync)
   unsubs.push(
-    socketService.on<{ roomId: string; players: PlayerState[]; mood?: MoodId }>(
+    socketService.on<{ roomId: string; players: PlayerState[]; furniture?: unknown[]; mood?: MoodId }>(
       SOCKET_EVENTS.ROOM_STATE,
-      (state) => {
+      async (state) => {
         if (state && Array.isArray(state.players)) {
           for (const p of state.players) {
             addOrUpdateRemoteAvatar(p);
@@ -893,6 +897,10 @@ export async function createRoomScene(
         if (state?.mood) {
           currentMood = state.mood;
           moodSystem.applyMood(state.mood);
+        }
+        // Fallback sync: if HTTP fetch hasn't loaded furniture yet but socket roomState has items, load them
+        if (furnitureManager.allPlaced.size === 0 && Array.isArray(state?.furniture) && state.furniture.length > 0) {
+          await furnitureManager.loadRoomFurniture(roomId);
         }
       }
     )
@@ -1041,7 +1049,6 @@ export async function createRoomScene(
   // Furniture updated in real-time
   const onFurnitureUpdate = async (data: { roomId: string }) => {
     if (data?.roomId === roomId) {
-      furnitureManager.clear();
       await furnitureManager.loadRoomFurniture(roomId);
     }
   };

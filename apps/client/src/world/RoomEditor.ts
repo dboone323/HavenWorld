@@ -1085,7 +1085,6 @@ export class RoomEditor {
       this.pendingChanges.clear();
       this.removeSelectedToolbar();
       this.exitEditMode();
-      this.furnitureManager.clear();
       await this.furnitureManager.loadRoomFurniture(this.roomId);
       audioEngine.playSuccess();
       showToast({

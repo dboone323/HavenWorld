@@ -22,7 +22,7 @@ interface CatalogItem {
   icon: string;
 }
 
-const MI_PLANET_CATALOG: CatalogItem[] = [
+export const MI_PLANET_CATALOG: CatalogItem[] = [
   // Tops
   {
     id: 'pink-llama-sweater',
@@ -625,24 +625,24 @@ export class AvatarCustomizer {
     }
 
     // 3. Bottoms (pants)
-    const hasShorts = this.currentData.outfitLegs && this.currentData.outfitLegs !== 'none' && this.currentData.outfitLegs !== 'underwear';
+    const pantsItem = MI_PLANET_CATALOG.find((it) => it.slot === 'outfitLegs' && it.id === this.currentData.outfitLegs);
     setLayerStyle(
       this.previewLayers.bottom,
-      hasShorts ? '/assets/sprites/avatar/wearables/MiPlanet Olive Green Shorts.png' : null
+      pantsItem?.asset || null
     );
 
     // 4. Tops (shirt)
-    const hasTop = this.currentData.outfitBody && this.currentData.outfitBody !== 'none' && this.currentData.outfitBody !== 'underwear';
+    const topItem = MI_PLANET_CATALOG.find((it) => it.slot === 'outfitBody' && it.id === this.currentData.outfitBody);
     setLayerStyle(
       this.previewLayers.top,
-      hasTop ? '/assets/sprites/avatar/wearables/MiPlanet Pink Llama Sweater.png' : null
+      topItem?.asset || null
     );
 
     // 5. Shoes
-    const hasShoes = this.currentData.outfitFeet && this.currentData.outfitFeet !== 'none';
+    const shoesItem = MI_PLANET_CATALOG.find((it) => it.slot === 'outfitFeet' && it.id === this.currentData.outfitFeet);
     setLayerStyle(
       this.previewLayers.shoes,
-      hasShoes ? '/assets/sprites/avatar/wearables/MiPlanet Purple Sneakers.png' : null
+      shoesItem?.asset || null
     );
 
     // 6. Eyes
@@ -653,24 +653,24 @@ export class AvatarCustomizer {
     );
 
     // 7. Mask
-    const hasMask = this.currentData.outfitFace && this.currentData.outfitFace !== 'none';
+    const maskItem = MI_PLANET_CATALOG.find((it) => it.slot === 'outfitFace' && it.id === this.currentData.outfitFace);
     setLayerStyle(
       this.previewLayers.mask,
-      hasMask ? '/assets/sprites/avatar/wearables/MiPlanet Skull Balaclava.png' : null
+      maskItem?.asset || null
     );
 
     // 8. Hair
-    const hasHair = this.currentData.hairStyle && this.currentData.hairStyle !== 'none' && this.currentData.hairStyle !== 'bald';
+    const hairItem = MI_PLANET_CATALOG.find((it) => it.slot === 'hairStyle' && it.id === this.currentData.hairStyle);
     setLayerStyle(
       this.previewLayers.hair,
-      hasHair ? '/assets/sprites/avatar/wearables/MiPlanet Wavy Golden Hair.png' : null
+      hairItem?.asset || null
     );
 
     // 9. Hat
-    const hasHat = this.currentData.outfitHead && this.currentData.outfitHead !== 'none';
+    const hatItem = MI_PLANET_CATALOG.find((it) => it.slot === 'outfitHead' && it.id === this.currentData.outfitHead);
     setLayerStyle(
       this.previewLayers.hat,
-      hasHat ? '/assets/sprites/avatar/wearables/MiPlanet Trapper Hat.png' : null
+      hatItem?.asset || null
     );
   }
 

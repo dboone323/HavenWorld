@@ -47,6 +47,7 @@ export class FurnitureManager {
       }
       const res = await fetch(`${SERVER_URL}/api/rooms/${roomId}/furniture`, {
         headers,
+        cache: 'no-store',
         credentials: 'include',
       });
       if (!res.ok) {

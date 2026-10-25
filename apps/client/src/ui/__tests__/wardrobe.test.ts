@@ -13,6 +13,7 @@ import {
   isExcludedSlotValue,
   type WardrobeItem,
 } from '@havenworld/shared';
+import { MI_PLANET_CATALOG } from '../AvatarCustomizer';
 
 describe('Avatar wardrobe helpers (@havenworld/shared)', () => {
   describe('normalizeGender', () => {
@@ -153,6 +154,31 @@ describe('Avatar wardrobe helpers (@havenworld/shared)', () => {
 
       expect(isExcludedSlotValue('denim-jeans')).toBe(false);
       expect(isExcludedSlotValue('shirt-white')).toBe(false);
+    });
+
+    it('correctly maps denim-jeans and starter catalog wearables to distinct accent colours', () => {
+      expect(getItemAccentColor('denim-jeans')).toBe('#2C4C8C');
+      expect(getItemAccentColor('olive-shorts')).toBe('#556B2F');
+      expect(getItemAccentColor('pink-llama-sweater')).toBe('#FFB6C1');
+      expect(getItemAccentColor('purple-sneakers')).toBe('#8A2BE2');
+      expect(getItemAccentColor('trapper-hat')).toBe('#8B4513');
+      expect(getItemAccentColor('skull-balaclava')).toBe('#2F4F4F');
+      expect(getItemAccentColor('wavy-hair')).toBe('#D4AF37');
+      expect(getItemAccentColor('black-wings')).toBe('#1C1C1C');
+      expect(getItemAccentColor('white-wings')).toBe('#F5F5F5');
+    });
+
+    it('maps denim-jeans to the correct MiPlanet asset and slot in MI_PLANET_CATALOG', () => {
+      const jeans = MI_PLANET_CATALOG.find((it) => it.id === 'denim-jeans');
+      expect(jeans).toBeDefined();
+      expect(jeans?.slot).toBe('outfitLegs');
+      expect(jeans?.category).toBe('bottoms');
+      expect(jeans?.asset).toBe('/assets/sprites/avatar/wearables/MiPlanet Denim Jeans.png');
+
+      const shorts = MI_PLANET_CATALOG.find((it) => it.id === 'olive-shorts');
+      expect(shorts).toBeDefined();
+      expect(shorts?.asset).toBe('/assets/sprites/avatar/wearables/MiPlanet Olive Green Shorts.png');
+      expect(jeans?.asset).not.toBe(shorts?.asset);
     });
   });
 });

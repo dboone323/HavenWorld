@@ -94,6 +94,9 @@ const COLOR_WORDS: Record<string, string> = {
   gold: '#FFD700',
   silver: '#C0C0C0',
   teal: '#4ECDC4',
+  olive: '#556B2F',
+  denim: '#2C4C8C',
+  jeans: '#2C4C8C',
 };
 
 /**
@@ -112,6 +115,15 @@ export const ITEM_ACCENT_COLORS: Record<string, string> = {
   'hair-short-01': '#3B2314',
   'hair-short-02': '#1C1C1C',
   'hair-long-01': '#5C3317',
+  'denim-jeans': '#2C4C8C',
+  'olive-shorts': '#556B2F',
+  'pink-llama-sweater': '#FFB6C1',
+  'purple-sneakers': '#8A2BE2',
+  'trapper-hat': '#8B4513',
+  'skull-balaclava': '#2F4F4F',
+  'wavy-hair': '#D4AF37',
+  'black-wings': '#1C1C1C',
+  'white-wings': '#F5F5F5',
 };
 
 /** Resolves the render colour for an equipped item id. Never throws. */

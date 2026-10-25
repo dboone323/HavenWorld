@@ -59,6 +59,7 @@ verifyStartupSecurityAssertions();
 
 // ── Express app & HTTP server ────────────────────────────────────────────────
 const app = express();
+app.set('etag', false);
 const httpServer = createServer(app);
 
 // ── Sentry (error monitoring) ────────────────────────────────────────────────
@@ -116,6 +117,15 @@ app.get('/health', async (_req, res) => {
 });
 
 // ── API Routes ────────────────────────────────────────────────────────────────
+// Dynamic game state must never be cached or returned as 304 Not Modified
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);

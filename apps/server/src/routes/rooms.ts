@@ -42,6 +42,9 @@ router.get('/', requireAuth, async (req, res) => {
 
 // GET /api/rooms/:id/furniture — list furniture in 3D format
 router.get('/:id/furniture', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   const roomId = req.params.id as string;
   const dbFurniture = await prisma.roomFurniture.findMany({
     where: { roomId },

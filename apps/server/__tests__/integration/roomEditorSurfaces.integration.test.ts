@@ -284,4 +284,50 @@ describe('Phase 4 Integration: Room Editor Layout Ownership & Surface Customizat
       expect(res.status).toBe(403);
     });
   });
+
+  describe('GET /api/rooms/:id/furniture (Cache and 304 Prevention)', () => {
+    it('sets no-cache headers and always returns HTTP 200 without 304 even when If-None-Match is sent', async () => {
+      const owner = await createTestUser();
+      const room = await createTestRoom(owner.id, { isPublic: false });
+      const item = await createTestItem({ name: 'Persistent Chair' });
+      const token = generateTestToken(owner.id);
+
+      // Save a furniture piece
+      await prisma.inventory.create({
+        data: { userId: owner.id, itemId: item.id, quantity: 1 },
+      });
+      await request(app)
+        .post(`/api/rooms/${room.id}/furniture/layout`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          layout: [
+            { id: 'f-persistent-1', itemId: item.id, x: 3.5, y: 0, z: 5.5, rotY: 3.14, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          ],
+        });
+
+      // Request 1: initial load
+      const res1 = await request(app)
+        .get(`/api/rooms/${room.id}/furniture`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res1.status).toBe(200);
+      expect(res1.headers['cache-control']).toContain('no-store');
+      expect(res1.headers['etag']).toBeUndefined();
+      expect(res1.body).toHaveLength(1);
+      expect(res1.body[0].itemId).toBe(item.id);
+
+      // Request 2: simulated reload with If-None-Match header from client/intermediary
+      const res2 = await request(app)
+        .get(`/api/rooms/${room.id}/furniture`)
+        .set('Authorization', `Bearer ${token}`)
+        .set('If-None-Match', 'W/"some-stale-etag"');
+
+      // MUST return 200 OK (never 304 Not Modified) with full furniture array
+      expect(res2.status).toBe(200);
+      expect(res2.body).toHaveLength(1);
+      expect(res2.body[0].itemId).toBe(item.id);
+      expect(res2.body[0].x).toBeCloseTo(3.5);
+      expect(res2.body[0].z).toBeCloseTo(5.5);
+    });
+  });
 });

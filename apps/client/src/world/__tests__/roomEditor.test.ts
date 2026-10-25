@@ -145,4 +145,33 @@ describe('RoomEditor (Babylon.js NullEngine)', () => {
     expect(furnitureManager.allPlaced.size).toBe(0);
     expect(scene.getMeshByName('furniture-chair_mesh-1')).toBeNull();
   });
+
+  it('(e) FurnitureManager.loadRoomFurniture(roomId) requests with no-store and populates placed map', async () => {
+    const originalFetch = window.fetch;
+    try {
+      window.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        expect(init?.cache).toBe('no-store');
+        return new Response(
+          JSON.stringify([
+            {
+              id: 'persisted-chair-1',
+              itemId: 'furniture-chair',
+              placedById: currentUserId,
+              x: 3.5,
+              y: 0,
+              z: 5.5,
+              rotY: 0,
+            },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as typeof window.fetch;
+
+      await furnitureManager.loadRoomFurniture(roomId);
+      expect(furnitureManager.allPlaced.size).toBe(1);
+      expect(furnitureManager.allPlaced.has('persisted-chair-1')).toBe(true);
+    } finally {
+      window.fetch = originalFetch;
+    }
+  });
 });
