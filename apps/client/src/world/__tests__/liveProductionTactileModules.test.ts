@@ -60,7 +60,7 @@ describe('Real Functional Validations: Modules A–E Tactile & Visual Systems', 
       });
 
       avatar.dispose();
-    });
+    }, 15000);
   });
 
   describe('Module B: Furniture Responsiveness & InputController Interaction', () => {

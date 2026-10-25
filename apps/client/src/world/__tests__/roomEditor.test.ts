@@ -128,4 +128,21 @@ describe('RoomEditor (Babylon.js NullEngine)', () => {
     expect(editor.hasPendingChanges()).toBe(false);
     expect(modeState).toBe(false);
   });
+
+  it('(d) FurnitureManager.clear() disposes all meshes and empties placed map', async () => {
+    await furnitureManager.placeItem({
+      id: 'mesh-1',
+      itemId: 'furniture-chair',
+      placedById: 'user-decorator-1',
+      x: 1,
+      y: 0,
+      z: 1,
+      rotY: 0,
+    });
+    expect(furnitureManager.allPlaced.size).toBe(1);
+
+    furnitureManager.clear();
+    expect(furnitureManager.allPlaced.size).toBe(0);
+    expect(scene.getMeshByName('furniture-chair_mesh-1')).toBeNull();
+  });
 });

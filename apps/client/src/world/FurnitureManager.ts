@@ -27,6 +27,8 @@ export class FurnitureManager {
     this.currentUserId = currentUserId;
   }
 
+  private _isLoading = false;
+
   public registerTemplate(itemId: string, mesh: BABYLON.AbstractMesh): void {
     mesh.setEnabled(false);
     mesh.name = `template_${itemId}`;
@@ -35,6 +37,8 @@ export class FurnitureManager {
 
   // ─── Load Room Furniture ──────────────────────────────────────────────────
   async loadRoomFurniture(roomId: string): Promise<void> {
+    if (this._isLoading) return;
+    this._isLoading = true;
     try {
       const token = authService.token || (await authService.getToken()) || '';
       const headers: Record<string, string> = {};
@@ -51,6 +55,7 @@ export class FurnitureManager {
       }
       const items = await res.json();
       if (Array.isArray(items)) {
+        this.clear();
         await Promise.all(items.map((item: FurniturePlacementData) => this.placeItem(item)));
         console.log(`[FurnitureManager] Loaded ${items.length} furniture items.`);
       }
@@ -58,6 +63,8 @@ export class FurnitureManager {
       if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
         console.error('[FurnitureManager] Error loading furniture:', err);
       }
+    } finally {
+      this._isLoading = false;
     }
   }
 

@@ -180,17 +180,23 @@ export class AvatarCustomizer {
 
   constructor(savedData?: AvatarData, onSave?: (data: AvatarData) => void) {
     const userAvatar = authService.user?.avatar || {};
+    const normalizedUserAvatar: AvatarData = {
+      ...userAvatar,
+      eyes: (userAvatar.eyes as string) || (userAvatar.eyeStyle as string) || 'basic-blue-eyes',
+      hairStyle: (userAvatar.hairStyle as string) || (userAvatar.hair as string) || 'wavy-hair',
+    };
     const initial: AvatarData = {
       gender: 'unspecified',
-      outfitHead: 'trapper-hat',
+      outfitHead: null,
       outfitFace: null,
-      outfitBody: 'pink-llama-sweater',
-      outfitLegs: 'olive-shorts',
-      outfitFeet: 'purple-sneakers',
+      outfitBody: 'shirt-white',
+      outfitLegs: 'pants-blue',
+      outfitFeet: 'shoes-white',
       outfitBack: null,
+      outfitHand: null,
       eyes: 'basic-blue-eyes',
       hairStyle: 'wavy-hair',
-      ...userAvatar,
+      ...normalizedUserAvatar,
       ...savedData,
     };
 
@@ -202,7 +208,12 @@ export class AvatarCustomizer {
   open(): void {
     if (this.overlay) return;
     const userAvatar = authService.user?.avatar || {};
-    this.currentData = { ...this.currentData, ...userAvatar };
+    const normalizedUserAvatar: AvatarData = {
+      ...userAvatar,
+      ...(userAvatar.eyes || userAvatar.eyeStyle ? { eyes: (userAvatar.eyes as string) || (userAvatar.eyeStyle as string) } : {}),
+      ...(userAvatar.hairStyle || userAvatar.hair ? { hairStyle: (userAvatar.hairStyle as string) || (userAvatar.hair as string) } : {}),
+    };
+    this.currentData = { ...this.currentData, ...normalizedUserAvatar };
     this.savedData = { ...this.currentData };
     this.overlay = this.buildOverlay();
     document.body.appendChild(this.overlay);
@@ -411,7 +422,11 @@ export class AvatarCustomizer {
     } else {
       const current = this.currentData[item.slot];
       if (current === item.id) {
-        delete (this.currentData as Record<string, unknown>)[item.slot];
+        if (item.slot === 'outfitBody' || item.slot === 'outfitLegs' || item.slot === 'outfitFeet') {
+          (this.currentData as Record<string, unknown>)[item.slot] = 'none';
+        } else {
+          (this.currentData as Record<string, unknown>)[item.slot] = null;
+        }
       } else {
         (this.currentData as Record<string, unknown>)[item.slot] = item.id;
       }
@@ -693,8 +708,23 @@ export class AvatarCustomizer {
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
-    const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanData } =
+    const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...rawClean } =
       this.currentData as Record<string, unknown>;
+
+    const cleanData: Record<string, unknown> = {
+      ...rawClean,
+      outfitHead: this.currentData.outfitHead ?? null,
+      outfitFace: this.currentData.outfitFace ?? null,
+      outfitBody: this.currentData.outfitBody ?? null,
+      outfitLegs: this.currentData.outfitLegs ?? null,
+      outfitFeet: this.currentData.outfitFeet ?? null,
+      outfitBack: this.currentData.outfitBack ?? null,
+      outfitHand: this.currentData.outfitHand ?? null,
+      eyeStyle: this.currentData.eyes || this.currentData.eyeStyle,
+      eyes: this.currentData.eyes || this.currentData.eyeStyle,
+      hairStyle: this.currentData.hairStyle || this.currentData.hair,
+      gender: normalizeGender(this.currentData.gender),
+    };
 
     const res = await fetch(`${SERVER_URL}/api/users/me/avatar`, {
       method: 'PUT',
@@ -707,11 +737,8 @@ export class AvatarCustomizer {
       throw new Error(`Failed to save avatar: ${res.status} ${res.statusText}`);
     }
 
-    authService.updateAvatar({ ...this.currentData });
+    authService.updateAvatar({ ...cleanData });
 
-    socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
-      ...cleanData,
-      gender: normalizeGender(this.currentData.gender),
-    });
+    socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, cleanData);
   }
 }

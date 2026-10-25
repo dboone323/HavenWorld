@@ -212,3 +212,67 @@ export function groupWardrobeItems(items: WardrobeItem[]): Record<string, Wardro
 
   return grouped;
 }
+
+// ── Starter & Free Wardrobe Constants ─────────────────────────────────────────
+/**
+ * Item IDs that are considered baseline starter/customizer items.
+ * These items are freely selectable in the wardrobe customizer and do NOT
+ * require an explicit row in the per-user inventory table.
+ */
+export const STARTER_WARDROBE_ITEM_IDS = new Set<string>([
+  // Chibi / MiPlanet Catalog starter items
+  'pink-llama-sweater',
+  'olive-shorts',
+  'denim-jeans',
+  'basic-blue-eyes',
+  'basic-brown-eyes',
+  'trapper-hat',
+  'skull-balaclava',
+  'black-wings',
+  'white-wings',
+  'purple-sneakers',
+  'wavy-hair',
+  'bald',
+  'underwear-top',
+  'underwear-bottom',
+  'barefoot',
+  // Classic 3D starter items
+  'hair-short-01',
+  'hair-short-02',
+  'hair-long-01',
+  'eyes-default',
+  'eyes-round',
+  'shirt-white',
+  'shirt-black',
+  'shirt-blue',
+  'pants-blue',
+  'pants-black',
+  'shoes-white',
+  'shoes-black',
+  'shirt-default',
+  'pants-default',
+]);
+
+/**
+ * Sentinel slot values that denote unequipped/empty slots or base body states.
+ * Always excluded from inventory verification.
+ */
+export const EXCLUDED_SLOT_VALUES = new Set<string>([
+  'none',
+  'underwear',
+  'barefoot',
+  'bald',
+  'null',
+  'undefined',
+  '',
+]);
+
+export function isStarterWardrobeItem(itemId: string | null | undefined): boolean {
+  if (!itemId) return false;
+  return STARTER_WARDROBE_ITEM_IDS.has(itemId);
+}
+
+export function isExcludedSlotValue(value: string | null | undefined): boolean {
+  if (!value) return true;
+  return EXCLUDED_SLOT_VALUES.has(value.trim().toLowerCase());
+}

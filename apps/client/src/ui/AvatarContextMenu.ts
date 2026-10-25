@@ -39,7 +39,7 @@ export class AvatarContextMenu {
       btnWardrobe.innerHTML = '<span>👗</span> Wardrobe & Style';
       btnWardrobe.addEventListener('click', () => {
         AvatarContextMenu.dismiss();
-        document.getElementById('btn-wardrobe')?.click();
+        (document.getElementById('btn-avatar') || document.getElementById('btn-wardrobe'))?.click();
       });
       menu.appendChild(btnWardrobe);
 

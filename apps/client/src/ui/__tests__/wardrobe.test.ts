@@ -7,6 +7,10 @@ import {
   getItemAccentColor,
   groupWardrobeItems,
   normalizeGender,
+  STARTER_WARDROBE_ITEM_IDS,
+  EXCLUDED_SLOT_VALUES,
+  isStarterWardrobeItem,
+  isExcludedSlotValue,
   type WardrobeItem,
 } from '@havenworld/shared';
 
@@ -115,6 +119,40 @@ describe('Avatar wardrobe helpers (@havenworld/shared)', () => {
       ]) {
         expect(tabbedCategories.has(category)).toBe(true);
       }
+    });
+  });
+
+  describe('Starter wardrobe items & exclusions (@havenworld/shared)', () => {
+    it('recognizes starter wardrobe items without inventory rows', () => {
+      expect(isStarterWardrobeItem('denim-jeans')).toBe(true);
+      expect(isStarterWardrobeItem('pink-llama-sweater')).toBe(true);
+      expect(isStarterWardrobeItem('olive-shorts')).toBe(true);
+      expect(isStarterWardrobeItem('purple-sneakers')).toBe(true);
+      expect(isStarterWardrobeItem('trapper-hat')).toBe(true);
+      expect(isStarterWardrobeItem('skull-balaclava')).toBe(true);
+      expect(isStarterWardrobeItem('black-wings')).toBe(true);
+      expect(isStarterWardrobeItem('white-wings')).toBe(true);
+      expect(isStarterWardrobeItem('wavy-hair')).toBe(true);
+      expect(isStarterWardrobeItem('shirt-white')).toBe(true);
+      expect(isStarterWardrobeItem('pants-blue')).toBe(true);
+      expect(isStarterWardrobeItem('shoes-white')).toBe(true);
+
+      expect(isStarterWardrobeItem('legendary-dragon-cape')).toBe(false);
+      expect(isStarterWardrobeItem(null)).toBe(false);
+      expect(isStarterWardrobeItem(undefined)).toBe(false);
+    });
+
+    it('identifies unequipped and empty slot sentinel values', () => {
+      expect(isExcludedSlotValue('none')).toBe(true);
+      expect(isExcludedSlotValue('underwear')).toBe(true);
+      expect(isExcludedSlotValue('barefoot')).toBe(true);
+      expect(isExcludedSlotValue('bald')).toBe(true);
+      expect(isExcludedSlotValue('')).toBe(true);
+      expect(isExcludedSlotValue(null)).toBe(true);
+      expect(isExcludedSlotValue(undefined)).toBe(true);
+
+      expect(isExcludedSlotValue('denim-jeans')).toBe(false);
+      expect(isExcludedSlotValue('shirt-white')).toBe(false);
     });
   });
 });

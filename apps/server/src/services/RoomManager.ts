@@ -1,4 +1,4 @@
-import type { PlayerState, ChatMessage, FurnitureState } from '@havenworld/shared';
+import type { PlayerState, ChatMessage, FurnitureState, AvatarData } from '@havenworld/shared';
 
 export interface RoomBounds {
   minX: number;
@@ -238,6 +238,18 @@ class RoomManager {
     if (!player) return undefined;
     return { ...player, roomId };
   }
+
+  updatePlayerAvatar(userId: string, avatarData: Partial<AvatarData>): boolean {
+    const socketId = this.userToSocket.get(userId);
+    if (!socketId) return false;
+    const roomId = this.socketToRoom.get(socketId);
+    if (!roomId) return false;
+    const player = this.rooms.get(roomId)?.players.get(socketId);
+    if (!player) return false;
+    player.avatar = { ...player.avatar, ...avatarData };
+    return true;
+  }
+
 
   getRoomPlayers(roomId: string): PlayerState[] {
     const room = this.rooms.get(roomId);

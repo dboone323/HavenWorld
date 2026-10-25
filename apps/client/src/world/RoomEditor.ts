@@ -43,6 +43,7 @@ export class RoomEditor {
   private keydownListener: ((e: KeyboardEvent) => void) | null = null;
 
   private isPlacing = false;
+  private isSaving = false;
   private lastPointerActionTime = 0;
 
   // Grid & Snap Toggles
@@ -1037,6 +1038,11 @@ export class RoomEditor {
 
   // ─── Save / Cancel ────────────────────────────────────────────────────────
   async saveLayout(): Promise<void> {
+    if (this.isSaving) return;
+    this.isSaving = true;
+    const saveBtn = document.getElementById('btn-save-layout') as HTMLButtonElement | null;
+    if (saveBtn) saveBtn.disabled = true;
+
     const layout = Array.from(this.furnitureManager.allPlaced.values()).map((item) => ({
       id: item.id,
       itemId: item.itemId,
@@ -1079,6 +1085,7 @@ export class RoomEditor {
       this.pendingChanges.clear();
       this.removeSelectedToolbar();
       this.exitEditMode();
+      this.furnitureManager.clear();
       await this.furnitureManager.loadRoomFurniture(this.roomId);
       audioEngine.playSuccess();
       showToast({
@@ -1095,6 +1102,9 @@ export class RoomEditor {
         title: 'Save failed',
         subtitle: 'Could not reach the server. Please try again.',
       });
+    } finally {
+      this.isSaving = false;
+      if (saveBtn) saveBtn.disabled = false;
     }
   }
 

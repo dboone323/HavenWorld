@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { io as ClientIO, Socket } from 'socket.io-client';
 import { app } from '../../src/index';
+import { prisma } from '../../src/prisma';
 import { registerSocketHandlers } from '../../src/sockets';
 import { createTestUser, createTestRoom } from '../helpers/factories';
 import { createAuthenticatedSocket, waitForEvent, closeAllSockets } from '../helpers/socketHelpers';
@@ -267,5 +268,73 @@ describe('Socket.io Integration — Connection & Room Flow', () => {
     });
     const move2 = await waitForEvent(socket1, SOCKET_EVENTS.PLAYER_POSITION, 5000);
     expect(move2.playerId).toBe(user2.id);
+  });
+
+  it('should successfully update avatar over socket with starter wardrobe items without AUTH_ERROR and broadcast to room', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const room = await createTestRoom(user1.id);
+
+    const socket1 = await createAuthenticatedSocket(serverUrl, user1.id, sockets, { username: user1.username });
+    const socket2 = await createAuthenticatedSocket(serverUrl, user2.id, sockets, { username: user2.username });
+
+    socket1.emit(SOCKET_EVENTS.AUTH_JOIN, {
+      roomId: room.id,
+      player: { id: user1.id, username: user1.username, x: 100, y: 100, z: 0, rotY: 0, direction: 'down', isMoving: false },
+    });
+    socket2.emit(SOCKET_EVENTS.AUTH_JOIN, {
+      roomId: room.id,
+      player: { id: user2.id, username: user2.username, x: 120, y: 120, z: 0, rotY: 0, direction: 'down', isMoving: false },
+    });
+
+    await Promise.all([
+      waitForEvent(socket1, SOCKET_EVENTS.ROOM_STATE, 5000),
+      waitForEvent(socket2, SOCKET_EVENTS.ROOM_STATE, 5000),
+    ]);
+
+    // User 1 equips starter items: denim-jeans, pink-llama-sweater, trapper-hat
+    const updatePayload = {
+      outfitHead: 'trapper-hat',
+      outfitBody: 'pink-llama-sweater',
+      outfitLegs: 'denim-jeans',
+      outfitFeet: 'purple-sneakers',
+      hairStyle: 'wavy-hair',
+      eyeStyle: 'basic-blue-eyes',
+      gender: 'female',
+    };
+
+    const updateReceivedPromise = waitForEvent(socket2, SOCKET_EVENTS.AVATAR_UPDATE, 5000);
+    socket1.emit(SOCKET_EVENTS.AVATAR_UPDATE, updatePayload);
+
+    const broadcast: any = await updateReceivedPromise;
+    expect(broadcast.userId).toBe(user1.id);
+    expect(broadcast.avatarData.outfitLegs).toBe('denim-jeans');
+    expect(broadcast.avatarData.outfitBody).toBe('pink-llama-sweater');
+
+    // Verify persisted in DB
+    const dbAvatar = await prisma.avatar.findUnique({ where: { userId: user1.id } });
+    expect(dbAvatar?.outfitLegs).toBe('denim-jeans');
+    expect(dbAvatar?.outfitBody).toBe('pink-llama-sweater');
+  });
+
+  it('should emit AUTH_ERROR INVALID_ITEMS over socket when equipping unowned non-starter item', async () => {
+    const user = await createTestUser();
+    const room = await createTestRoom(user.id);
+
+    const socket = await createAuthenticatedSocket(serverUrl, user.id, sockets, { username: user.username });
+    socket.emit(SOCKET_EVENTS.AUTH_JOIN, {
+      roomId: room.id,
+      player: { id: user.id, username: user.username, x: 50, y: 50, z: 0, rotY: 0, direction: 'down', isMoving: false },
+    });
+    await waitForEvent(socket, SOCKET_EVENTS.ROOM_STATE, 5000);
+
+    const errorPromise = waitForEvent(socket, SOCKET_EVENTS.AUTH_ERROR, 5000);
+    socket.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
+      outfitBody: 'legendary-golden-robe', // Not in inventory, not a starter item
+    });
+
+    const error: any = await errorPromise;
+    expect(error.code).toBe('INVALID_ITEMS');
+    expect(error.message).toContain('not in your inventory');
   });
 });

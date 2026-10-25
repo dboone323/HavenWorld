@@ -4,7 +4,14 @@ import { verifyAccessToken } from '../auth/tokens';
 import { redis } from '../redis';
 import { roomManager } from '../services/RoomManager';
 import { moderateMessage, checkRateLimit, clearRateLimitEntry } from '../services/ModerationService';
-import { SOCKET_EVENTS, normalizeGender, GATHERING_NODES } from '@havenworld/shared';
+import {
+  SOCKET_EVENTS,
+  normalizeGender,
+  GATHERING_NODES,
+  STARTER_WARDROBE_ITEM_IDS,
+  EXCLUDED_SLOT_VALUES,
+  OUTFIT_SLOTS,
+} from '@havenworld/shared';
 import { AnalyticsService } from '../services/AnalyticsService';
 import type { PlayerState, FurnitureState, AvatarData, ChatMessage, DirectMessagePayload } from '@havenworld/shared';
 import {
@@ -797,45 +804,34 @@ export function registerSocketHandlers(io: Server): void {
         const avatarData = parsed.data as Record<string, string | null>;
         try {
           const itemFields = [
-            'outfitHead',
-            'outfitFace',
-            'outfitBody',
-            'outfitLegs',
-            'outfitFeet',
-            'outfitBack',
-            'outfitHand',
+            ...OUTFIT_SLOTS,
+            'hairStyle',
+            'eyeStyle',
+            'eyes',
+            'hair',
           ];
-          // Sentinel / starter item IDs that are valid defaults but are NOT stored
-          // in the per-user inventory table. Always skip these in the inventory count.
-          const SKIP_INVENTORY_CHECK = new Set([
-            'none',
-            'underwear',
-            'shirt-white',
-            'pants-blue',
-            'shoes-white',
-            'shirt-default',
-            'pants-default',
-            '',
-          ]);
 
           const requestedItemIds = itemFields
             .map((f) => avatarData[f])
             .filter(
               (v): v is string =>
                 typeof v === 'string' &&
-                v !== null &&
-                !SKIP_INVENTORY_CHECK.has(v),
+                v.trim().length > 0 &&
+                !EXCLUDED_SLOT_VALUES.has(v.trim().toLowerCase()) &&
+                !STARTER_WARDROBE_ITEM_IDS.has(v),
             );
 
-          // Verify items exist in inventory (only for non-default equipped items)
-          if (requestedItemIds.length > 0) {
+          const uniqueRequested = [...new Set(requestedItemIds)];
+
+          // Verify items exist in inventory (only for non-starter items)
+          if (uniqueRequested.length > 0) {
             const count = await prisma.inventory.count({
               where: {
                 userId,
-                itemId: { in: requestedItemIds },
+                itemId: { in: uniqueRequested },
               },
             });
-            if (count !== requestedItemIds.length) {
+            if (count !== uniqueRequested.length) {
               socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
                 code: 'INVALID_ITEMS',
                 message: 'One or more items are not in your inventory.',
@@ -844,41 +840,39 @@ export function registerSocketHandlers(io: Server): void {
             }
           }
 
+          const effectiveSkin = avatarData.skinTone || avatarData.skinColor;
+          const effectiveHair = avatarData.hairStyle || avatarData.hair;
+          const effectiveEyes = avatarData.eyeStyle || avatarData.eyes;
 
           // Save new avatar config to database
           await prisma.avatar.update({
             where: { userId },
             data: {
-              skinTone: avatarData.skinTone ?? undefined,
-              hairStyle: avatarData.hairStyle ?? undefined,
-              hairColor: avatarData.hairColor ?? undefined,
-              eyeStyle: avatarData.eyeStyle ?? undefined,
-              gender: normalizeGender(avatarData.gender),
+              ...(effectiveSkin ? { skinTone: effectiveSkin } : {}),
+              ...(effectiveHair ? { hairStyle: effectiveHair } : {}),
+              ...(avatarData.hairColor ? { hairColor: avatarData.hairColor } : {}),
+              ...(effectiveEyes ? { eyeStyle: effectiveEyes } : {}),
+              ...(avatarData.eyeColor ? { eyeColor: avatarData.eyeColor } : {}),
+              gender: avatarData.gender ? normalizeGender(avatarData.gender) : undefined,
               topColor: avatarData.topColor ?? undefined,
               bottomColor: avatarData.bottomColor ?? undefined,
-              outfitHead: avatarData.outfitHead,
-              outfitFace: avatarData.outfitFace,
-              outfitBody: avatarData.outfitBody,
-              outfitLegs: avatarData.outfitLegs,
-              outfitFeet: avatarData.outfitFeet,
-              outfitBack: avatarData.outfitBack,
-              outfitHand: avatarData.outfitHand,
+              outfitHead: avatarData.outfitHead !== undefined ? avatarData.outfitHead : undefined,
+              outfitFace: avatarData.outfitFace !== undefined ? avatarData.outfitFace : undefined,
+              outfitBody: avatarData.outfitBody !== undefined ? avatarData.outfitBody : undefined,
+              outfitLegs: avatarData.outfitLegs !== undefined ? avatarData.outfitLegs : undefined,
+              outfitFeet: avatarData.outfitFeet !== undefined ? avatarData.outfitFeet : undefined,
+              outfitBack: avatarData.outfitBack !== undefined ? avatarData.outfitBack : undefined,
+              outfitHand: avatarData.outfitHand !== undefined ? avatarData.outfitHand : undefined,
             },
           });
 
           // Update in-memory player state
+          roomManager.updatePlayerAvatar(userId, avatarData);
+
           const roomId = roomManager.getPlayerRoom(socket.id);
           if (roomId) {
-            const playerState = roomManager
-              .getRoomState(roomId)
-              ?.players.get(socket.id);
-            if (playerState) {
-              Object.assign(playerState.avatar, avatarData);
-            }
             // Broadcast the standardized avatar:update event ({ userId, avatarData })
-            // to everyone in the room, sender included — the client's listener
-            // applies it to the local avatar for the sender and to the remote
-            // avatar for everyone else.
+            // to everyone in the room, sender included
             io.to(roomId).emit(SOCKET_EVENTS.AVATAR_UPDATE, {
               userId,
               avatarData,

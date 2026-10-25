@@ -94,6 +94,14 @@ async function canDecorateRoom(userId: string, roomId: string): Promise<boolean>
   return room.decorators.some((d) => d.userId === userId);
 }
 
+const STARTER_FURNITURE_ITEM_IDS = new Set([
+  'furniture-chair',
+  'furniture-table',
+  'furniture-plant',
+  'furniture-rug',
+  'furniture-lamp',
+]);
+
 // POST /api/rooms/:id/furniture/layout — atomic layout replace (Part 5B & Track 3.8 Co-Building)
 router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) => {
   const roomId = req.params.id as string;
@@ -164,6 +172,10 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
     for (const [itemId, needed] of additions) {
       const available = invMap.get(itemId) || 0;
       if (available < needed) {
+        // Room owners are granted 1 free placement allowance for starter furniture pieces
+        if (isOwner && STARTER_FURNITURE_ITEM_IDS.has(itemId) && available + 1 >= needed) {
+          continue;
+        }
         missing.push(itemId);
       }
     }
@@ -185,9 +197,14 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
           where: { userId_itemId: { userId, itemId } },
         });
         if (!inv || inv.quantity < delta) {
-          throw new Error(`INSUFFICIENT_INVENTORY: Missing ${itemId}`);
-        }
-        if (inv.quantity === delta) {
+          if (isOwner && STARTER_FURNITURE_ITEM_IDS.has(itemId) && (!inv || inv.quantity + 1 >= delta)) {
+            if (inv) {
+              await tx.inventory.delete({ where: { id: inv.id } });
+            }
+          } else {
+            throw new Error(`INSUFFICIENT_INVENTORY: Missing ${itemId}`);
+          }
+        } else if (inv.quantity === delta) {
           await tx.inventory.delete({ where: { id: inv.id } });
         } else {
           await tx.inventory.update({

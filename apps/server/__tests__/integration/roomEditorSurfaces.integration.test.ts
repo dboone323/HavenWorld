@@ -110,6 +110,108 @@ describe('Phase 4 Integration: Room Editor Layout Ownership & Surface Customizat
 
       expect(res.status).toBe(403);
     });
+
+    it('should allow saving layout multiple times idempotently without 403 on already-placed items', async () => {
+      const owner = await createTestUser();
+      const room = await createTestRoom(owner.id, { isPublic: false });
+      const item = await createTestItem({ name: 'Cozy Chair' });
+      const token = generateTestToken(owner.id);
+
+      await prisma.inventory.create({
+        data: { userId: owner.id, itemId: item.id, quantity: 1 },
+      });
+
+      // Save 1: Place the item
+      const res1 = await request(app)
+        .post(`/api/rooms/${room.id}/furniture/layout`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          layout: [
+            { id: 'placed-1', itemId: item.id, x: 2, y: 0, z: 2, rotY: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          ],
+        });
+      expect(res1.status).toBe(200);
+
+      // Save 2: Move the item in the room (same itemId, new coords) — should NOT require additional inventory
+      const res2 = await request(app)
+        .post(`/api/rooms/${room.id}/furniture/layout`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          layout: [
+            { id: 'placed-1', itemId: item.id, x: 4, y: 0, z: 4, rotY: 1.57, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          ],
+        });
+      expect(res2.status).toBe(200);
+      expect(res2.body.placedCount).toBe(1);
+
+      const dbFurniture = await prisma.roomFurniture.findMany({ where: { roomId: room.id } });
+      expect(dbFurniture).toHaveLength(1);
+      expect(dbFurniture[0].x).toBeCloseTo(4);
+    });
+
+    it('should allow room owner to place starter furniture without pre-existing inventory entry', async () => {
+      const owner = await createTestUser();
+      const room = await createTestRoom(owner.id, { isPublic: false });
+      const token = generateTestToken(owner.id);
+
+      // Verify owner has 0 furniture in inventory
+      const initialInv = await prisma.inventory.count({ where: { userId: owner.id, itemId: 'furniture-chair' } });
+      expect(initialInv).toBe(0);
+
+      // Owner places starter chair
+      const res = await request(app)
+        .post(`/api/rooms/${room.id}/furniture/layout`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          layout: [
+            { id: 'starter-chair-1', itemId: 'furniture-chair', x: 3, y: 0, z: 3, rotY: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          ],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const placed = await prisma.roomFurniture.findMany({ where: { roomId: room.id } });
+      expect(placed).toHaveLength(1);
+      expect(placed[0].itemId).toBe('furniture-chair');
+    });
+
+    it('should return removed furniture back to player inventory when layout is saved with fewer items', async () => {
+      const owner = await createTestUser();
+      const room = await createTestRoom(owner.id, { isPublic: false });
+      const item = await createTestItem({ name: 'Lamp Item' });
+      const token = generateTestToken(owner.id);
+
+      // Give 1 item, place it
+      await prisma.inventory.create({
+        data: { userId: owner.id, itemId: item.id, quantity: 1 },
+      });
+      await request(app)
+        .post(`/api/rooms/${room.id}/furniture/layout`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          layout: [
+            { id: 'lamp-1', itemId: item.id, x: 1, y: 0, z: 1, rotY: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+          ],
+        });
+
+      // Layout is saved with empty array (item removed)
+      const res = await request(app)
+        .post(`/api/rooms/${room.id}/furniture/layout`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ layout: [] });
+
+      expect(res.status).toBe(200);
+
+      // Returned to inventory
+      const returnedInv = await prisma.inventory.findUnique({
+        where: { userId_itemId: { userId: owner.id, itemId: item.id } },
+      });
+      expect(returnedInv?.quantity).toBe(1);
+
+      // Room has 0 furniture
+      const placed = await prisma.roomFurniture.count({ where: { roomId: room.id } });
+      expect(placed).toBe(0);
+    });
   });
 
   describe('PUT /api/rooms/:id/surfaces', () => {

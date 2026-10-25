@@ -6,7 +6,13 @@ import { inventoryService } from '../services/InventoryService';
 import { getIO } from '../sockets';
 import { roomManager } from '../services/RoomManager';
 import { AchievementService } from '../services/AchievementService';
-import { SOCKET_EVENTS, OUTFIT_SLOTS, normalizeGender } from '@havenworld/shared';
+import {
+  SOCKET_EVENTS,
+  OUTFIT_SLOTS,
+  normalizeGender,
+  STARTER_WARDROBE_ITEM_IDS,
+  EXCLUDED_SLOT_VALUES,
+} from '@havenworld/shared';
 
 const router = Router();
 
@@ -41,7 +47,13 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
     havenCoins: user.havenCoins,
     havenGems: user.havenGems,
     isVIP: user.isVIP,
-    avatar: user.avatar,
+    avatar: user.avatar
+      ? {
+          ...user.avatar,
+          eyes: user.avatar.eyeStyle,
+          hair: user.avatar.hairStyle,
+        }
+      : null,
     coinBalance: user.havenCoins,
     personalRoom: personalRoom ? { id: personalRoom.id, name: personalRoom.name } : null,
   });
@@ -153,6 +165,9 @@ router.get('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
     height: avatar.heightVal,
     build: avatar.buildVal,
     eyes: avatar.eyeStyle,
+    eyeStyle: avatar.eyeStyle,
+    hair: avatar.hairStyle,
+    hairStyle: avatar.hairStyle,
   });
 });
 
@@ -195,42 +210,11 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
   const d = parsed.data;
 
   // Wardrobe slots may only reference items the player owns or base starter wardrobe items.
-  const STARTER_WARDROBE_ITEM_IDS = new Set([
-    'pink-llama-sweater',
-    'olive-shorts',
-    'denim-jeans',
-    'basic-blue-eyes',
-    'basic-brown-eyes',
-    'trapper-hat',
-    'skull-balaclava',
-    'black-wings',
-    'white-wings',
-    'purple-sneakers',
-    'wavy-hair',
-    'bald',
-    'underwear-top',
-    'underwear-bottom',
-    'barefoot',
-    'hair-short-01',
-    'hair-short-02',
-    'hair-long-01',
-    'eyes-default',
-    'eyes-round',
-    'shirt-white',
-    'shirt-black',
-    'shirt-blue',
-    'pants-blue',
-    'pants-black',
-    'shoes-white',
-    'shoes-black',
-  ]);
-  const EXCLUDED_SLOT_VALUES = new Set(['none', 'underwear', 'barefoot', 'bald', 'null', 'undefined']);
-
   const requestedOutfitIds = OUTFIT_SLOTS.map((slot) => d[slot]).filter(
     (value): value is string =>
       typeof value === 'string' &&
-      value.length > 0 &&
-      !EXCLUDED_SLOT_VALUES.has(value) &&
+      value.trim().length > 0 &&
+      !EXCLUDED_SLOT_VALUES.has(value.trim().toLowerCase()) &&
       !STARTER_WARDROBE_ITEM_IDS.has(value)
   );
   if (new Set(requestedOutfitIds).size > 0) {
@@ -298,6 +282,8 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
       outfitHand: d.outfitHand,
     },
   });
+
+  roomManager.updatePlayerAvatar(userId, d);
 
   const io = getIO();
   if (io) {

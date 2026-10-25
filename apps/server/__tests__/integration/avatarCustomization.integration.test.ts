@@ -134,4 +134,68 @@ describe('Integration: 3D & Chibi Wardrobe Avatar Customization (/api/users/me/a
     const dbAvatar = await prisma.avatar.findUnique({ where: { userId: user.id } });
     expect(dbAvatar?.outfitBody).toBe(customItem.id);
   });
+
+  it('should successfully clear unequipped wardrobe slots when null is sent in PUT /api/users/me/avatar', async () => {
+    const user = await createTestUser();
+    const token = generateTestToken(user.id);
+
+    // Initial avatar with headwear, body and legs equipped
+    await prisma.avatar.update({
+      where: { userId: user.id },
+      data: {
+        outfitHead: 'trapper-hat',
+        outfitBody: 'pink-llama-sweater',
+        outfitLegs: 'olive-shorts',
+        outfitFeet: 'purple-sneakers',
+        outfitBack: 'black-wings',
+      },
+    });
+
+    // Unequip hat and wings by setting them to null
+    const res = await request(app)
+      .put('/api/users/me/avatar')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        outfitHead: null,
+        outfitBack: null,
+        outfitBody: 'shirt-white',
+        outfitLegs: 'denim-jeans',
+        outfitFeet: 'shoes-white',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const dbAvatar = await prisma.avatar.findUnique({ where: { userId: user.id } });
+    expect(dbAvatar?.outfitHead).toBeNull();
+    expect(dbAvatar?.outfitBack).toBeNull();
+    expect(dbAvatar?.outfitLegs).toBe('denim-jeans');
+  });
+
+  it('should return normalized eyes and hair fields from GET /api/users/me and GET /api/users/me/avatar', async () => {
+    const user = await createTestUser();
+    const token = generateTestToken(user.id);
+
+    await prisma.avatar.update({
+      where: { userId: user.id },
+      data: {
+        hairStyle: 'hair-short-01',
+        eyeStyle: 'eyes-default',
+      },
+    });
+
+    const resMe = await request(app)
+      .get('/api/users/me')
+      .set('Authorization', `Bearer ${token}`);
+    expect(resMe.status).toBe(200);
+    expect(resMe.body.avatar.eyes).toBe('eyes-default');
+    expect(resMe.body.avatar.hair).toBe('hair-short-01');
+
+    const resAvatar = await request(app)
+      .get('/api/users/me/avatar')
+      .set('Authorization', `Bearer ${token}`);
+    expect(resAvatar.status).toBe(200);
+    expect(resAvatar.body.eyes).toBe('eyes-default');
+    expect(resAvatar.body.hair).toBe('hair-short-01');
+  });
 });
