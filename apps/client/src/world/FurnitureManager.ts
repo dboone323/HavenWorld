@@ -149,6 +149,7 @@ export class FurnitureManager {
       }
 
       instance.setEnabled(true);
+      instance.rotationQuaternion = null;
       instance.position = new BABYLON.Vector3(data.x, data.y, data.z);
       instance.rotation = new BABYLON.Vector3(0, data.rotY, 0);
       instance.scaling = new BABYLON.Vector3(data.scaleX ?? 1, data.scaleY ?? 1, data.scaleZ ?? 1);

@@ -2,6 +2,7 @@ import { socketService } from '../services/socket';
 import { SOCKET_EVENTS, ARCADE_CABINET_ID } from '@havenworld/shared';
 import { escapeHtml } from '../utils/escapeHtml';
 import { showToast } from './ToastNotification';
+import { adjustCoinBalance } from './currency';
 
 interface ArcadeMatch {
   id: string;
@@ -85,6 +86,7 @@ export class ArcadeModal {
       socketService.on<ArcadeResult>(SOCKET_EVENTS.ARCADE_RESULT, (result) => {
         this.lastResult = result;
         if (result.winnerId === opts.selfId && result.coinsAwarded > 0) {
+          adjustCoinBalance(result.coinsAwarded);
           showToast({
             icon: '🪙',
             title: `+${result.coinsAwarded} HavenCoins`,

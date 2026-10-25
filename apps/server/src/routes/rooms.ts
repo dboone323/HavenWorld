@@ -121,9 +121,11 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
   const currentById = new Map(currentFurniture.map((f) => [f.id, f]));
 
   // Count current placed items by user: Map<itemId, number>
+  // In a personal room / owner-managed room, all existing placed furniture belongs to the room owner
   const currentCounts = new Map<string, number>();
+  const isOwner = room.ownerId === userId;
   for (const item of currentFurniture) {
-    if (item.placedBy === userId) {
+    if (item.placedBy === userId || isOwner) {
       currentCounts.set(item.itemId, (currentCounts.get(item.itemId) || 0) + 1);
     }
   }

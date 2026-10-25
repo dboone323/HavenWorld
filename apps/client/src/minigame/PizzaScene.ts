@@ -2,6 +2,7 @@ import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { audioEngine } from '../audio/AudioEngine';
 import { showToast } from '../ui/ToastNotification';
+import { adjustCoinBalance } from '../ui/currency';
 
 interface RecipeDef {
   id: string;
@@ -179,6 +180,10 @@ export class PizzaScene {
 
     this.submitInFlight = true;
     this.setWaitingState(true);
+    this.stopTimer();
+    if (this.els.timerLabel) {
+      this.els.timerLabel.textContent = '⏱ Order served — waiting for kitchen…';
+    }
 
     const durationMs = Date.now() - this.startTime;
     socketService.emit(SOCKET_EVENTS.PIZZA_ORDER_SUBMIT, {
@@ -197,6 +202,10 @@ export class PizzaScene {
 
     const coins = res.coinsEarned ?? 0;
     const combo = res.combo ?? 0;
+
+    if (coins > 0) {
+      adjustCoinBalance(coins);
+    }
 
     if (res.tier === 'PERFECT') {
       audioEngine.playFishingCatch();
@@ -477,6 +486,7 @@ export class PizzaScene {
 
   /** Visible countdown: green → amber → red overtime. */
   private tickTimer(): void {
+    if (this.submitInFlight) return;
     const fill = this.els.timerFill;
     const label = this.els.timerLabel;
     if (!fill || !label) return;

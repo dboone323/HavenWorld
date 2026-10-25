@@ -3,6 +3,7 @@ import { socketService } from '../services/socket';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 import { audioEngine } from '../audio/AudioEngine';
 import { showToast } from '../ui/ToastNotification';
+import { adjustCoinBalance } from '../ui/currency';
 
 /**
  * z-index for the fishing HUD. Modal overlays (shop, passport, trade,
@@ -23,6 +24,7 @@ export class FishingController {
   private tensionBar: HTMLElement | null = null;
   private sweetSpotEl: HTMLElement | null = null;
   private reelSlider: HTMLInputElement | null = null;
+  private reelMarker: HTMLElement | null = null;
 
   /** Unsubscribe fns for every socket listener registered in setupSocketListeners. */
   private socketUnsubs: Array<() => void> = [];
@@ -54,6 +56,11 @@ export class FishingController {
     if (!this.isFishing) return;
     this.endSession();
     socketService.emit(SOCKET_EVENTS.CANCEL_FISHING, {});
+    showToast({
+      icon: '🎣',
+      title: 'Fishing cancelled',
+      subtitle: 'You packed up your fishing rod.',
+    });
   }
 
   private createUI(): void {
@@ -82,19 +89,27 @@ export class FishingController {
     `;
 
     this.panel.innerHTML = `
-      <div style="font-weight: bold; font-size: 1.1rem; color: #38bdf8; margin-bottom: 8px;">🎣 Fishing</div>
-      <div id="fish-status" style="font-size: 0.9rem; color: #aaa; margin-bottom: 12px;">Casting…</div>
+      <div style="font-weight: bold; font-size: 1.1rem; color: #38bdf8; margin-bottom: 6px;">🎣 Fishing</div>
+      <div id="fish-status" style="font-size: 0.9rem; color: #aaa; margin-bottom: 10px;">Casting…</div>
+
+      <!-- Mechanic Explanation -->
+      <div style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 10px; line-height: 1.35;">
+        🎯 Drag slider to keep your reel marker inside the blue sweet spot bracket.<br/>
+        Keep the tension meter filled to land the fish!
+      </div>
 
       <!-- Tension Meter Track -->
-      <div style="position: relative; width: 100%; height: 24px; background: #1e293b; border-radius: 6px; overflow: hidden; margin-bottom: 12px; border: 1px solid #475569;">
+      <div style="position: relative; width: 100%; height: 26px; background: #1e293b; border-radius: 6px; overflow: hidden; margin-bottom: 12px; border: 1px solid #475569;">
         <!-- Sweet Spot -->
-        <div id="fishing-sweet-spot" style="position: absolute; top: 0; bottom: 0; left: 35%; width: 30%; background: rgba(56, 189, 248, 0.4); border-left: 2px solid #38bdf8; border-right: 2px solid #38bdf8;"></div>
+        <div id="fishing-sweet-spot" style="position: absolute; top: 0; bottom: 0; left: 35%; width: 30%; background: rgba(56, 189, 248, 0.35); border-left: 2px solid #38bdf8; border-right: 2px solid #38bdf8; z-index: 1;"></div>
         <!-- Tension Fill -->
-        <div id="fishing-tension-fill" style="position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: linear-gradient(90deg, #22c55e, #eab308, #ef4444); transition: width 80ms linear;"></div>
+        <div id="fishing-tension-fill" style="position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: linear-gradient(90deg, #ef4444 0%, #eab308 50%, #22c55e 100%); transition: width 80ms linear; z-index: 0;"></div>
+        <!-- Reel Position Marker -->
+        <div id="fishing-reel-marker" style="position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; background: #fff; box-shadow: 0 0 6px #fff; z-index: 2; transform: translateX(-50%); transition: left 50ms linear;"></div>
       </div>
 
       <!-- Reel Slider -->
-      <label style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px;">Hold Position in Sweet Spot</label>
+      <label style="display: block; font-size: 0.8rem; color: #cbd5e1; font-weight: 600; margin-bottom: 4px;">Reel Slider</label>
       <input id="fishing-reel-slider" type="range" min="0" max="100" value="50" style="width: 100%; accent-color: #38bdf8; cursor: pointer;" />
 
       <button id="btn-cancel-fishing" style="margin-top: 12px; background: transparent; border: 1px solid #64748b; color: #cbd5e1; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 0.8rem;">Cancel</button>
@@ -105,6 +120,7 @@ export class FishingController {
     this.tensionBar = this.panel.querySelector('#fishing-tension-fill');
     this.sweetSpotEl = this.panel.querySelector('#fishing-sweet-spot');
     this.reelSlider = this.panel.querySelector('#fishing-reel-slider');
+    this.reelMarker = this.panel.querySelector('#fishing-reel-marker');
 
     this.reelSlider?.addEventListener(
       'input',
@@ -122,6 +138,9 @@ export class FishingController {
   private queueReelPosition(value: number): void {
     if (!Number.isFinite(value)) return;
     this.pendingReelValue = Math.min(1, Math.max(0, value));
+    if (this.reelMarker) {
+      this.reelMarker.style.left = `${this.pendingReelValue * 100}%`;
+    }
 
     const elapsed = Date.now() - this.lastReelEmitAt;
     if (elapsed >= REEL_EMIT_INTERVAL_MS) {
@@ -161,6 +180,7 @@ export class FishingController {
     this.tensionBar = null;
     this.sweetSpotEl = null;
     this.reelSlider = null;
+    this.reelMarker = null;
   }
 
   private armBiteTimeout(): void {
@@ -240,6 +260,7 @@ export class FishingController {
         (data) => {
           audioEngine.playFishingCatch();
           audioEngine.playCoinPickup();
+          adjustCoinBalance(data.coins);
           this.endSession();
           showToast({
             icon: '🎉',
@@ -253,12 +274,23 @@ export class FishingController {
     this.socketUnsubs.push(
       socketService.on(SOCKET_EVENTS.FISH_ESCAPED, () => {
         audioEngine.playError();
-        this.endSession();
+        const statusEl = document.getElementById('fish-status');
+        if (statusEl) {
+          statusEl.textContent = '💨 The fish got away!';
+          statusEl.style.color = '#ef4444';
+          statusEl.style.fontWeight = 'bold';
+        }
+        if (this.reelSlider) {
+          this.reelSlider.disabled = true;
+        }
         showToast({
           icon: '💨',
           title: 'The fish got away!',
-          subtitle: 'Cast again to try your luck.',
+          subtitle: 'Tension ran out! Cast again to try your luck.',
         });
+        setTimeout(() => {
+          this.endSession();
+        }, 1200);
       })
     );
 

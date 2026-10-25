@@ -157,18 +157,22 @@ router.get('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
 });
 
 const avatarDataSchema = z.object({
-  bodyType: z.number().min(0).max(1).optional(),
+  bodyType: z.union([z.number().min(0).max(1), z.string()]).optional(),
   height: z.number().min(0).max(1).optional(),
   build: z.number().min(0).max(1).optional(),
-  skinTone: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  hairColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  eyeColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  topColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  bottomColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  hairStyle: z.string().optional(),
-  eyeStyle: z.string().optional(),
-  eyes: z.string().optional(),
-  gender: z.string().optional(),
+  bodyTypeVal: z.number().min(0).max(1).optional(),
+  heightVal: z.number().min(0).max(1).optional(),
+  buildVal: z.number().min(0).max(1).optional(),
+  skinTone: z.string().max(64).optional(),
+  skinColor: z.string().max(64).optional(),
+  hairColor: z.string().max(64).optional(),
+  eyeColor: z.string().max(64).optional(),
+  topColor: z.string().max(64).optional(),
+  bottomColor: z.string().max(64).optional(),
+  hairStyle: z.string().max(64).optional(),
+  eyeStyle: z.string().max(64).optional(),
+  eyes: z.string().max(64).optional(),
+  gender: z.string().max(32).optional(),
   // Equipped wardrobe item ids (validated against inventory by the socket handler
   // and by the explicit inventory check below before they are persisted).
   outfitHead: z.string().nullable().optional(),
@@ -178,7 +182,7 @@ const avatarDataSchema = z.object({
   outfitFeet: z.string().nullable().optional(),
   outfitBack: z.string().nullable().optional(),
   outfitHand: z.string().nullable().optional(),
-});
+}).passthrough();
 
 // PUT /api/users/me/avatar — save 3D avatar customization
 router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
@@ -240,20 +244,29 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
+  const effectiveSkin = d.skinTone || d.skinColor;
+  const effectiveHair = d.hairStyle || (d as any).hair;
+  const effectiveEyes = d.eyeStyle || d.eyes;
+  const bodyTypeStr = typeof d.bodyType === 'string' ? d.bodyType : undefined;
+  const bodyTypeNum = typeof d.bodyType === 'number' ? d.bodyType : d.bodyTypeVal;
+  const heightNum = d.height ?? d.heightVal;
+  const buildNum = d.build ?? d.buildVal;
+
   const updated = await prisma.avatar.upsert({
     where: { userId },
     create: {
       userId,
-      skinTone: d.skinTone ?? '#F5CBA7',
+      bodyType: bodyTypeStr ?? 'default',
+      bodyTypeVal: bodyTypeNum ?? 0.5,
+      heightVal: heightNum ?? 0.5,
+      buildVal: buildNum ?? 0.5,
+      skinTone: effectiveSkin ?? '#F5CBA7',
       hairColor: d.hairColor ?? '#1C1C1C',
       eyeColor: d.eyeColor ?? '#4A3728',
       topColor: d.topColor ?? '#4169E1',
       bottomColor: d.bottomColor ?? '#2E8B57',
-      bodyTypeVal: d.bodyType ?? 0.5,
-      heightVal: d.height ?? 0.5,
-      buildVal: d.build ?? 0.5,
-      hairStyle: d.hairStyle ?? 'hair-short-01',
-      eyeStyle: d.eyeStyle ?? d.eyes ?? 'eyes-default',
+      hairStyle: effectiveHair ?? 'hair-short-01',
+      eyeStyle: effectiveEyes ?? 'eyes-default',
       gender: normalizeGender(d.gender),
       outfitHead: d.outfitHead ?? null,
       outfitFace: d.outfitFace ?? null,
@@ -264,16 +277,17 @@ router.put('/me/avatar', requireAuth, async (req: AuthRequest, res) => {
       outfitHand: d.outfitHand ?? null,
     },
     update: {
-      skinTone: d.skinTone,
-      hairColor: d.hairColor,
-      eyeColor: d.eyeColor,
-      topColor: d.topColor,
-      bottomColor: d.bottomColor,
-      bodyTypeVal: d.bodyType,
-      heightVal: d.height,
-      buildVal: d.build,
-      hairStyle: d.hairStyle,
-      eyeStyle: d.eyeStyle ?? d.eyes,
+      ...(bodyTypeStr !== undefined ? { bodyType: bodyTypeStr } : {}),
+      ...(bodyTypeNum !== undefined ? { bodyTypeVal: bodyTypeNum } : {}),
+      ...(heightNum !== undefined ? { heightVal: heightNum } : {}),
+      ...(buildNum !== undefined ? { buildVal: buildNum } : {}),
+      ...(effectiveSkin ? { skinTone: effectiveSkin } : {}),
+      ...(d.hairColor ? { hairColor: d.hairColor } : {}),
+      ...(d.eyeColor ? { eyeColor: d.eyeColor } : {}),
+      ...(d.topColor ? { topColor: d.topColor } : {}),
+      ...(d.bottomColor ? { bottomColor: d.bottomColor } : {}),
+      ...(effectiveHair ? { hairStyle: effectiveHair } : {}),
+      ...(effectiveEyes ? { eyeStyle: effectiveEyes } : {}),
       gender: d.gender ? normalizeGender(d.gender) : undefined,
       outfitHead: d.outfitHead,
       outfitFace: d.outfitFace,

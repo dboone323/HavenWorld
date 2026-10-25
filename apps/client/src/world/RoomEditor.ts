@@ -1079,6 +1079,7 @@ export class RoomEditor {
       this.pendingChanges.clear();
       this.removeSelectedToolbar();
       this.exitEditMode();
+      await this.furnitureManager.loadRoomFurniture(this.roomId);
       audioEngine.playSuccess();
       showToast({
         icon: '💾',

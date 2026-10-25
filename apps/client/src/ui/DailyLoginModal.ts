@@ -1,6 +1,7 @@
 import { API_URL } from '../config';
 import { authService } from '../services/auth';
 import { showToast } from './ToastNotification';
+import { adjustCoinBalance } from './currency';
 
 interface DailyClaimResponse {
   alreadyClaimed: boolean;
@@ -144,11 +145,7 @@ export class DailyLoginModal {
     setTimeout(() => DailyLoginModal.dismiss(), 4000);
 
     // Update coin display in HUD
-    const coinAmount = document.getElementById('coin-amount');
-    if (coinAmount) {
-      const current = parseInt(coinAmount.textContent || '0', 10);
-      coinAmount.textContent = String(current + coinsAwarded);
-    }
+    adjustCoinBalance(coinsAwarded);
   }
 
   static dismiss(): void {

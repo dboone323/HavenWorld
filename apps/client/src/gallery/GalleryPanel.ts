@@ -154,7 +154,19 @@ export class GalleryPanel {
     }
     // Don't stack multiple caption forms
     if (panel.querySelector('#snap-caption-form')) return;
-    this.showCaptionForm(panel, (caption) => this.publishSnapshot(panel, canvas, caption));
+
+    // Capture snapshot immediately upon click so the image reflects what was on screen
+    const dataUrl = this.encodeSnapshot(canvas);
+    if (!dataUrl) {
+      showToast({
+        icon: '⚠️',
+        title: 'Screenshot capture failed',
+        subtitle: 'Could not encode the game canvas',
+      });
+      return;
+    }
+
+    this.showCaptionForm(panel, (caption) => this.publishSnapshot(panel, dataUrl, caption));
   }
 
   /** Inline caption input rendered inside the gallery panel (replaces prompt()). */
@@ -268,7 +280,7 @@ export class GalleryPanel {
 
   private static async publishSnapshot(
     panel: HTMLElement,
-    canvas: HTMLCanvasElement,
+    dataUrl: string,
     caption: string | null
   ): Promise<void> {
     if (caption === null) {
@@ -276,15 +288,6 @@ export class GalleryPanel {
       return;
     }
 
-    const dataUrl = this.encodeSnapshot(canvas);
-    if (!dataUrl) {
-      showToast({
-        icon: '⚠️',
-        title: 'Screenshot capture failed',
-        subtitle: 'Could not encode the game canvas',
-      });
-      return;
-    }
     if (dataUrl.length > 45 * 1024) {
       showToast({
         icon: '⚠️',

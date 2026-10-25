@@ -45,7 +45,7 @@ export class HavenEngine {
     }
 
     this._engine = new Engine(canvas, true, {
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
       stencil: true,
       disableWebGL2Support: false,
     });

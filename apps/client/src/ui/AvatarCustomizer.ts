@@ -686,15 +686,21 @@ export class AvatarCustomizer {
 
   private async persistToServer(): Promise<void> {
     const token = authService.token || (await authService.getToken()) || '';
+    const csrfToken = authService.getCsrfToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanData } =
+      this.currentData as Record<string, unknown>;
 
     const res = await fetch(`${SERVER_URL}/api/users/me/avatar`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       credentials: 'include',
-      body: JSON.stringify(this.currentData),
+      body: JSON.stringify(cleanData),
     });
 
     if (!res.ok) {
@@ -702,9 +708,6 @@ export class AvatarCustomizer {
     }
 
     authService.updateAvatar({ ...this.currentData });
-
-    const { id: _id, userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanData } =
-      this.currentData as Record<string, unknown>;
 
     socketService.emit(SOCKET_EVENTS.AVATAR_UPDATE, {
       ...cleanData,

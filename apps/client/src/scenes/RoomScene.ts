@@ -55,6 +55,7 @@ import { MinimapRadar } from '../ui/MinimapRadar';
 import { IdleStateManager } from '../engine/IdleStateManager';
 import { CollaborativeWhiteboard } from '../ui/CollaborativeWhiteboard';
 import { StreamerModeManager } from '../ui/StreamerModeManager';
+import { setCoinBalance } from '../ui/currency';
 import { escapeHtml } from '../utils/escapeHtml';
 
 export async function createRoomScene(
@@ -79,7 +80,6 @@ export async function createRoomScene(
   haven.engine.resize();
 
   document.getElementById('room-nav')?.classList.remove('hidden');
-  document.getElementById('room-info-pill')?.classList.remove('hidden');
   document.getElementById('player-card')?.classList.remove('hidden');
   document.getElementById('chat-panel')?.classList.remove('hidden');
   document.getElementById('quest-hud')?.classList.remove('hidden');
@@ -91,30 +91,32 @@ export async function createRoomScene(
     usernameEl.textContent = authService.user.username;
   }
 
-  // Populate Room Info Pill (MegaPlanet style)
-  const roomNameEl = document.getElementById('room-name-display');
-  const roomTypeBadge = document.getElementById('room-badge-type');
+  // Populate Room Info Pill & Controls synchronously once 3D assets are loaded
   const isOwner = authService.user?.personalRoom?.id === roomId;
-  if (roomNameEl) {
-    if (roomId === 'room-park') {
-      roomNameEl.textContent = '🌳 Haven Park & Plaza';
-      if (roomTypeBadge) roomTypeBadge.textContent = 'Public Park';
-    } else {
-      const ownerName = authService.user?.username || 'Citizen';
-      roomNameEl.textContent = isOwner ? `${ownerName}'s Sanctuary Loft` : 'Community Loft';
-      if (roomTypeBadge) roomTypeBadge.textContent = isOwner ? 'Personal Pad' : 'Guest Pad';
+  const syncRoomHeaderUI = () => {
+    const roomNameEl = document.getElementById('room-name-display');
+    const roomTypeBadge = document.getElementById('room-badge-type');
+    if (roomNameEl) {
+      if (roomId === 'room-park') {
+        roomNameEl.textContent = '🌳 Haven Park & Plaza';
+        if (roomTypeBadge) roomTypeBadge.textContent = 'Public Park';
+      } else {
+        const ownerName = authService.user?.username || 'Citizen';
+        roomNameEl.textContent = isOwner ? `${ownerName}'s Sanctuary Loft` : 'Community Loft';
+        if (roomTypeBadge) roomTypeBadge.textContent = isOwner ? 'Personal Pad' : 'Guest Pad';
+      }
     }
-  }
 
-  // Room Controls Card (owner only)
-  const roomControlsCard = document.getElementById('room-controls-card');
-  if (roomControlsCard) {
-    if (isOwner) {
-      roomControlsCard.classList.remove('hidden');
-    } else {
-      roomControlsCard.classList.add('hidden');
+    const roomControlsCard = document.getElementById('room-controls-card');
+    if (roomControlsCard) {
+      if (isOwner) {
+        roomControlsCard.classList.remove('hidden');
+      } else {
+        roomControlsCard.classList.add('hidden');
+      }
     }
-  }
+    document.getElementById('room-info-pill')?.classList.remove('hidden');
+  };
 
   // ── True Isometric Orthographic Camera ────────────────────────────────────
   const camera = new ArcRotateCamera(
@@ -602,8 +604,7 @@ export async function createRoomScene(
         .then((r) => r.json())
         .then((me) => {
           if (typeof me?.coinBalance === 'number') {
-            coinAmount.dataset.rawCoins = String(me.coinBalance);
-            coinAmount.textContent = StreamerModeManager.maskSensitiveText(me.coinBalance);
+            setCoinBalance(me.coinBalance);
           }
         })
         .catch(() => { /* non-critical */ });
@@ -1124,10 +1125,8 @@ export async function createRoomScene(
     socketService.on<{ coins: number }>(
       SOCKET_EVENTS.DAILY_REWARD,
       (data) => {
-        const coinAmountEl = document.getElementById('coin-amount');
-        if (coinAmountEl && typeof data.coins === 'number') {
-          coinAmountEl.dataset.rawCoins = String(data.coins);
-          coinAmountEl.textContent = StreamerModeManager.maskSensitiveText(data.coins);
+        if (typeof data.coins === 'number') {
+          setCoinBalance(data.coins);
         }
       }
     )
@@ -1356,6 +1355,8 @@ export async function createRoomScene(
     (window as any).__havenRoomReady = false;
   });
 
+  // Sync room header & controls at the exact instant the 3D scene is ready and activated
+  syncRoomHeaderUI();
   (window as any).__havenRoomReady = true;
   return scene;
 }
