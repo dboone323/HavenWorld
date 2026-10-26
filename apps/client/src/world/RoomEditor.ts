@@ -207,6 +207,8 @@ export class RoomEditor {
       const result = await BABYLON.SceneLoader.ImportMeshAsync('', folder, fileName, this.scene);
       // Only apply if user is still placing this exact item
       if (this.ghostItemId === itemId && this.ghostMesh) {
+        const currentItemId = this.ghostItemId;
+        const currentAssetUrl = this.ghostAssetUrl;
         const lastPos = this.ghostMesh.position.clone();
         const lastRot = this.ghostMesh.rotation.y;
         this.clearGhostMesh();
@@ -216,6 +218,8 @@ export class RoomEditor {
         this.ghostMesh.isPickable = false;
         this.ghostMesh.position = lastPos;
         this.ghostMesh.rotation.y = lastRot;
+        this.ghostItemId = currentItemId;
+        this.ghostAssetUrl = currentAssetUrl;
 
         result.meshes.forEach((mesh) => {
           const mat = new BABYLON.StandardMaterial(`ghost_mat_${mesh.name}`, this.scene);
