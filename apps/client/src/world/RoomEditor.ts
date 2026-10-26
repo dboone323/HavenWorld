@@ -1036,6 +1036,10 @@ export class RoomEditor {
     document.getElementById('room-editor-inventory')?.remove();
   }
 
+finishDecorating(): void {
+    this.saveLayout().catch(console.error);
+  }
+
   // ─── Save / Cancel ────────────────────────────────────────────────────────
   async saveLayout(): Promise<void> {
     if (this.isSaving) return;
@@ -1043,7 +1047,7 @@ export class RoomEditor {
     const saveBtn = document.getElementById('btn-save-layout') as HTMLButtonElement | null;
     if (saveBtn) saveBtn.disabled = true;
 
-    const layout = Array.from(this.furnitureManager.allPlaced.values()).map((item) => ({
+    const placedLayout = Array.from(this.furnitureManager.allPlaced.values()).map((item) => ({
       id: item.id,
       itemId: item.itemId,
       assetUrl: `/assets/furniture/${item.itemId}.glb`,
@@ -1055,6 +1059,25 @@ export class RoomEditor {
       scaleY: item.mesh.scaling.y,
       scaleZ: item.mesh.scaling.z,
     }));
+
+    // Include newly placed items that may not yet be registered in
+    // furnitureManager (async placement) so they are not dropped from save.
+    const pendingNew = Array.from(this.pendingChanges.values())
+      .filter((p) => p.isNew && !this.furnitureManager.allPlaced.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        itemId: p.itemId,
+        assetUrl: p.assetUrl || `/assets/furniture/${p.itemId}.glb`,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        rotY: p.rotY,
+        scaleX: p.scaleX,
+        scaleY: p.scaleY,
+        scaleZ: p.scaleZ,
+      }));
+
+    const layout = [...placedLayout, ...pendingNew];
 
     try {
       const token = authService.token || (await authService.getToken()) || '';

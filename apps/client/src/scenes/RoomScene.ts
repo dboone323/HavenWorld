@@ -563,11 +563,7 @@ export async function createRoomScene(
   const toggleDecorate = () => {
     if (!roomEditor) return;
     if (roomEditor.inEditMode) {
-      if (roomEditor.hasPendingChanges()) {
-        roomEditor.saveLayout().catch(console.error);
-      } else {
-        roomEditor.exitEditMode();
-      }
+      roomEditor.finishDecorating();
     } else {
       roomEditor.enterEditMode();
     }

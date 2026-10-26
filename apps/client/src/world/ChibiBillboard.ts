@@ -96,6 +96,13 @@ export class ChibiBillboard {
     this.render();
   }
 
+  public isBottomLayerEnabled(): boolean {
+    return !(
+      this.avatarData?.outfitLegs === 'none' ||
+      this.avatarData?.outfitLegs === 'underwear' ||
+      (this.avatarData?.bottom === 'none' && !this.avatarData?.outfitLegs)
+    );
+  }
   public setAvatarData(data: AvatarData): void {
     this.avatarData = data;
     this._avatarHash = data ? JSON.stringify(data) : '';
@@ -152,7 +159,7 @@ export class ChibiBillboard {
         if (layer === 'top' && (this.avatarData?.outfitBody === 'none' || this.avatarData?.outfitBody === 'underwear' || this.avatarData?.top === 'none')) {
           continue;
         }
-        if (layer === 'bottom' && (this.avatarData?.outfitLegs === 'none' || this.avatarData?.outfitLegs === 'underwear' || this.avatarData?.bottom === 'none')) {
+        if (layer === 'bottom' && (this.avatarData?.outfitLegs === 'none' || this.avatarData?.outfitLegs === 'underwear' || (this.avatarData?.bottom === 'none' && !this.avatarData?.outfitLegs))) {
           continue;
         }
         if (layer === 'shoes' && (this.avatarData?.outfitFeet === 'none' || this.avatarData?.shoes === 'none')) {
