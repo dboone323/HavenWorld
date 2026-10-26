@@ -1092,7 +1092,26 @@ const pendingManager = Array.from(this.furnitureManager.pendingPlacementsData.va
         scaleZ: d.scaleZ ?? 1,
       }));
 
-    const layout = [...placedLayout, ...pendingNew, ...pendingManager];
+const ghostPlacement = this.ghostMesh && this.ghostItemId && this.ghostAssetUrl
+      ? [
+          {
+            id: `ghost_${this.ghostItemId}`,
+            itemId: this.ghostItemId,
+            assetUrl: this.ghostAssetUrl.startsWith('/')
+              ? this.ghostAssetUrl
+              : `/assets/furniture/${this.ghostItemId}.glb`,
+            x: this.ghostMesh.position.x,
+            y: this.ghostMesh.position.y,
+            z: this.ghostMesh.position.z,
+            rotY: this.ghostMesh.rotation.y,
+            scaleX: this.ghostMesh.scaling.x || 1,
+            scaleY: this.ghostMesh.scaling.y || 1,
+            scaleZ: this.ghostMesh.scaling.z || 1,
+          },
+        ]
+      : [];
+
+    const layout = [...placedLayout, ...pendingNew, ...pendingManager, ...ghostPlacement];
 
     try {
       const token = authService.token || (await authService.getToken()) || '';
