@@ -1077,7 +1077,22 @@ finishDecorating(): void {
         scaleZ: p.scaleZ,
       }));
 
-    const layout = [...placedLayout, ...pendingNew];
+const pendingManager = Array.from(this.furnitureManager.pendingPlacementsData.values())
+      .filter((d) => !this.furnitureManager.allPlaced.has(d.id))
+      .map((d) => ({
+        id: d.id,
+        itemId: d.itemId,
+        assetUrl: d.assetUrl || `/assets/furniture/${d.itemId}.glb`,
+        x: d.x,
+        y: d.y,
+        z: d.z,
+        rotY: d.rotY,
+        scaleX: d.scaleX ?? 1,
+        scaleY: d.scaleY ?? 1,
+        scaleZ: d.scaleZ ?? 1,
+      }));
+
+    const layout = [...placedLayout, ...pendingNew, ...pendingManager];
 
     try {
       const token = authService.token || (await authService.getToken()) || '';

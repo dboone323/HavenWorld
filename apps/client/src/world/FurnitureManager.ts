@@ -16,6 +16,8 @@ export class FurnitureManager {
   private scene: BABYLON.Scene;
   private currentUserId: string;
   private placed: Map<string, PlacedFurniture> = new Map();
+  // Placement payloads that have been requested but not yet registered as meshes.
+  private pendingPlacements: Map<string, FurniturePlacementData> = new Map();
   // GLB template cache: itemId -> root mesh template
   private templateCache: Map<string, BABYLON.AbstractMesh> = new Map();
   // itemIds we already showed a "placeholder" toast for — a room full of
@@ -108,6 +110,7 @@ export class FurnitureManager {
 
   // ─── Place a Single Item ──────────────────────────────────────────────────
   async placeItem(data: FurniturePlacementData): Promise<PlacedFurniture | null> {
+    this.pendingPlacements.set(data.id, data);
     try {
       let instance: BABYLON.AbstractMesh;
 
@@ -180,8 +183,10 @@ export class FurnitureManager {
       };
 
       this.placed.set(data.id, placedItem);
+      this.pendingPlacements.delete(data.id);
       return placedItem;
     } catch (err) {
+      this.pendingPlacements.delete(data.id);
       console.error(`[FurnitureManager] Failed to place furniture item ${data.itemId}:`, err);
       return null;
     }
@@ -226,6 +231,10 @@ export class FurnitureManager {
 
   get allPlaced(): Map<string, PlacedFurniture> {
     return this.placed;
+  }
+
+  get pendingPlacementsData(): Map<string, FurniturePlacementData> {
+    return this.pendingPlacements;
   }
 
   public static getProceduralDimensions(itemId: string): { width: number; height: number; depth: number } {
