@@ -1,5 +1,6 @@
 import * as BABYLON from '@babylonjs/core';
 import { ChibiAtlasManager } from './ChibiAtlasManager';
+import { getItemAccentColor } from '@havenworld/shared';
 import type { AvatarData } from '@havenworld/shared';
 
 export type ChibiAction = 'idle' | 'walk' | 'sit';
@@ -16,7 +17,8 @@ export class ChibiBillboard {
   private avatarData?: AvatarData;
   private beforeRenderObserver: (() => void) | null = null;
   private _lastRenderKey: string = '';
-  private _avatarHash: string = '';
+private _avatarHash: string = '';
+  public bottomTint: string | null = null;
 
   constructor(name: string, scene: BABYLON.Scene, parent?: BABYLON.Node | null) {
     this.scene = scene;
@@ -118,6 +120,11 @@ export class ChibiBillboard {
   }
 
   public render(): void {
+this.bottomTint =
+      this.avatarData?.outfitLegs && this.avatarData.outfitLegs !== 'none' && this.avatarData.outfitLegs !== 'underwear'
+        ? getItemAccentColor(this.avatarData.outfitLegs, this.avatarData.bottomColor || '#2E8B57')
+        : null;
+
     const atlas = ChibiAtlasManager.getInstance();
     const img = atlas.getImage();
     if (!img) return;
@@ -168,10 +175,17 @@ export class ChibiBillboard {
         if (layer === 'hair' && (this.avatarData?.hairStyle === 'none' || this.avatarData?.hairStyle === 'bald' || this.avatarData?.hair === 'none')) {
           continue;
         }
-        const key = atlas.resolveFrameKey(layer, this.currentAction, this.currentDirection, this.currentFrame);
+const key = atlas.resolveFrameKey(layer, this.currentAction, this.currentDirection, this.currentFrame);
         const f = atlas.getFrame(key);
         if (f) {
           ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, w, h);
+          if (layer === 'bottom' && this.bottomTint) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-atop';
+            ctx.fillStyle = this.bottomTint;
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+          }
         }
       }
 
