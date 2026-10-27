@@ -61,7 +61,7 @@ export async function requireAdmin(
     };
 
     next();
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
   }
 }

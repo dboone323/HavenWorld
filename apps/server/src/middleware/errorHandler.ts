@@ -6,12 +6,15 @@ export function globalErrorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  const reqUser = (req as Request & { user?: { userId?: string; id?: string } }).user;
+  const errObj = err as { status?: number; statusCode?: number; message?: string } | undefined;
+
   // Log full error internally for monitoring & debugging
   console.error({
     timestamp: new Date().toISOString(),
     method: req.method,
     path: req.path,
-    userId: (req as any).user?.userId ?? (req as any).user?.id ?? 'unauthenticated',
+    userId: reqUser?.userId ?? reqUser?.id ?? 'unauthenticated',
     error: err instanceof Error ? err.message : String(err),
     ...(process.env.NODE_ENV !== 'production' && {
       stack: err instanceof Error ? err.stack : undefined,
@@ -19,11 +22,11 @@ export function globalErrorHandler(
   });
 
   // Never expose implementation details, file paths, or internal stacks to clients
-  const statusCode = (err as any)?.status ?? (err as any)?.statusCode ?? 500;
+  const statusCode = errObj?.status ?? errObj?.statusCode ?? 500;
   const is500 = statusCode === 500;
 
   res.status(statusCode).json({
-    error: is500 ? 'INTERNAL_SERVER_ERROR' : ((err as any)?.message ?? 'ERROR'),
+    error: is500 ? 'INTERNAL_SERVER_ERROR' : (errObj?.message ?? 'ERROR'),
   });
 }
 

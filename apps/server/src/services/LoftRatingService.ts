@@ -227,15 +227,15 @@ export class LoftRatingService {
       take: limit,
     });
 
-    const roomIds = topRooms.map((r) => r.roomId!).filter(Boolean);
+    const roomIds = topRooms.map((r: { roomId: string | null }) => r.roomId!).filter(Boolean);
     const rooms = await prisma.room.findMany({
       where: { id: { in: roomIds } },
       include: { owner: { select: { id: true, username: true } } },
     });
 
-    const roomMap = new Map(rooms.map((r) => [r.id, r]));
+    const roomMap = new Map(rooms.map((r: { id: string; name: string; owner?: { id: string; username: string } | null }) => [r.id, r] as const));
 
-    return topRooms.map((tr) => {
+    return topRooms.map((tr: { roomId: string | null; _count: { roomId: number } }) => {
       const room = roomMap.get(tr.roomId!);
       return {
         roomId: tr.roomId!,

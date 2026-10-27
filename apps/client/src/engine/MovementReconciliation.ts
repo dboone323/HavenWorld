@@ -48,7 +48,7 @@ export class MovementReconciliation {
     this.pendingMoves = this.pendingMoves.filter((m) => m.seq > serverAckSeq);
 
     // Calculate drift between client current position and server truth + pending inputs
-    let simulated = { ...serverPosition };
+    const simulated = { ...serverPosition };
     for (const move of this.pendingMoves) {
       simulated.x = move.targetX;
       simulated.y = move.targetY;

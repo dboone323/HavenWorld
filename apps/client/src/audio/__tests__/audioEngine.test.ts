@@ -93,8 +93,12 @@ class FunctionalAudioContext {
   createdConvolvers: FunctionalConvolverNode[] = [];
   state: AudioContextState = 'running';
 
+  static registerInstance(ctx: FunctionalAudioContext) {
+    activeFunctionalContext = ctx;
+  }
+
   constructor() {
-    activeFunctionalContext = this;
+    FunctionalAudioContext.registerInstance(this);
   }
 
   createGain() {

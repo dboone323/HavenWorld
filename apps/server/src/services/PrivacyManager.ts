@@ -20,7 +20,7 @@ export class PrivacyManager {
     if (!room) return { allowed: false, reason: 'ROOM_NOT_FOUND' };
 
     // Owner or co-decorator always has access
-    if (room.ownerId === userId || room.decorators.some((d) => d.userId === userId)) {
+    if (room.ownerId === userId || room.decorators.some((d: { userId: string }) => d.userId === userId)) {
       return { allowed: true, mode: room.privacy };
     }
 
@@ -271,7 +271,7 @@ export class PrivacyManager {
     });
     if (!room) return 'VISITOR';
     if (room.ownerId === userId) return 'OWNER';
-    if (room.decorators.some((d) => d.userId === userId)) return 'CO_BUILDER';
+    if (room.decorators.some((d: { userId: string }) => d.userId === userId)) return 'CO_BUILDER';
     return 'VISITOR';
   }
 }

@@ -13,8 +13,10 @@
 
 # envkey timestamped .env backups (e.g. .env.bak.20261014-091848) — contain secrets
 .env.bak.*
+.env*.bak*
 *.env.bak.*
 *.env.*.bak.*
+**/.env*.bak*
 
 *.key
 *.cert

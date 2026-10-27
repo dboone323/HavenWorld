@@ -217,7 +217,7 @@ export class PhotoGalleryService {
     });
 
     const totalPhotos = photos.length;
-    const totalLikes = photos.reduce((sum, p) => sum + p.likes, 0);
+    const totalLikes = photos.reduce((sum: number, p: { id: string; likes: number }) => sum + p.likes, 0);
 
     let totalViews = 0;
     for (const p of photos) {

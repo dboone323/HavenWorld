@@ -115,11 +115,11 @@ export function captureException(error: unknown): void {
 export async function traceSpan<T>(
   name: string,
   op: string,
-  fn: (span?: any) => Promise<T> | T,
+  fn: (span?: unknown) => Promise<T> | T,
   data?: Record<string, unknown>
 ): Promise<T> {
   if (getSentryDsn() && Sentry.startSpan) {
-    return await Sentry.startSpan({ name, op, attributes: data as any }, async (span) => {
+    return await Sentry.startSpan({ name, op, attributes: data as Parameters<typeof Sentry.startSpan>[0]['attributes'] }, async (span) => {
       try {
         return await fn(span);
       } catch (err) {

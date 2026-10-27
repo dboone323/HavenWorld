@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { type DailyQuestProgress } from '@prisma/client';
 import { getDailyQuests, QuestTemplate, getUtcDayOfYear } from '@havenworld/shared';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
@@ -21,7 +22,7 @@ export class QuestService {
       },
     });
 
-    const existingMap = new Map(existing.map((e) => [e.questId, e]));
+    const existingMap = new Map<string, DailyQuestProgress>(existing.map((e) => [e.questId, e]));
 
     // Ensure all 3 templates have a record in the database
     const results = [];

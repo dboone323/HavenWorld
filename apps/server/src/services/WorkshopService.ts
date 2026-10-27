@@ -265,7 +265,7 @@ export class WorkshopService {
     }
 
     await prisma.craftingQueue.updateMany({
-      where: { id: { in: due.map((r) => r.id) } },
+      where: { id: { in: due.map((r: { id: string }) => r.id) } },
       data: { notifiedAt: now },
     });
 

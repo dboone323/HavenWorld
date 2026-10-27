@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
+import { type ReportStatus } from '@prisma/client';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
-import { requireAdmin, logAdminAction } from '../middleware/adminAuth';
+import { logAdminAction } from '../middleware/adminAuth';
 import { WeatherService } from '../services/WeatherService';
 import { GlobalEventService } from '../services/GlobalEventService';
 import { AnalyticsService } from '../services/AnalyticsService';
@@ -144,12 +145,9 @@ router.get('/users/:id', async (req, res) => {
   });
 
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  const {
-    passwordHash: _passwordHash,
-    emailVerifyToken: _emailVerifyToken,
-    twoFactorSecret: _twoFactorSecret,
-    ...safeUser
-  } = user as typeof user & { twoFactorSecret?: unknown };
+  const safeUser = Object.fromEntries(
+    Object.entries(user).filter(([k]) => !['passwordHash', 'emailVerifyToken', 'twoFactorSecret'].includes(k))
+  );
   return res.json(safeUser);
 });
 
@@ -238,7 +236,7 @@ router.get('/reports', async (req, res) => {
   const status = req.query.status as string | undefined;
   const page = parseInt((req.query.page as string) ?? '1', 10);
   const limit = 25;
-  const where = status ? { status: status as any } : { status: 'OPEN' as any };
+  const where = status ? { status: status as ReportStatus } : { status: 'OPEN' as ReportStatus };
 
   const [reports, total] = await Promise.all([
     prisma.report.findMany({
