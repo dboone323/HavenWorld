@@ -342,6 +342,71 @@ describe('RoomManager', () => {
       const occupants = await redis.sIsMember(`room:${redisRoomId}:occupants`, presenceUserId);
       expect(Boolean(occupants)).toBe(false);
     });
+
+    it('hydrates room players across cluster workers by fetching remote presence hashes', async () => {
+      const { redis } = await import('../../redis');
+      const clusterRoomId = `test_cluster_room_${Date.now()}`;
+      const localUserId = `user_local_${Date.now()}`;
+      const remoteUserId = `user_remote_${Date.now()}`;
+      const localSocketId = `socket_loc_${Date.now()}`;
+      const remoteSocketId = `socket_rem_${Date.now()}`;
+
+      const localPlayer: PlayerState = {
+        id: localUserId,
+        username: 'LocalWorkerPlayer',
+        x: 10,
+        y: 20,
+        z: 0,
+        rotY: 0,
+        direction: 'down',
+        isMoving: false,
+        avatar: defaultTestAvatar,
+      };
+
+      const remotePlayer: PlayerState = {
+        id: remoteUserId,
+        username: 'RemoteWorkerPlayer',
+        x: 50,
+        y: 60,
+        z: 0,
+        rotY: 1.57,
+        direction: 'right',
+        isMoving: true,
+        avatar: defaultTestAvatar,
+      };
+
+      // 1. Local worker joins localPlayer to rm
+      rm.joinRoom(clusterRoomId, localSocketId, localPlayer);
+
+      // 2. Simulate remote worker joining remotePlayer directly via Redis
+      await redis.sAdd(`room:${clusterRoomId}:occupants`, remoteUserId);
+      await redis.hSet(`user:${remoteUserId}:presence`, {
+        socketId: remoteSocketId,
+        roomId: clusterRoomId,
+        instanceId: '1',
+        lastSeen: String(Date.now()),
+        playerData: JSON.stringify(remotePlayer),
+      });
+
+      // 3. getClusterRoomPlayers from local worker rm must retrieve both local and remote players
+      const hydratedPlayers = await rm.getClusterRoomPlayers(clusterRoomId);
+      expect(hydratedPlayers.length).toBe(2);
+
+      const foundLocal = hydratedPlayers.find((p) => p.id === localUserId);
+      const foundRemote = hydratedPlayers.find((p) => p.id === remoteUserId);
+
+      expect(foundLocal).toBeDefined();
+      expect(foundLocal?.username).toBe('LocalWorkerPlayer');
+      expect(foundRemote).toBeDefined();
+      expect(foundRemote?.username).toBe('RemoteWorkerPlayer');
+      expect(foundRemote?.x).toBe(50);
+      expect(foundRemote?.y).toBe(60);
+
+      // 4. Cleanup
+      rm.leaveRoom(localSocketId);
+      await redis.del(`user:${remoteUserId}:presence`);
+      await redis.del(`room:${clusterRoomId}:occupants`);
+    });
   });
 });
 

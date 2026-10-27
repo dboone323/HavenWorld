@@ -85,6 +85,7 @@ class RoomManager {
         roomId,
         instanceId: process.env.INSTANCE_ID || '0',
         lastSeen: String(Date.now()),
+        playerData: JSON.stringify(player),
       }).then(() => {
         redis.expire(userPresenceKey, 120).catch(() => {});
       }).catch(() => {});
@@ -190,6 +191,10 @@ class RoomManager {
       }
       // Refresh user presence TTL in Redis on move
       if (redis.isOpen) {
+        redis.hSet(`user:${player.id}:presence`, {
+          playerData: JSON.stringify(player),
+          lastSeen: String(Date.now()),
+        }).catch(() => {});
         redis.expire(`user:${player.id}:presence`, 120).catch(() => {});
       }
     }
@@ -213,6 +218,13 @@ class RoomManager {
       player.rotY = rotY;
       player.isMoving = false;
       player.isSitting = isSitting;
+      if (redis.isOpen) {
+        redis.hSet(`user:${player.id}:presence`, {
+          playerData: JSON.stringify(player),
+          lastSeen: String(Date.now()),
+        }).catch(() => {});
+        redis.expire(`user:${player.id}:presence`, 120).catch(() => {});
+      }
     }
   }
 
@@ -309,14 +321,66 @@ class RoomManager {
     const player = this.rooms.get(roomId)?.players.get(socketId);
     if (!player) return false;
     player.avatar = { ...player.avatar, ...avatarData };
+    if (redis.isOpen) {
+      redis.hSet(`user:${userId}:presence`, {
+        playerData: JSON.stringify(player),
+        lastSeen: String(Date.now()),
+      }).catch(() => {});
+      redis.expire(`user:${userId}:presence`, 120).catch(() => {});
+    }
     return true;
   }
-
 
   getRoomPlayers(roomId: string): PlayerState[] {
     const room = this.rooms.get(roomId);
     if (!room) return [];
     return Array.from(room.players.values());
+  }
+
+  async getClusterRoomPlayers(roomId: string): Promise<PlayerState[]> {
+    const localPlayers = this.getRoomPlayers(roomId);
+    if (!redis.isOpen) {
+      return localPlayers;
+    }
+
+    try {
+      const roomOccupantsKey = `room:${roomId}:occupants`;
+      const memberIds = await redis.sMembers(roomOccupantsKey);
+      if (!memberIds || memberIds.length === 0) {
+        return localPlayers;
+      }
+
+      const playerMap = new Map<string, PlayerState>();
+      for (const p of localPlayers) {
+        playerMap.set(p.id, p);
+      }
+
+      const missingIds = memberIds.filter((id) => !playerMap.has(id));
+      if (missingIds.length > 0) {
+        const presencePromises = missingIds.map(async (userId) => {
+          try {
+            const raw = await redis.hGet(`user:${userId}:presence`, 'playerData');
+            if (raw) {
+              return JSON.parse(raw) as PlayerState;
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        });
+
+        const remotePlayers = await Promise.all(presencePromises);
+        for (const rp of remotePlayers) {
+          if (rp && !playerMap.has(rp.id)) {
+            playerMap.set(rp.id, rp);
+          }
+        }
+      }
+
+      return Array.from(playerMap.values());
+    } catch {
+      return localPlayers;
+    }
   }
 
   leaveRoomByUserId(userId: string): { roomId: string; playerId: string } | null {

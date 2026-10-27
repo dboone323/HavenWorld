@@ -88,37 +88,20 @@ describe('Multi-Worker PM2 Cluster & Redis Adapter Integration', () => {
 
     const roomId = 'room-park';
 
-    // Both clients join Haven Park on different cluster workers
-    socketA.emit(SOCKET_EVENTS.AUTH_JOIN, {
-      roomId,
-      player: {
-        id: userA.id,
-        username: userA.username,
-        x: 0,
-        y: 0,
-        z: 3.5,
-        rotY: 0,
-        direction: 'down',
-        isMoving: false,
-      },
-    });
+    // 1. Client A joins Haven Park on Worker 0
+    const joinPromiseA = waitForEvent(socketA, SOCKET_EVENTS.ROOM_STATE, 5000);
+    socketA.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId });
+    const stateA = await joinPromiseA;
+    expect(stateA).toBeDefined();
+    expect(stateA.players.some((p: any) => p.id === userA.id)).toBe(true);
 
-    socketB.emit(SOCKET_EVENTS.AUTH_JOIN, {
-      roomId,
-      player: {
-        id: userB.id,
-        username: userB.username,
-        x: 1,
-        y: 0,
-        z: 3.5,
-        rotY: 0,
-        direction: 'down',
-        isMoving: false,
-      },
-    });
-
-    await waitForEvent(socketA, SOCKET_EVENTS.ROOM_STATE, 5000);
-    await waitForEvent(socketB, SOCKET_EVENTS.ROOM_STATE, 5000);
+    // 2. Client B joins Haven Park on Worker 1; ROOM_STATE must be hydrated with Client A from Worker 0
+    const joinPromiseB = waitForEvent(socketB, SOCKET_EVENTS.ROOM_STATE, 5000);
+    socketB.emit(SOCKET_EVENTS.AUTH_JOIN, { roomId });
+    const stateB = await joinPromiseB;
+    expect(stateB).toBeDefined();
+    expect(stateB.players.some((p: any) => p.id === userA.id)).toBe(true);
+    expect(stateB.players.some((p: any) => p.id === userB.id)).toBe(true);
 
     // Wait 100ms for Redis set additions to settle
     await new Promise((resolve) => setTimeout(resolve, 100));

@@ -437,12 +437,13 @@ export function registerSocketHandlers(io: Server): void {
           roomId,
         });
 
-        // Send full room state to the joining player only
+        // Send full room state to the joining player only (hydrated across all cluster workers)
         const roomState = roomManager.getRoomState(roomId)!;
+        const clusterPlayers = await roomManager.getClusterRoomPlayers(roomId);
         socket.emit(SOCKET_EVENTS.ROOM_STATE, {
           roomId,
           roomName: dbRoom?.name ?? roomId,
-          players: Array.from(roomState.players.values()),
+          players: clusterPlayers,
           furniture: roomState.furniture,
           chatHistory: roomState.chatHistory,
           mood: (dbRoom as { moodPreset?: string } | null)?.moodPreset ?? 'day',
