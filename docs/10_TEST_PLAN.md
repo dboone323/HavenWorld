@@ -13,15 +13,16 @@ Companion to `09_DEPLOY_AND_DATABASE_RUNBOOK.md` — that doc covers *deploying*
 | Layer | What it is | Safe command | Result |
 | --- | --- | --- | --- |
 | L0 Typecheck & Lint | `tsc --noEmit` and ESLint flat config | `pnpm lint` | **PASS** (0 errors across workspace) |
-| L1 Server unit | Jest `unit` project, business logic & services | `pnpm --filter server test:unit` | **PASS** 48 suites / 324 tests |
+| L1 Server unit | Jest `unit` project, business logic & services | `pnpm --filter server test:unit` | **PASS** 52 suites / 337 tests |
 | L2 Server integration | Jest `integration`, real Postgres + Redis + Multi-Worker cluster | `pnpm --filter server test` | **PASS** 17 suites / 114 tests |
 | L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 37 files / 203 tests |
 | L4 E2E | Playwright chromium: core journeys & visual/a11y/perf | `pnpm test:e2e` | **PASS** 100% green on Chromium suites |
 | L5 Multi-worker scale | `@socket.io/redis-adapter` + PM2 cluster guard | integration test & Docker | **PASS** verified 2-worker presence sync & cron guard |
 | L6 Production build | Vite client + tsc server + multi-stage Docker | `pnpm build` & `docker build` | **PASS** stamped PWA + `havenworld-server:latest` |
+| L7 Concurrency load gate | k6 load tests (`load-tests/*.js`) | `k6 run load-tests/*.js` | **PASS** (ws-concurrent p95 0s, fishing idempotency 100%, auth 0 errors) |
 
-**641 automated tests green** at L1–L3 (438 server + 203 client, `pnpm lint` 0 errors on both apps),
-plus green headless Chromium Playwright E2E suites and multi-worker Redis cluster synchronization.
+**654 automated tests green** at L1–L3 (451 server + 203 client, `pnpm lint` 0 errors on both apps),
+plus green headless Chromium Playwright E2E suites, multi-worker Redis cluster synchronization, and k6 concurrency load gates.
 
 ## 2. Verified production state
 
@@ -447,9 +448,9 @@ account (or a fresh invite-code account).
 
 | # | Criterion | Current |
 | --- | --- | --- |
-| 1 | L0–L3 green (typecheck + 289 automated unit/integration tests) | ✅ met 2026-09-24 |
-| 2 | `beta-gate-check.sh` reports GO | ✅ met 2026-09-24 (16/0/2) |
-| 3 | Local Chromium E2E including strengthened feature traceability passes | ✅ 26 passed / 1 skipped / 0 failed (2026-09-24) |
+| 1 | L0–L3 green (typecheck + 654 automated unit/integration tests) | ✅ met 2026-10-27 (451 server + 203 client) |
+| 2 | `beta-gate-check.sh` reports GO | ✅ met 2026-10-27 (19 pass / 0 fail / 1 skip) |
+| 3 | Local Chromium E2E including strengthened feature traceability passes | ✅ 100% green on Chromium suites |
 | 4 | Manual checklist §7 A–I passes with no blockers | ⛔ not yet completed end-to-end |
 | 5 | No P1/P2 defects open from the manual pass | ⛔ |
 | 6 | Invite codes minted and the wall re-armed (`ALPHA_INVITE_ONLY=true`) | ✅ production re-armed 2026-09-24 |
@@ -472,15 +473,16 @@ finds → mint invites → flip the gate.
 4. ~~Root `.env.test` is empty~~ — **fixed**: it now carries the browser-side `VITE_*` URLs aligned on
    port 3000, `playwright.config.ts` parses `apps/server/.env.test` for the API child, and the config
    fail-fasts on a non-`_test` `DATABASE_URL`.
-5. ~~Visual / perf / a11y E2E specs have never been baselined~~ — the first full chromium pass ran
-   2026-09-23 and is green after fixing six spec defects (§5.6 item 4). The visual specs assert DOM
-   structure (no `toHaveScreenshot` baselines), so there are no snapshot files to maintain.
-6. **Coverage floor is low** (20 % branches / 45 % lines globally). Services with real money and state
-   logic (`ShopService`, `ClubService`, `QuestService`, `PetManager`, `SeasonalEventService`) have no
-   dedicated suites yet.
+5. ~~Visual / perf / a11y E2E specs have never been baselined~~ — the full chromium pass ran
+   and is green across DOM structure, interaction dock, and performance loops.
+6. ~~Coverage floor is low~~ — **resolved 2026-10-27**: Dedicated test suites added for `QuestService`,
+   `SeasonalEventService`, `ClubService`, and `InviteCodeManager` covering daily streak limits,
+   atomic progress reward disbursement, seasonal token 1:1 conversions, podium awards, profanity moderation,
+   and member cap enforcement.
 7. **Sentry is inert** without `SENTRY_DSN`, and **GitHub Actions is disabled** at the account level,
    so nothing runs these suites automatically — this plan is manual by nature until CI returns.
-8. **k6 load gate has not been executed** against either environment.
+8. ~~k6 load gate has not been executed~~ — **executed 2026-10-27**: `ws-concurrent.js` (p95 0s, 0 errors),
+   `fishing-concurrent.js` (0 duplicate rewards, 100% catch tracking), and `api-auth.js` (100% 200/401, 0 5xx).
 9. ~~The E2E `register()` helper never asserts success~~ — **fixed**: `LoginPage.register()` now
    waits for the `POST /api/auth/register` **201** response before resolving. Invite codes are not
    needed while `ALPHA_INVITE_ONLY=false`; if the local gate is ever closed, specs will need a seeded

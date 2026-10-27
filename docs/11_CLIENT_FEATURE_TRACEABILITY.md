@@ -49,10 +49,11 @@ Examples of partial/reachable differences:
 ## Current test baseline
 
 - TypeScript: client and server clean (`pnpm lint` reports 0 errors across workspace).
-- Server Jest: 65 suites / 438 tests passing across unit and integration tests (including distributed Redis room sync, rate limiting, and canonical spawn fallback).
+- Server Jest: 69 suites / 451 tests passing across unit and integration tests (including dedicated suites for QuestService, SeasonalEventService, ClubService, and InviteCodeManager).
 - Client Vitest: 37 files / 203 tests passing (including movement reconciliation smoothing and customizer lifecycle disposal).
 - Local Chromium E2E: 100% green across core player journeys, HUD interaction dock, visual regression, accessibility (a11y), and CDP memory/frame loops.
-- Horizontal scaling: `@socket.io/redis-adapter` and PM2 cluster verified with primary instance 0 cron isolation.
+- Horizontal scaling & Load gate: `@socket.io/redis-adapter` and PM2 cluster verified; k6 concurrency suites executed for WebSocket throughput, fishing idempotency, and auth stability.
+- Beta gate check: 19 PASS / 0 FAIL / 1 SKIP (`./scripts/beta-gate-check.sh` reports GO).
 - Production build: clean Dockerfile image build and stamped PWA service worker with immutable GLB assets.
 
 ## Manual visibility checklist

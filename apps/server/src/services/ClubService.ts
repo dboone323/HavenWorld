@@ -2,14 +2,17 @@ import { prisma } from '../prisma';
 import { redisClient } from '../redis';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS, ClubRole } from '@havenworld/shared';
+import { moderateMessage } from './ModerationService';
 
 export class ClubService {
   /**
    * Creates a new player club (deducts 500 HavenCoins)
    */
   static async createClub(ownerId: string, name: string, motto?: string, tag?: string) {
-    const cleanName = name.trim().slice(0, 24);
-    if (cleanName.length < 3) throw new Error('Club name must be at least 3 characters');
+    const rawName = name.trim().slice(0, 24);
+    if (rawName.length < 3) throw new Error('Club name must be at least 3 characters');
+    const cleanName = moderateMessage(rawName).filtered;
+    const cleanMotto = motto ? moderateMessage(motto.trim().slice(0, 80)).filtered : null;
 
     return await prisma.$transaction(async (tx) => {
       const existingMembership = await tx.clubMember.findUnique({ where: { userId: ownerId } });
@@ -37,7 +40,7 @@ export class ClubService {
       const club = await tx.club.create({
         data: {
           name: cleanName,
-          motto: motto ? motto.trim().slice(0, 80) : null,
+          motto: cleanMotto,
           tag: tag ? tag.trim().slice(0, 5).toUpperCase() : null,
           ownerId,
           roomId: clubRoom.id,
@@ -378,17 +381,37 @@ export class ClubService {
     }
 
     const cleanMotd = (motd ?? '').trim().slice(0, 80);
+    const modMotd = moderateMessage(cleanMotd).filtered;
     const updated = await prisma.club.update({
       where: { id: clubId },
-      data: { motto: cleanMotd },
+      data: { motto: modMotd },
     });
 
     const io = getIO();
     if (io) {
-      io.to(`club:${clubId}`).emit(SOCKET_EVENTS.CLUB_MOTD_UPDATE, { clubId, motd: cleanMotd });
+      io.to(`club:${clubId}`).emit(SOCKET_EVENTS.CLUB_MOTD_UPDATE, { clubId, motd: modMotd });
     }
 
     return updated;
+  }
+
+  /**
+   * Disbands a club (owner only) and cascade deletes club memberships and clubhouse room
+   */
+  static async disbandClub(ownerId: string, clubId: string) {
+    const club = await prisma.club.findUnique({ where: { id: clubId } });
+    if (!club) throw new Error('Club not found');
+    if (club.ownerId !== ownerId) throw new Error('Only the club Owner can disband the club');
+
+    return await prisma.$transaction(async (tx) => {
+      // Delete club members explicitly to clean up references
+      await tx.clubMember.deleteMany({ where: { clubId } });
+      const deleted = await tx.club.delete({ where: { id: clubId } });
+      if (club.roomId) {
+        await tx.room.delete({ where: { id: club.roomId } }).catch(() => null);
+      }
+      return deleted;
+    });
   }
 }
 
