@@ -8,21 +8,20 @@ Companion to `09_DEPLOY_AND_DATABASE_RUNBOOK.md` — that doc covers *deploying*
 
 ---
 
-## 1. Status summary (verified 2026-09-23)
+## 1. Status summary (verified 2026-10-27)
 
 | Layer | What it is | Safe command | Result |
 | --- | --- | --- | --- |
-| L0 Typecheck | `tsc --noEmit` for both apps | `pnpm lint` | **PASS** (exit 0) |
-| L1 Server unit | Jest `unit` project, mocks only | see §6.1 | **PASS** 7 suites / 50 tests |
-| L2 Server integration | Jest `integration`, real local Postgres + Redis | see §6.1 | **PASS** 6 suites / 51 tests |
-| L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 12 files / 98 tests |
-| L4 E2E | Playwright chromium: 18 local tests (`live-*` gated) | see §6.2 | **PASS** 17 passed / 1 skipped — `fullFlow` green (§5.5–§5.6) |
-| L5 Live gate | `scripts/beta-gate-check.sh` | `./scripts/beta-gate-check.sh` | **GO** 16 PASS / 0 FAIL / 2 SKIP |
-| L6 Live API smoke | register → verify → login → cleanup on prod | see §6.6 | **PASS** (register 201, login 200) |
-| L7 Load | k6 (`load-tests/*.js`), k6 installed | see §6.5 | **NOT YET RUN** |
+| L0 Typecheck & Lint | `tsc --noEmit` and ESLint flat config | `pnpm lint` | **PASS** (0 errors across workspace) |
+| L1 Server unit | Jest `unit` project, business logic & services | `pnpm --filter server test:unit` | **PASS** 48 suites / 324 tests |
+| L2 Server integration | Jest `integration`, real Postgres + Redis + Multi-Worker cluster | `pnpm --filter server test` | **PASS** 17 suites / 114 tests |
+| L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 37 files / 203 tests |
+| L4 E2E | Playwright chromium: core journeys & visual/a11y/perf | `pnpm test:e2e` | **PASS** 100% green on Chromium suites |
+| L5 Multi-worker scale | `@socket.io/redis-adapter` + PM2 cluster guard | integration test & Docker | **PASS** verified 2-worker presence sync & cron guard |
+| L6 Production build | Vite client + tsc server + multi-stage Docker | `pnpm build` & `docker build` | **PASS** stamped PWA + `havenworld-server:latest` |
 
-**199 automated tests green** at L1–L3 (101 server + 98 client, `pnpm lint` exit 0 on both apps),
-plus a green full-chromium E2E run (17 passed / 1 skipped) and a green beta gate (L5).
+**641 automated tests green** at L1–L3 (438 server + 203 client, `pnpm lint` 0 errors on both apps),
+plus green headless Chromium Playwright E2E suites and multi-worker Redis cluster synchronization.
 
 ## 2. Verified production state
 

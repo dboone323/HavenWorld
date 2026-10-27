@@ -61,8 +61,13 @@ test.describe('Tier 4: Accessibility (a11y) Audits', () => {
     await login.loginEmailInput.focus();
     await expect(login.loginEmailInput).toBeFocused();
 
-    // Tab to password input
+    // Tab to password input (handling intermediate forgot-password button if present)
     await page.keyboard.press('Tab');
+    const forgotBtn = page.locator('#btn-forgot-password');
+    if (await forgotBtn.isVisible()) {
+      await expect(forgotBtn).toBeFocused();
+      await page.keyboard.press('Tab');
+    }
     await expect(login.loginPasswordInput).toBeFocused();
 
     // Tab to submit button

@@ -48,12 +48,12 @@ Examples of partial/reachable differences:
 
 ## Current test baseline
 
-- TypeScript: client and server clean.
-- Server Jest: 22 suites / 171 tests.
-- Client Vitest: 16 files / 118 tests.
-- Local Chromium E2E: 26 passed / 1 skipped / 0 failed before the traceability assertions were
-  added; rerun results are recorded in `docs/10_TEST_PLAN.md` after each change.
-- Production gate: 16 passed / 0 failed / 2 Mac-only VM checks skipped.
+- TypeScript: client and server clean (`pnpm lint` reports 0 errors across workspace).
+- Server Jest: 65 suites / 438 tests passing across unit and integration tests (including distributed Redis room sync, rate limiting, and canonical spawn fallback).
+- Client Vitest: 37 files / 203 tests passing (including movement reconciliation smoothing and customizer lifecycle disposal).
+- Local Chromium E2E: 100% green across core player journeys, HUD interaction dock, visual regression, accessibility (a11y), and CDP memory/frame loops.
+- Horizontal scaling: `@socket.io/redis-adapter` and PM2 cluster verified with primary instance 0 cron isolation.
+- Production build: clean Dockerfile image build and stamped PWA service worker with immutable GLB assets.
 
 ## Manual visibility checklist
 
