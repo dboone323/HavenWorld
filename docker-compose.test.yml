@@ -1,0 +1,38 @@
+# =============================================================================
+# HavenWorld — Test Infrastructure (Docker Compose)
+# =============================================================================
+# Spins up isolated PostgreSQL + Redis for running the Jest test suite.
+# Usage:
+#   docker-compose -f docker-compose.test.yml up -d   # start services
+#   cd apps/server && npx prisma db push              # create test schema
+#   pnpm --filter server test                        # run server tests
+#   docker-compose -f docker-compose.test.yml down   # stop services
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: havenworld-test-postgres
+    environment:
+      POSTGRES_DB: havenworld_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: havenworld_test_password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d havenworld_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: havenworld-test-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
