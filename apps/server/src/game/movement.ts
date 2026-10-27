@@ -41,17 +41,29 @@ export class MovementValidator {
 
   public static validateMovement(
     playerId: string,
-    requested: Position3D
+    requested: Position3D,
+    canonicalSpawn: Position3D = { x: 0, y: 0, z: 0 }
   ): MovementValidationResult {
     const now = Date.now();
     const state = this.playerStates.get(playerId);
 
     if (!state) {
-      this.initializePlayer(playerId, requested);
+      // Missing or uninitialized state: snap to canonical room spawn rather than accepting arbitrary client coordinates
+      const spawnPos: Position3D = {
+        x: canonicalSpawn.x ?? 0,
+        y: canonicalSpawn.y ?? 0,
+        z: canonicalSpawn.z ?? 0,
+      };
+      this.initializePlayer(playerId, spawnPos);
+      const createdState = this.playerStates.get(playerId);
+      if (createdState) {
+        createdState.violations = 1;
+      }
       return {
-        valid: true,
-        correctedPosition: requested,
-        violations: 0,
+        valid: false,
+        correctedPosition: spawnPos,
+        violations: 1,
+        reason: 'UNINITIALIZED_STATE_RESET_TO_CANONICAL_SPAWN',
       };
     }
 

@@ -308,7 +308,7 @@ export class GalleryPanel {
         body: JSON.stringify({
           imageUrl: dataUrl,
           caption: caption.trim() || 'Haven Snapshot',
-          roomName: (window as any).__havenRoomId || 'Haven Park',
+          roomName: window.__havenRoomId || 'Haven Park',
         }),
       });
 

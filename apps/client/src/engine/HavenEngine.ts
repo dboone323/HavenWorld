@@ -158,25 +158,26 @@ export class HavenEngine {
   // ── Performance Quality & DPR Scaling ──────────────────────────────────────
   public setQuality(quality: PerformanceQuality): void {
     this._quality = quality;
+    const baseDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     switch (quality) {
       case 'HIGH':
         this._targetFps = 60;
-        this._customDprScale = 2.0;
+        this._customDprScale = Math.min(baseDpr, 2.0);
         this.setLODThresholds(20, 45);
         break;
       case 'MEDIUM':
         this._targetFps = 60;
-        this._customDprScale = 1.25;
+        this._customDprScale = Math.min(baseDpr, 1.25);
         this.setLODThresholds(15, 30);
         break;
       case 'LOW':
         this._targetFps = 30;
-        this._customDprScale = 1.0;
+        this._customDprScale = Math.min(baseDpr, 1.0);
         this.setLODThresholds(10, 20);
         break;
       case 'BATTERY_SAVER':
         this._targetFps = 30;
-        this._customDprScale = 0.75;
+        this._customDprScale = Math.min(baseDpr, 0.75);
         this.setLODThresholds(8, 15);
         break;
     }

@@ -720,7 +720,7 @@ export class AvatarController {
 
       // Confirm final position to server
       const roomId =
-        (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+        (typeof window !== 'undefined' && window.__havenRoomId) ||
         this.roomId;
       socketService.emit('player:move', {
         roomId,
@@ -776,7 +776,7 @@ export class AvatarController {
     if (this.moveEmitTimer >= 100) {
       this.moveEmitTimer = 0;
       const roomId =
-        (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+        (typeof window !== 'undefined' && window.__havenRoomId) ||
         this.roomId;
       socketService.emit('player:move', {
         roomId,

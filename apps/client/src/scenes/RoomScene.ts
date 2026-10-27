@@ -37,6 +37,7 @@ import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService, type SocketStatusDetail } from '../services/socket';
 import { authService } from '../services/auth';
 import { API_URL, SERVER_URL, assetUrl } from '../config';
+import type { HavenMeshMetadata } from '../vite-env';
 import { DailyLoginModal } from '../ui/DailyLoginModal';
 import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
 import { showToast, clearToasts } from '../ui/ToastNotification';
@@ -777,7 +778,7 @@ export async function createRoomScene(
   const pointerObserver = scene.onPointerObservable.add((pointerInfo) => {
     const handleAvatarInteraction = (mesh: any, clientX: number, clientY: number) => {
       if (!mesh) return false;
-      const meta = mesh.metadata || mesh.parent?.metadata;
+      const meta = (mesh.metadata || mesh.parent?.metadata) as HavenMeshMetadata | undefined;
       if (meta?.isRemoteAvatar && meta?.userId && meta?.username) {
         AvatarContextMenu.show({
           x: clientX,
@@ -803,7 +804,7 @@ export async function createRoomScene(
 
     // Right-click on meshes (POINTERDOWN with right button or POINTERTAP)
     if (pointerInfo.type === PointerEventTypes.POINTERDOWN && pointerInfo.event.button === 2) {
-      const pick = scene.pick(scene.pointerX, scene.pointerY);
+      const pick = scene.pick(scene.pointerX, scene.pointerY, (mesh) => mesh.isPickable && mesh.isVisible);
       if (pick?.hit && pick.pickedMesh) {
         handleAvatarInteraction(pick.pickedMesh, pointerInfo.event.clientX, pointerInfo.event.clientY);
       }
@@ -945,13 +946,17 @@ export async function createRoomScene(
       if (!pid) return;
       if (pid === user.id) {
         if (typeof pos.seq === 'number' && avatarController.rootMesh) {
-          const res = avatarController.reconciliation.reconcile(pos.seq, {
-            x: pos.x,
-            y: pos.z ?? 0,
-          });
-          if (res.reconciled) {
-            avatarController.rootMesh.position.x = res.correctedPosition.x;
-            avatarController.rootMesh.position.z = res.correctedPosition.y;
+          // While the avatar is actively following waypoints, avoid snapping back to intermediate ticks.
+          // Reconcile on destination arrival or apply damped smoothing if drift occurs.
+          if (!avatarController.isMoving) {
+            const res = avatarController.reconciliation.reconcile(pos.seq, {
+              x: pos.x,
+              y: pos.z ?? 0,
+            }, 0.25);
+            if (res.reconciled) {
+              avatarController.rootMesh.position.x = res.correctedPosition.x;
+              avatarController.rootMesh.position.z = res.correctedPosition.y;
+            }
           }
         }
         return;
@@ -1355,11 +1360,11 @@ export async function createRoomScene(
     AvatarContextMenu.dismiss();
     document.getElementById('room-info-pill')?.classList.add('hidden');
     document.getElementById('room-controls-card')?.classList.add('hidden');
-    (window as any).__havenRoomReady = false;
+    window.__havenRoomReady = false;
   });
 
   // Sync room header & controls at the exact instant the 3D scene is ready and activated
   syncRoomHeaderUI();
-  (window as any).__havenRoomReady = true;
+  window.__havenRoomReady = true;
   return scene;
 }

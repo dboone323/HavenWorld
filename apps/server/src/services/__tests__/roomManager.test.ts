@@ -195,6 +195,154 @@ describe('RoomManager', () => {
       expect(updated?.y).toBe(400);
     });
   });
+
+  describe('Distributed Multi-Worker Cluster Sync (Redis Sets & Presence Hashes)', () => {
+    const redisRoomId = 'cluster-sync-room';
+    const presenceUserId = `user-pres-${Date.now()}`;
+    const presenceSocketId = `sock-pres-${Date.now()}`;
+
+    beforeAll(async () => {
+      const { redis, connectRedis } = await import('../../redis');
+      if (!redis.isOpen) {
+        await connectRedis();
+      }
+    });
+
+    afterAll(async () => {
+      const { redis } = await import('../../redis');
+      if (redis.isOpen) {
+        await redis.del(`room:${redisRoomId}:occupants`);
+        await redis.del(`user:${presenceUserId}:presence`);
+        await redis.del('room:cluster-shard-test:occupants');
+        await redis.del('room:cluster-shard-test#2:occupants');
+        for (let i = 1; i <= 5; i++) {
+          const key = i === 1 ? 'room:cluster-full-test:occupants' : `room:cluster-full-test#${i}:occupants`;
+          await redis.del(key);
+        }
+      }
+    });
+
+    it('queries cluster occupant count across workers using Redis sCard with local fallback', async () => {
+      const { redis } = await import('../../redis');
+      const clusterRoomKey = `room:${redisRoomId}:occupants`;
+
+      if (redis.isOpen) {
+        await redis.del(clusterRoomKey);
+        // Simulate 3 occupants registered on other worker instances
+        await redis.sAdd(clusterRoomKey, ['remote_user_1', 'remote_user_2', 'remote_user_3']);
+
+        const count = await rm.getClusterOccupantCount(redisRoomId);
+        expect(count).toBe(3);
+
+        // Also test synchronous getOccupantCount caches the count
+        expect(rm.getOccupantCount(redisRoomId)).toBe(3);
+
+        await redis.del(clusterRoomKey);
+      }
+
+      // Local fallback test
+      const localRoomId = 'local-offline-test';
+      const p1: PlayerState = { id: 'u_loc_1', username: 'P1', x: 0, y: 0, z: 0, rotY: 0, direction: 'down', isMoving: false, avatar: defaultTestAvatar };
+      const p2: PlayerState = { id: 'u_loc_2', username: 'P2', x: 0, y: 0, z: 0, rotY: 0, direction: 'down', isMoving: false, avatar: defaultTestAvatar };
+      rm.joinRoom(localRoomId, 'sock_loc_1', p1);
+      rm.joinRoom(localRoomId, 'sock_loc_2', p2);
+
+      const localCount = await rm.getClusterOccupantCount(localRoomId);
+      expect(localCount).toBe(2);
+      expect(rm.getOccupantCount(localRoomId)).toBe(2);
+    });
+
+    it('resolves target room instance asynchronously using cluster-wide occupancy before sharding or queueing', async () => {
+      const { redis } = await import('../../redis');
+      const baseRoom = 'cluster-shard-test';
+      rm.setRoomCapacityLimits(baseRoom, { softCap: 2, hardCap: 4 });
+
+      if (redis.isOpen) {
+        await redis.del(`room:${baseRoom}:occupants`);
+        await redis.del(`room:${baseRoom}#2:occupants`);
+        // Populate base room with 2 remote occupants (hitting softCap)
+        await redis.sAdd(`room:${baseRoom}:occupants`, ['remote_p1', 'remote_p2']);
+
+        // Standard user exceeds softCap -> routed to shard 2
+        const stdRes = await rm.resolveTargetRoomInstanceAsync(baseRoom, 'std_player_1', false);
+        expect(stdRes.canEnter).toBe(true);
+        expect(stdRes.targetRoomId).toBe(`${baseRoom}#2`);
+        expect(stdRes.shardIndex).toBe(2);
+
+        // VIP user has allowance up to hardCap (4) -> enters base room directly
+        const vipRes = await rm.resolveTargetRoomInstanceAsync(baseRoom, 'vip_player_1', true);
+        expect(vipRes.canEnter).toBe(true);
+        expect(vipRes.targetRoomId).toBe(baseRoom);
+        expect(vipRes.shardIndex).toBe(1);
+
+        // Fill all shards 1 through 5 to capacity
+        const fullRoom = 'cluster-full-test';
+        rm.setRoomCapacityLimits(fullRoom, { softCap: 2, hardCap: 2 });
+        for (let i = 1; i <= 5; i++) {
+          const shardKey = i === 1 ? `room:${fullRoom}:occupants` : `room:${fullRoom}#${i}:occupants`;
+          await redis.del(shardKey);
+          await redis.sAdd(shardKey, [`worker_p_${i}_a`, `worker_p_${i}_b`]);
+        }
+
+        const overflowRes = await rm.resolveTargetRoomInstanceAsync(fullRoom, 'overflow_player', false, 5);
+        expect(overflowRes.canEnter).toBe(false);
+        expect(overflowRes.queuePosition).toBe(1);
+        expect(overflowRes.targetRoomId).toBe(fullRoom);
+      }
+    });
+
+    it('creates presence hash with 120s TTL on join, refreshes on move, and cleans up on leave', async () => {
+      const { redis } = await import('../../redis');
+      if (!redis.isOpen) return;
+
+      const player: PlayerState = {
+        id: presenceUserId,
+        username: 'PresenceTester',
+        x: 25,
+        y: 35,
+        z: 0,
+        rotY: 0,
+        direction: 'down',
+        isMoving: false,
+        avatar: defaultTestAvatar,
+      };
+
+      rm.joinRoom(redisRoomId, presenceSocketId, player);
+
+      // Wait a moment for fire-and-forget Redis promises to settle
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      const presenceKey = `user:${presenceUserId}:presence`;
+      const presence = await redis.hGetAll(presenceKey);
+
+      expect(presence.roomId).toBe(redisRoomId);
+      expect(presence.socketId).toBe(presenceSocketId);
+      expect(presence.instanceId).toBe(process.env.INSTANCE_ID || '0');
+      expect(Number(presence.lastSeen)).toBeGreaterThan(0);
+
+      const ttlInitial = await redis.ttl(presenceKey);
+      expect(ttlInitial).toBeGreaterThan(0);
+      expect(ttlInitial).toBeLessThanOrEqual(120);
+
+      // Move player and verify TTL refresh
+      rm.movePlayer(presenceSocketId, 30, 40, 'right', true);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      const ttlAfterMove = await redis.ttl(presenceKey);
+      expect(ttlAfterMove).toBeGreaterThan(0);
+      expect(ttlAfterMove).toBeLessThanOrEqual(120);
+
+      // Leave room and verify cleanup
+      rm.leaveRoom(presenceSocketId);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      const exists = await redis.exists(presenceKey);
+      expect(exists).toBe(0);
+
+      const occupants = await redis.sIsMember(`room:${redisRoomId}:occupants`, presenceUserId);
+      expect(Boolean(occupants)).toBe(false);
+    });
+  });
 });
 
 describe('PrivacyManager Loft Decorator RBAC permissions', () => {

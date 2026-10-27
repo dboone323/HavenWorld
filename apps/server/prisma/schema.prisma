@@ -185,6 +185,8 @@ model User {
   // Track 4.6 Marketplace
   marketplaceListings MarketplaceListing[] @relation("MarketplaceSeller")
 
+  @@index([status])
+  @@index([role])
   @@map("users")
 }
 
@@ -291,6 +293,8 @@ model Room {
   isTutorial       Boolean         @default(false)
   isSolo           Boolean         @default(false)
 
+  @@index([ownerId])
+  @@index([isPublic, isActive])
   @@map("rooms")
 }
 
@@ -312,6 +316,7 @@ model RoomFurniture {
   layer     Int      @default(0)
   placedAt  DateTime @default(now())
 
+  @@index([roomId])
   @@map("room_furniture")
 }
 
@@ -340,6 +345,7 @@ model Friend {
   updatedAt   DateTime     @updatedAt
 
   @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
   @@map("friends")
 }
 

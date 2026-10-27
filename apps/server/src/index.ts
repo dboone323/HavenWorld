@@ -206,62 +206,75 @@ async function start() {
     PetManager.init();
 
     // ── Scheduled Cron Jobs ───────────────────────────────────────────────────
-    // Weekly fishing leaderboard reset: Monday 00:00 UTC (Part 6 §1)
-    cron.schedule('0 0 * * 1', () => {
-      FishingService.resetWeeklyLeaderboard().catch((err) =>
-        console.error('[Cron] Weekly leaderboard reset failed:', err)
-      );
-    });
+    // In multi-worker clusters, scheduled tasks must execute only on worker instance 0
+    // to prevent duplicate executions, race conditions, and accelerated decay sweeps.
+    const isPrimaryWorker =
+      (!process.env.INSTANCE_ID || process.env.INSTANCE_ID === '0') &&
+      (!process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0');
 
-    // Hourly pet happiness & hunger decay
-    cron.schedule('0 * * * *', () => {
-      PetManager.decayAllPets().catch((err) =>
-        console.error('[Cron] Pet decay sweep failed:', err)
-      );
-    });
+    if (isPrimaryWorker) {
+      // Weekly fishing leaderboard reset: Monday 00:00 UTC (Part 6 §1)
+      cron.schedule('0 0 * * 1', () => {
+        FishingService.resetWeeklyLeaderboard().catch((err) =>
+          console.error('[Cron] Weekly leaderboard reset failed:', err)
+        );
+      });
 
-    // Flash sale check: every 30 minutes
-    cron.schedule('*/30 * * * *', () => {
-      ShopService.processFlashSales().catch((err) =>
-        console.error('[Cron] Flash sale sweep failed:', err)
-      );
-    });
+      // Hourly pet happiness & hunger decay
+      cron.schedule('0 * * * *', () => {
+        PetManager.decayAllPets().catch((err) =>
+          console.error('[Cron] Pet decay sweep failed:', err)
+        );
+      });
 
-    // Workshop crafting queue completion announcements: every 5 minutes
-    cron.schedule('*/5 * * * *', () => {
-      WorkshopService.processCompletedCrafts().catch((err) =>
-        console.error('[Cron] Crafting completion sweep failed:', err)
-      );
-    });
+      // Flash sale check: every 30 minutes
+      cron.schedule('*/30 * * * *', () => {
+        ShopService.processFlashSales().catch((err) =>
+          console.error('[Cron] Flash sale sweep failed:', err)
+        );
+      });
 
-    // Seasonal event finalization + 1:1 currency conversion: daily at 00:05 UTC,
-    // which closes events the moment their end date has passed (Part 6 §12).
-    cron.schedule('5 0 * * *', () => {
-      SeasonalEventService.convertExpiredEvents().catch((err) =>
-        console.error('[Cron] Seasonal finalization failed:', err)
-      );
-    });
+      // Workshop crafting queue completion announcements: every 5 minutes
+      cron.schedule('*/5 * * * *', () => {
+        WorkshopService.processCompletedCrafts().catch((err) =>
+          console.error('[Cron] Crafting completion sweep failed:', err)
+        );
+      });
 
-    // Phase 3B — Delayed mail parcel delivery sweep: every minute. Arrived
-    // parcels are credited by the service; recipients get a live toast.
-    cron.schedule('* * * * *', async () => {
-      try {
-        const arrived = await DelayedMailService.processArrivedMail();
-        for (const parcel of arrived) {
-          io.to(`user:${parcel.recipientId}`).emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
+      // Seasonal event finalization + 1:1 currency conversion: daily at 00:05 UTC,
+      // which closes events the moment their end date has passed (Part 6 §12).
+      cron.schedule('5 0 * * *', () => {
+        SeasonalEventService.convertExpiredEvents().catch((err) =>
+          console.error('[Cron] Seasonal finalization failed:', err)
+        );
+      });
+
+      // Phase 3B — Delayed mail parcel delivery sweep: every minute. Arrived
+      // parcels are credited by the service; recipients get a live toast.
+      cron.schedule('* * * * *', async () => {
+        try {
+          const arrived = await DelayedMailService.processArrivedMail();
+          for (const parcel of arrived) {
+            io.to(`user:${parcel.recipientId}`).emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
+          }
+        } catch (err) {
+          console.error('[Cron] Parcel delivery sweep failed:', err);
         }
-      } catch (err) {
-        console.error('[Cron] Parcel delivery sweep failed:', err);
-      }
-    });
+      });
 
-    // Phase 3B — Ambient world weather drift: every 20 minutes the plaza
-    // atmosphere shifts on its own, so the world feels alive without admin input.
-    cron.schedule('*/20 * * * *', () => {
-      const weathers = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'] as const;
-      const pick = weathers[Math.floor(Math.random() * weathers.length)];
-      WeatherService.setWeather(pick, 0.3 + Math.random() * 0.5);
-    });
+      // Phase 3B — Ambient world weather drift: every 20 minutes the plaza
+      // atmosphere shifts on its own, so the world feels alive without admin input.
+      cron.schedule('*/20 * * * *', () => {
+        const weathers = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'] as const;
+        const pick = weathers[Math.floor(Math.random() * weathers.length)];
+        WeatherService.setWeather(pick, 0.3 + Math.random() * 0.5);
+      });
+      console.log('[Cron] Scheduled tasks registered on primary worker (instance 0)');
+    } else {
+      console.log(
+        `[Cron] Secondary worker (instance ${process.env.INSTANCE_ID ?? process.env.NODE_APP_INSTANCE}) skipping scheduled tasks`
+      );
+    }
 
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] HavenWorld listening on port ${PORT}`);

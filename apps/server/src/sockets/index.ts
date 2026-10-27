@@ -106,15 +106,19 @@ function getErrorMessage(err: unknown, fallback: string): string {
 // Move rate limiter (separate from chat — higher frequency, synchronized to Redis when available)
 const moveRateLimiter = new Map<string, { count: number; resetAt: number }>();
 
-export function checkMoveRateLimit(socketId: string): boolean {
+export function checkMoveRateLimit(identifier: string, userId?: string): boolean {
+  const userKey = userId || identifier;
   const now = Date.now();
-  const rec = moveRateLimiter.get(socketId) ?? { count: 0, resetAt: now + 1000 };
+  const rec = moveRateLimiter.get(userKey) ?? { count: 0, resetAt: now + 1000 };
   if (now > rec.resetAt) {
     rec.count = 0;
     rec.resetAt = now + 1000;
   }
   rec.count += 1;
-  moveRateLimiter.set(socketId, rec);
+  moveRateLimiter.set(userKey, rec);
+  if (userKey !== identifier) {
+    moveRateLimiter.set(identifier, rec);
+  }
 
   // Fast-path in-memory bound
   if (rec.count > 20) {
@@ -123,15 +127,55 @@ export function checkMoveRateLimit(socketId: string): boolean {
 
   // Multi-worker distributed rate sync across cluster instances
   if (redis.isOpen) {
-    const key = `ratelimit:move:${socketId}`;
+    const key = `ratelimit:move:${userKey}`;
     redis.incr(key).then((val) => {
       if (val === 1) {
         redis.expire(key, 1).catch(() => {});
+      } else if (val > 20) {
+        // Synchronize cross-worker burst throttling back to local memory bucket
+        rec.count = Math.max(rec.count, val);
       }
     }).catch(() => {});
   }
 
   return true; // max 20 position updates per second
+}
+
+export async function checkMoveRateLimitAsync(identifier: string, userId?: string): Promise<boolean> {
+  const userKey = userId || identifier;
+  const now = Date.now();
+  const rec = moveRateLimiter.get(userKey) ?? { count: 0, resetAt: now + 1000 };
+  if (now > rec.resetAt) {
+    rec.count = 0;
+    rec.resetAt = now + 1000;
+  }
+  rec.count += 1;
+  moveRateLimiter.set(userKey, rec);
+  if (userKey !== identifier) {
+    moveRateLimiter.set(identifier, rec);
+  }
+
+  if (rec.count > 20) {
+    return false;
+  }
+
+  if (redis.isOpen) {
+    try {
+      const key = `ratelimit:move:${userKey}`;
+      const val = await redis.incr(key);
+      if (val === 1) {
+        await redis.expire(key, 1);
+      }
+      if (val > 20) {
+        rec.count = Math.max(rec.count, val);
+        return false;
+      }
+    } catch {
+      // Clean fallback to in-memory check
+    }
+  }
+
+  return true;
 }
 
 let ioInstance: Server | null = null;
@@ -472,18 +516,23 @@ export function registerSocketHandlers(io: Server): void {
         if (!parsed.success) return; // silently drop malformed move packets
         const data = parsed.data;
         // Rate limit: max 20 position updates per second
-        if (!checkMoveRateLimit(socket.id)) return;
+        if (!checkMoveRateLimit(socket.id, userId)) return;
 
         // Verify socket is actually in the claimed room
         const currentRoom = roomManager.getPlayerRoom(socket.id);
         if (currentRoom !== data.roomId) return;
 
         // Server-authoritative movement validation & speed-hack detection
-        const moveCheck = MovementValidator.validateMovement(userId, {
-          x: data.x,
-          y: data.y,
-          z: data.z,
-        });
+        const canonicalSpawn = data.roomId === 'room-park' ? { x: 0, y: 0, z: 3.5 } : { x: 0, y: 0, z: 0 };
+        const moveCheck = MovementValidator.validateMovement(
+          userId,
+          {
+            x: data.x,
+            y: data.y,
+            z: data.z,
+          },
+          canonicalSpawn
+        );
 
         if (!moveCheck.valid) {
           captureSecurityEvent('SPEED_HACK_DETECTED', {
@@ -1575,8 +1624,11 @@ export function registerSocketHandlers(io: Server): void {
 
       clearRateLimitEntry(socket.id);
       moveRateLimiter.delete(socket.id);
+      if (userId) {
+        moveRateLimiter.delete(userId);
+      }
       if (redis.isOpen) {
-        redis.del(`ratelimit:move:${socket.id}`).catch(() => {});
+        redis.del(`ratelimit:move:${userId || socket.id}`).catch(() => {});
       }
       MovementValidator.removePlayer(userId);
       SocketRateLimiter.cleanup(socket.id);

@@ -216,16 +216,16 @@ export class FurnitureManager {
   removeItem(id: string): void {
     const item = this.placed.get(id);
     if (item) {
-      item.mesh.dispose();
+      item.mesh.dispose(false, true);
       this.placed.delete(id);
     }
   }
 
   // ─── Clear Room ───────────────────────────────────────────────────────────
   clear(): void {
-    this.placed.forEach((pf) => pf.mesh.dispose());
+    this.placed.forEach((pf) => pf.mesh.dispose(false, true));
     this.placed.clear();
-    this.templateCache.forEach((t) => t.dispose());
+    this.templateCache.forEach((t) => t.dispose(false, true));
     this.templateCache.clear();
   }
 

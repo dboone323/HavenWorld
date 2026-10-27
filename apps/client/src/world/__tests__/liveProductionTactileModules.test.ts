@@ -79,7 +79,7 @@ describe('Real Functional Validations: Modules A–E Tactile & Visual Systems', 
 
       const furnitureManager = new FurnitureManager(scene, 'user-1');
       // Mock window global as game does
-      (window as any).__havenFurnitureManager = {
+      window.__havenFurnitureManager = {
         pickFurniture: () => ({
           id: 'furn-1',
           itemId: 'furn_oak_table',
@@ -94,7 +94,7 @@ describe('Real Functional Validations: Modules A–E Tactile & Visual Systems', 
 
       input.dispose();
       avatar.dispose();
-      delete (window as any).__havenFurnitureManager;
+      delete window.__havenFurnitureManager;
     });
   });
 

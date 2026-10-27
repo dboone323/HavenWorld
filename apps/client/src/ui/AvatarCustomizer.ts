@@ -221,8 +221,22 @@ export class AvatarCustomizer {
   }
 
   close(): void {
-    this.overlay?.remove();
-    this.overlay = null;
+    if (this.overlay) {
+      this.overlay.remove();
+      this.overlay = null;
+    }
+    this.previewLayers = {};
+  }
+
+  dispose(): void {
+    this.close();
+    if (typeof document !== 'undefined') {
+      const existing = document.getElementById('avatar-customizer');
+      if (existing) {
+        existing.remove();
+      }
+    }
+    this.previewLayers = {};
   }
 
   private buildOverlay(): HTMLElement {

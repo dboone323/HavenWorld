@@ -93,8 +93,8 @@ export class InputController {
           pick = this._scene.pick(this._scene.pointerX, this._scene.pointerY);
         }
         const canvas = this._scene.getEngine().getRenderingCanvas();
-        const furnitureManager = (typeof window !== 'undefined' && (window as any).__havenFurnitureManager) || null;
-        const placed = pick && pick.hit ? furnitureManager?.pickFurniture(pick) : null;
+        const furnitureManager = (typeof window !== 'undefined' && window.__havenFurnitureManager) || null;
+        const placed = pick && pick.hit ? furnitureManager?.pickFurniture?.(pick) : null;
         const isHoveringFurniture = Boolean(placed);
 
         if (canvas) {
@@ -150,8 +150,8 @@ export class InputController {
         }
 
         // Check if clicking placed furniture or seat mesh
-        const furnitureManager = (typeof window !== 'undefined' && (window as any).__havenFurnitureManager) || null;
-        const placed = furnitureManager?.pickFurniture(pick);
+        const furnitureManager = (typeof window !== 'undefined' && window.__havenFurnitureManager) || null;
+        const placed = pick && pick.hit ? furnitureManager?.pickFurniture?.(pick) : null;
         const itemId = (placed?.itemId || '').toLowerCase();
         const meshName = (mesh.name || '').toLowerCase();
 
