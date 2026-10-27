@@ -5,17 +5,19 @@ module.exports = {
       script: 'dist/index.js',
       cwd: '/opt/havenworld/apps/server',
       /**
-       * Zero-downtime deploys (Part 9A §4.2).
+       * Zero-downtime deploys & Multi-Worker Scaling (Part 9A §4.2).
        *
-       * `PM2_INSTANCES` defaults to 1 because the Socket.io Rust/Redis *adapter*
-       * is not wired yet: with more than one worker, players in the same room can
-       * land on different workers and stop seeing each other's movement/chat.
-       * Set PM2_INSTANCES=2 (and add the Redis adapter + the nginx ip_hash
-       * upstream) on a VM with spare vCPUs — `pm2 reload` then rolls workers one
-       * at a time and no connection is dropped.
+       * With @socket.io/redis-adapter active and Redis running (e.g., via Docker or systemd),
+       * cross-worker room broadcasts, player movement, and chat seamlessly replicate across nodes.
+       *
+       * Multi-worker clustering configuration:
+       * - Set `instances: process.env.PM2_INSTANCES ? parseInt(process.env.PM2_INSTANCES, 10) : 1` (or 'max' / 2+)
+       * - Set `exec_mode: process.env.PM2_INSTANCES && parseInt(process.env.PM2_INSTANCES, 10) > 1 ? 'cluster' : 'fork'`
+       * - Nginx upstream must use `ip_hash;` or sticky sessions (`cookie srv_id;`) for HTTP long-polling handshake fallback.
+       * - `pm2 reload havenworld-server` performs rolling zero-downtime reloads without dropping player connections.
        */
-      instances: 1,
-      exec_mode: 'fork',
+      instances: process.env.PM2_INSTANCES ? parseInt(process.env.PM2_INSTANCES, 10) : 1,
+      exec_mode: process.env.PM2_INSTANCES && parseInt(process.env.PM2_INSTANCES, 10) > 1 ? 'cluster' : 'fork',
       instance_var: 'INSTANCE_ID',
       autorestart: true,
       watch: false,

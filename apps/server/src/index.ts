@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import { connectRedis, redis } from './redis';
@@ -93,6 +94,33 @@ const io = new Server(httpServer, {
   pingInterval: 10000,
 });
 
+/**
+ * Wires the @socket.io/redis-adapter using duplicated pub/sub Redis clients
+ * for horizontal multi-worker scaling across processes or nodes.
+ * Falls back gracefully to the default in-memory adapter if Redis is unavailable.
+ */
+async function initSocketRedisAdapter(ioServer: Server): Promise<boolean> {
+  if (process.env.DISABLE_REDIS === 'true') {
+    return false;
+  }
+  try {
+    if (!redis.isOpen) {
+      await connectRedis();
+    }
+    if (redis.isOpen) {
+      const pubClient = redis.duplicate();
+      const subClient = redis.duplicate();
+      await Promise.all([pubClient.connect(), subClient.connect()]);
+      ioServer.adapter(createAdapter(pubClient, subClient));
+      console.log('[Socket.io] Redis adapter wired successfully for multi-worker scaling');
+      return true;
+    }
+  } catch (err) {
+    console.warn('[Socket.io] Failed to wire Redis adapter; using default in-memory adapter:', err);
+  }
+  return false;
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 // UptimeRobot and GitHub Actions health checks hit this endpoint
 app.get('/health', async (_req, res) => {
@@ -166,6 +194,7 @@ const PORT = SERVER_CONFIG.port;
 async function start() {
   try {
     await connectRedis();
+    await initSocketRedisAdapter(io);
     await prisma.$connect();
     console.log('[DB] PostgreSQL connected');
 
@@ -319,4 +348,4 @@ if (shouldAutoStart) {
   start();
 }
 
-export { app, httpServer, io };
+export { app, httpServer, io, initSocketRedisAdapter };

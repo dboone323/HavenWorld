@@ -42,12 +42,11 @@ import { MinigameService } from '../services/MinigameService';
 import { WorkshopService } from '../services/WorkshopService';
 import { ClubService } from '../services/ClubService';
 import { QuestService } from '../services/QuestService';
-import { AchievementService } from '../services/AchievementService';
 import { ALLOWED_ORIGINS, isAllowedOrigin } from '../middleware/security';
 import { attachIdleTimeout } from './idleTimeout';
 import { SocketRateLimiter } from './rateLimiter';
 import { MovementValidator } from '../game/movement';
-import { captureSecurityEvent } from '../monitoring/sentry';
+import { captureSecurityEvent, captureException } from '../monitoring/sentry';
 import { WeatherService } from '../services/WeatherService';
 import { JukeboxService } from '../services/JukeboxService';
 import { RandomizerService } from '../services/RandomizerService';
@@ -100,10 +99,14 @@ async function socketAuthMiddleware(socket: Socket, next: (err?: Error) => void)
   }
 }
 
-// Move rate limiter (separate from chat — higher frequency)
+function getErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+// Move rate limiter (separate from chat — higher frequency, synchronized to Redis when available)
 const moveRateLimiter = new Map<string, { count: number; resetAt: number }>();
 
-function checkMoveRateLimit(socketId: string): boolean {
+export function checkMoveRateLimit(socketId: string): boolean {
   const now = Date.now();
   const rec = moveRateLimiter.get(socketId) ?? { count: 0, resetAt: now + 1000 };
   if (now > rec.resetAt) {
@@ -112,7 +115,23 @@ function checkMoveRateLimit(socketId: string): boolean {
   }
   rec.count += 1;
   moveRateLimiter.set(socketId, rec);
-  return rec.count <= 20; // max 20 position updates per second
+
+  // Fast-path in-memory bound
+  if (rec.count > 20) {
+    return false;
+  }
+
+  // Multi-worker distributed rate sync across cluster instances
+  if (redis.isOpen) {
+    const key = `ratelimit:move:${socketId}`;
+    redis.incr(key).then((val) => {
+      if (val === 1) {
+        redis.expire(key, 1).catch(() => {});
+      }
+    }).catch(() => {});
+  }
+
+  return true; // max 20 position updates per second
 }
 
 let ioInstance: Server | null = null;
@@ -437,7 +456,7 @@ export function registerSocketHandlers(io: Server): void {
           });
         }
       } catch (err) {
-        console.error('[Socket] auth:join error:', err);
+        captureException(err);
         socket.emit(SOCKET_EVENTS.AUTH_ERROR, {
           code: 'SERVER_ERROR',
           message: 'Failed to join room.',
@@ -661,7 +680,7 @@ export function registerSocketHandlers(io: Server): void {
               socket.emit(SOCKET_EVENTS.SECRET_ROOM_DISCOVERED, { ...secret, roomId });
             }
           })
-          .catch((err) => console.error('[Socket] Secret trigger check failed:', err));
+          .catch((err) => captureException(err));
 
         // Asynchronously persist to database for audit log without blocking event loop
         prisma.chatMessage.create({
@@ -673,7 +692,7 @@ export function registerSocketHandlers(io: Server): void {
             isFiltered: wasFiltered,
           },
         }).catch((err) => {
-          console.error('[Socket] Failed to persist chat message to DB:', err);
+          captureException(err);
         });
       }
     );
@@ -769,7 +788,7 @@ export function registerSocketHandlers(io: Server): void {
         io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.DM_RECEIVE, dmPayload);
         io.to(`user:${userId}`).emit(SOCKET_EVENTS.DM_RECEIVE, dmPayload);
       } catch (err) {
-        console.error('[Socket] DM send error:', err);
+        captureException(err);
         socket.emit(SOCKET_EVENTS.DM_ERROR, { code: 'SERVER_ERROR', message: 'Failed to send message.' });
       }
     });
@@ -788,7 +807,7 @@ export function registerSocketHandlers(io: Server): void {
           data: { read: true },
         });
       } catch (err) {
-        console.error('[Socket] DM read error:', err);
+        captureException(err);
       }
     });
 
@@ -901,7 +920,7 @@ export function registerSocketHandlers(io: Server): void {
             });
           }
         } catch (err) {
-          console.error('[Socket] avatar:update error:', err);
+          captureException(err);
         }
       }
     );
@@ -938,9 +957,9 @@ export function registerSocketHandlers(io: Server): void {
             action: 'place',
             item: created,
           });
-        } catch (err: any) {
-          console.error('[Socket] furniture:place error:', err);
-          socket.emit('error', { message: err?.message || 'Failed to place furniture' });
+        } catch (err) {
+          captureException(err);
+          socket.emit('error', { message: getErrorMessage(err, 'Failed to place furniture') });
         }
       }
     );
@@ -964,9 +983,9 @@ export function registerSocketHandlers(io: Server): void {
             furnitureId,
             itemId: removed.itemId,
           });
-        } catch (err: any) {
-          console.error('[Socket] furniture:remove error:', err);
-          socket.emit('error', { message: err?.message || 'Failed to remove furniture' });
+        } catch (err) {
+          captureException(err);
+          socket.emit('error', { message: getErrorMessage(err, 'Failed to remove furniture') });
         }
       }
     );
@@ -994,8 +1013,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PrivacyManager.ringDoorbell(userId, parsed.data.roomId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Doorbell error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Doorbell error') });
       }
     });
 
@@ -1004,8 +1023,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PrivacyManager.decideDoorbell(userId, parsed.data.visitorId, parsed.data.roomId, parsed.data.admit);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Doorbell decision error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Doorbell decision error') });
       }
     });
 
@@ -1014,8 +1033,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PrivacyManager.setRoomPrivacy(userId, parsed.data.roomId, parsed.data.mode, parsed.data.password, parsed.data.awayMessage);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Privacy error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Privacy error') });
       }
     });
 
@@ -1024,8 +1043,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PrivacyManager.grantDecorator(userId, parsed.data.roomId, parsed.data.targetUserId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Decorator grant error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Decorator grant error') });
       }
     });
 
@@ -1034,8 +1053,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PrivacyManager.revokeDecorator(userId, parsed.data.roomId, parsed.data.targetUserId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Decorator revoke error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Decorator revoke error') });
       }
     });
 
@@ -1045,8 +1064,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await GuestbookService.signBook(parsed.data.roomId, userId, parsed.data.message);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Guestbook error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Guestbook error') });
       }
     });
 
@@ -1055,8 +1074,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit(SOCKET_EVENTS.TIP_ERROR, { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await GuestbookService.tipOwner(userId, parsed.data.roomId, parsed.data.amount);
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.TIP_ERROR, { message: err?.message || 'Tip error' });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.TIP_ERROR, { message: getErrorMessage(err, 'Tip error') });
       }
     });
 
@@ -1066,8 +1085,8 @@ export function registerSocketHandlers(io: Server): void {
       try {
         const pageData = await GuestbookService.getPage(parsed.data.roomId, parsed.data.page);
         socket.emit(SOCKET_EVENTS.GUESTBOOK_PAGE, pageData);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Failed to load guestbook' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Failed to load guestbook') });
       }
     });
 
@@ -1076,8 +1095,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await GuestbookService.deleteEntry(parsed.data.entryId, userId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Delete error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Delete error') });
       }
     });
 
@@ -1087,8 +1106,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         TradeManager.requestTrade(userId, parsed.data.targetUserId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Trade request error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Trade request error') });
       }
     });
 
@@ -1130,8 +1149,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PetManager.adoptPet(userId, parsed.data.petType, parsed.data.name);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Pet adoption error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Pet adoption error') });
       }
     });
 
@@ -1140,8 +1159,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PetManager.namePet(userId, parsed.data.petId, parsed.data.name);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Pet rename error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Pet rename error') });
       }
     });
 
@@ -1150,8 +1169,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await PetManager.feedPet(userId, parsed.data.petId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Pet feeding error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Pet feeding error') });
       }
     });
 
@@ -1168,8 +1187,8 @@ export function registerSocketHandlers(io: Server): void {
       try {
         const result = await MinigameService.submitPizzaOrder(userId, parsed.data);
         socket.emit(SOCKET_EVENTS.PIZZA_ORDER_RESULT, result);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Pizza submission error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Pizza submission error') });
       }
     });
 
@@ -1179,8 +1198,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await WorkshopService.recycleItem(userId, parsed.data.inventoryItemId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Recycling error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Recycling error') });
       }
     });
 
@@ -1189,8 +1208,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await WorkshopService.startCraft(userId, parsed.data.recipeId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Crafting start error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Crafting start error') });
       }
     });
 
@@ -1199,8 +1218,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await WorkshopService.claimCraft(userId, parsed.data.craftingQueueId);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Claim craft error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Claim craft error') });
       }
     });
 
@@ -1223,8 +1242,8 @@ export function registerSocketHandlers(io: Server): void {
         });
 
         await QuestService.incrementProgress(userId, 'CHANGE_MOOD', 1);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Mood change error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Mood change error') });
       }
     });
 
@@ -1266,8 +1285,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!parsed.success) { socket.emit('error', { code: 'INVALID_PAYLOAD' }); return; }
       try {
         await ClubService.sendClubMessage(userId, parsed.data.clubId, parsed.data.content);
-      } catch (err: any) {
-        socket.emit('error', { message: err?.message || 'Club message error' });
+      } catch (err) {
+        socket.emit('error', { message: getErrorMessage(err, 'Club message error') });
       }
     });
 
@@ -1291,8 +1310,8 @@ export function registerSocketHandlers(io: Server): void {
       }
       try {
         JukeboxService.playTrack(parsed.data.roomId, parsed.data.trackId);
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'JUKEBOX_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'JUKEBOX_ERROR', message: getErrorMessage(err, 'Jukebox error') });
       }
     });
 
@@ -1310,8 +1329,8 @@ export function registerSocketHandlers(io: Server): void {
       if (!currentRoom) return;
       try {
         await RandomizerService.rollDice(userId, currentRoom, parsed.data.sides);
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ROLL_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ROLL_ERROR', message: getErrorMessage(err, 'Dice roll error') });
       }
     });
 
@@ -1353,8 +1372,8 @@ export function registerSocketHandlers(io: Server): void {
           quantity: result.quantity,
           cooldownSeconds: result.cooldownSeconds,
         });
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'GATHER_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'GATHER_ERROR', message: getErrorMessage(err, 'Gather error') });
       }
     });
 
@@ -1384,8 +1403,8 @@ export function registerSocketHandlers(io: Server): void {
         for (const roomId of arcadeBroadcastRooms(match)) {
           io.to(roomId).emit(SOCKET_EVENTS.ARCADE_STATE, match);
         }
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: getErrorMessage(err, 'Arcade error') });
       }
     });
 
@@ -1412,15 +1431,15 @@ export function registerSocketHandlers(io: Server): void {
             for (const roomId of rooms) {
               io.to(roomId).emit(SOCKET_EVENTS.ARCADE_RESULT, settlement);
             }
-          } catch (err: any) {
+          } catch (err) {
             // A settlement failure must not cost the winner their coins: queue it
             // so the sweep retries, instead of dropping it on the floor.
             ArcadeService.queueSettlementRetry(match.id);
-            console.error('[Arcade] Match settlement failed, queued for retry:', err);
+            captureException(err);
           }
         }
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'ARCADE_ERROR', message: getErrorMessage(err, 'Arcade error') });
       }
     });
 
@@ -1436,8 +1455,8 @@ export function registerSocketHandlers(io: Server): void {
           userId, parsed.data.roomId, parsed.data.itemId, parsed.data.priceCoins
         );
         io.to(parsed.data.roomId).emit(SOCKET_EVENTS.LOFT_SHOP_LISTING, listing);
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'SHOP_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'SHOP_ERROR', message: getErrorMessage(err, 'Shop error') });
       }
     });
 
@@ -1447,8 +1466,8 @@ export function registerSocketHandlers(io: Server): void {
       try {
         const receipt = await LoftShopService.purchaseFromRegister(userId, parsed.data.listingId);
         socket.emit(SOCKET_EVENTS.LOFT_SHOP_RESULT, receipt);
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'SHOP_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'SHOP_ERROR', message: getErrorMessage(err, 'Shop error') });
       }
     });
 
@@ -1468,8 +1487,8 @@ export function registerSocketHandlers(io: Server): void {
           parsed.data.delayMinutes
         );
         socket.emit(SOCKET_EVENTS.PARCEL_SENT, parcel);
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'MAIL_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'MAIL_ERROR', message: getErrorMessage(err, 'Mail error') });
       }
     });
 
@@ -1493,8 +1512,8 @@ export function registerSocketHandlers(io: Server): void {
             node: NpcDialogueService.getDialogue(parsed.data.npcId, parsed.data.nodeId),
           });
         }
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'NPC_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'NPC_ERROR', message: getErrorMessage(err, 'NPC dialogue error') });
       }
     });
 
@@ -1503,8 +1522,8 @@ export function registerSocketHandlers(io: Server): void {
       try {
         const emotes = await EmoteProgressionService.getPlayerEmotes(userId);
         socket.emit(SOCKET_EVENTS.EMOTE_STATE, { emotes });
-      } catch (err: any) {
-        socket.emit(SOCKET_EVENTS.ERROR, { code: 'EMOTE_ERROR', message: err?.message });
+      } catch (err) {
+        socket.emit(SOCKET_EVENTS.ERROR, { code: 'EMOTE_ERROR', message: getErrorMessage(err, 'Emote error') });
       }
     });
 
@@ -1556,6 +1575,9 @@ export function registerSocketHandlers(io: Server): void {
 
       clearRateLimitEntry(socket.id);
       moveRateLimiter.delete(socket.id);
+      if (redis.isOpen) {
+        redis.del(`ratelimit:move:${socket.id}`).catch(() => {});
+      }
       MovementValidator.removePlayer(userId);
       SocketRateLimiter.cleanup(socket.id);
     });

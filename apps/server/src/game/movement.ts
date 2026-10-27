@@ -44,7 +44,7 @@ export class MovementValidator {
     requested: Position3D
   ): MovementValidationResult {
     const now = Date.now();
-    let state = this.playerStates.get(playerId);
+    const state = this.playerStates.get(playerId);
 
     if (!state) {
       this.initializePlayer(playerId, requested);
