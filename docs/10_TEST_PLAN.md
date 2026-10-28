@@ -8,20 +8,20 @@ Companion to `09_DEPLOY_AND_DATABASE_RUNBOOK.md` — that doc covers *deploying*
 
 ---
 
-## 1. Status summary (verified 2026-10-27)
+## 1. Status summary (verified 2026-10-28)
 
 | Layer | What it is | Safe command | Result |
 | --- | --- | --- | --- |
 | L0 Typecheck & Lint | `tsc --noEmit` and ESLint flat config | `pnpm lint` | **PASS** (0 errors across workspace) |
-| L1 Server unit | Jest `unit` project, business logic & services | `pnpm --filter server test:unit` | **PASS** 52 suites / 337 tests |
+| L1 Server unit | Jest `unit` project, business logic & services | `pnpm --filter server test:unit` | **PASS** 52 suites / 338 tests |
 | L2 Server integration | Jest `integration`, real Postgres + Redis + Multi-Worker cluster | `pnpm --filter server test` | **PASS** 17 suites / 114 tests |
-| L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 37 files / 203 tests |
+| L3 Client unit | Vitest + jsdom + Babylon `NullEngine` | `pnpm --filter client test` | **PASS** 37 files / 204 tests |
 | L4 E2E | Playwright chromium: core journeys & visual/a11y/perf | `pnpm test:e2e` | **PASS** 100% green on Chromium suites |
 | L5 Multi-worker scale | `@socket.io/redis-adapter` + PM2 cluster guard | integration test & Docker | **PASS** verified 2-worker presence sync & cron guard |
 | L6 Production build | Vite client + tsc server + multi-stage Docker | `pnpm build` & `docker build` | **PASS** stamped PWA + `havenworld-server:latest` |
 | L7 Concurrency load gate | k6 load tests (`load-tests/*.js`) | `k6 run load-tests/*.js` | **PASS** (ws-concurrent p95 0s, fishing idempotency 100%, auth 0 errors) |
 
-**654 automated tests green** at L1–L3 (451 server + 203 client, `pnpm lint` 0 errors on both apps),
+**656 automated tests green** at L1–L3 (452 server + 204 client, `pnpm lint` 0 errors on both apps),
 plus green headless Chromium Playwright E2E suites, multi-worker Redis cluster synchronization, and k6 concurrency load gates.
 
 ## 2. Verified production state
@@ -448,23 +448,20 @@ account (or a fresh invite-code account).
 
 | # | Criterion | Current |
 | --- | --- | --- |
-| 1 | L0–L3 green (typecheck + 654 automated unit/integration tests) | ✅ met 2026-10-27 (451 server + 203 client) |
-| 2 | `beta-gate-check.sh` reports GO | ✅ met 2026-10-27 (19 pass / 0 fail / 1 skip) |
+| 1 | L0–L3 green (typecheck + 656 automated unit/integration tests) | ✅ met 2026-10-28 (452 server + 204 client) |
+| 2 | `beta-gate-check.sh` reports GO | ✅ met 2026-10-28 (19 pass / 0 fail / 1 skip) |
 | 3 | Local Chromium E2E including strengthened feature traceability passes | ✅ 100% green on Chromium suites |
 | 4 | Manual checklist §7 A–I passes with no blockers | ⛔ not yet completed end-to-end |
 | 5 | No P1/P2 defects open from the manual pass | ⛔ |
-| 6 | Invite codes minted and the wall re-armed (`ALPHA_INVITE_ONLY=true`) | ✅ production re-armed 2026-09-24 |
-| 7 | Password reset path exists (email provider or admin reset) | ⛔ gap §9.1 |
+| 6 | Invite codes minted and the wall re-armed (`ALPHA_INVITE_ONLY=true`) | ✅ verified with `mint-invite-codes.ts` & production gate |
+| 7 | Password reset path exists (email provider or admin reset) | ✅ implemented (`/api/auth/change-password`, `/forgot-password`, `/reset-password`) |
 
 Recommended order: seed a couple of alpha accounts → run §6.2 local E2E → run §7 → fix what it
 finds → mint invites → flip the gate.
 
 ## 9. Known gaps & risks (priority order)
 
-1. **No password reset or change route exists**, and no email provider is configured. With
-   `RESEND_API_KEY` unset there is no recovery path at all — if the single admin account's password is
-   lost, access is lost. Add `POST /api/auth/change-password` (authenticated) plus a token reset once
-   Resend is live (already listed in runbook §8).
+1. ~~**No password reset or change route exists**~~ — **resolved 2026-10-28**: Implemented and verified `POST /api/auth/change-password` (authenticated token revocation), `POST /api/auth/forgot-password` (Redis 1h TTL token), and `POST /api/auth/reset-password` (single-use consumption and full refresh session revocation).
 2. ~~§3 L1 / L2 landmines~~ — **resolved 2026-09-23** (§3): `push-schema` is local-only, Playwright
    passes `apps/server/.env.test` explicitly, and `testRoutes` + a startup guard require a `*_test`
    database.

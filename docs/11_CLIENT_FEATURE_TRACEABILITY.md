@@ -49,10 +49,11 @@ Examples of partial/reachable differences:
 ## Current test baseline
 
 - TypeScript: client and server clean (`pnpm lint` reports 0 errors across workspace).
-- Server Jest: 69 suites / 451 tests passing across unit and integration tests (including dedicated suites for QuestService, SeasonalEventService, ClubService, and InviteCodeManager).
-- Client Vitest: 37 files / 203 tests passing (including movement reconciliation smoothing and customizer lifecycle disposal).
+- Server Jest: 69 suites / 452 tests passing across unit and integration tests (including dedicated suites for QuestService, SeasonalEventService, ClubService, InviteCodeManager, and Movement bounds).
+- Client Vitest: 37 files / 204 tests passing (including movement reconciliation smoothing, customizer lifecycle disposal, and spatial audio math).
 - Local Chromium E2E: 100% green across core player journeys, HUD interaction dock, visual regression, accessibility (a11y), and CDP memory/frame loops.
-- Horizontal scaling & Load gate: `@socket.io/redis-adapter` and PM2 cluster verified; k6 concurrency suites executed for WebSocket throughput, fishing idempotency, and auth stability.
+- Horizontal scaling & Load gate: `@socket.io/redis-adapter` and PM2 cluster verified; k6 concurrency suites executed for WebSocket throughput (p95 0s latency), fishing idempotency (100% duplicate protection), and auth rate limiting.
+- Password recovery lifecycle: fully verified for `change-password` (token revocation), `forgot-password` (Redis 1h token), and `reset-password` (session invalidation).
 - Beta gate check: 19 PASS / 0 FAIL / 1 SKIP (`./scripts/beta-gate-check.sh` reports GO).
 - Production build: clean Dockerfile image build and stamped PWA service worker with immutable GLB assets.
 
