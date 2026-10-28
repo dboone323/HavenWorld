@@ -12,6 +12,7 @@ import { DatabaseHealthTelemetryService } from '../services/DatabaseHealthTeleme
 import { ServerApmClusterService } from '../services/ServerApmClusterService';
 import { roomManager } from '../services/RoomManager';
 import { traceSpan } from '../monitoring/sentry';
+import { logger } from '../monitoring/logger';
 import { prisma } from '../prisma';
 
 const router = Router();
@@ -170,7 +171,7 @@ router.post('/users/:id/mute', async (req: AuthRequest, res) => {
     data: { status: 'MUTED', mutedUntil },
   });
 
-  console.log(`[Admin] ${req.user!.username} muted user ${id} for ${parsed.data.hours}h`);
+  logger.info(`[Admin] ${req.user!.username} muted user ${id} for ${parsed.data.hours}h`);
   return res.json({
     message: `User muted for ${parsed.data.hours} hours.`,
     mutedUntil,
@@ -193,7 +194,7 @@ router.post('/users/:id/ban', requireRole(['ADMIN']), async (req: AuthRequest, r
   await prisma.refreshToken.deleteMany({ where: { userId: id } });
 
   await logAdminAction(req.user!.userId, 'BAN_USER', id, undefined, req.ip);
-  console.log(`[Admin] ${req.user!.username} banned user ${id}`);
+  logger.info(`[Admin] ${req.user!.username} banned user ${id}`);
   return res.json({ message: 'User has been banned and sessions revoked.' });
 });
 
@@ -206,7 +207,7 @@ router.post('/users/:id/unban', requireRole(['ADMIN']), async (req: AuthRequest,
   });
 
   await logAdminAction(req.user!.userId, 'UNBAN_USER', id, undefined, req.ip);
-  console.log(`[Admin] ${req.user!.username} restored user ${id}`);
+  logger.info(`[Admin] ${req.user!.username} restored user ${id}`);
   return res.json({ message: 'User account restored to active.' });
 });
 
@@ -339,13 +340,14 @@ router.get('/stats', requireRole(['ADMIN']), async (_req, res) => {
 // ── Phase 3B: World Weather & Global Events (admin live ops) ────────────────────
 router.post('/weather', requireRole(['ADMIN']), async (req, res) => {
   const { weather, intensity } = req.body ?? {};
-  const valid = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'];
-  if (!valid.includes(weather)) {
+  const valid = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'] as const;
+  type WeatherType = typeof valid[number];
+  if (!valid.includes(weather as WeatherType)) {
     return res.status(400).json({ error: `weather must be one of: ${valid.join(', ')}` });
   }
   const parsedIntensity = typeof intensity === 'number' ? intensity : 0.5;
-  const state = WeatherService.setWeather(weather as any, parsedIntensity);
-  console.log(`[Admin] ${logLabel(req as AuthRequest)} set world weather to ${weather} (${state.intensity})`);
+  const state = WeatherService.setWeather(weather as WeatherType, parsedIntensity);
+  logger.info(`[Admin] ${logLabel(req as AuthRequest)} set world weather to ${weather} (${state.intensity})`);
   res.json(state);
 });
 
@@ -362,7 +364,7 @@ router.post('/global-event', requireRole(['ADMIN']), async (req, res) => {
     Number.isFinite(durationMinutes) ? Math.min(Math.max(durationMinutes, 1), 1440) : 60,
     Number.isFinite(multiplier) ? Math.min(Math.max(multiplier, 1), 5) : 1.0
   );
-  console.log(`[Admin] ${logLabel(req as AuthRequest)} triggered global event: ${event.title}`);
+  logger.info(`[Admin] ${logLabel(req as AuthRequest)} triggered global event: ${event.title}`);
   res.json(event);
 });
 
@@ -472,10 +474,11 @@ router.get('/database-health', async (_req, res) => {
     try {
       const report = await DatabaseHealthTelemetryService.getTelemetryReport();
       return res.json(report);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Database health telemetry failed';
       return res.status(500).json({
         status: 'DOWN',
-        error: err?.message || 'Database health telemetry failed',
+        error: message,
       });
     }
   });
@@ -487,10 +490,11 @@ router.get('/cluster-apm', async (_req, res) => {
     try {
       const snapshot = await ServerApmClusterService.getClusterApmSnapshot();
       return res.json(snapshot);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Cluster APM snapshot failed';
       return res.status(500).json({
         status: 'UNHEALTHY',
-        error: err?.message || 'Cluster APM snapshot failed',
+        error: message,
       });
     }
   });

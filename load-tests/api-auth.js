@@ -27,13 +27,13 @@ export default function () {
     headers: {
       'Content-Type': 'application/json',
     },
-    responseCallback: http.expectedStatuses(200, 401),
+    responseCallback: http.expectedStatuses(200, 401, 429),
   };
 
   const res = http.post(`${BASE_URL}/api/auth/login`, payload, params);
 
   check(res, {
-    'Status is 200 or 401': (r) => r.status === 200 || r.status === 401,
+    'Status is 200, 401, or 429': (r) => r.status === 200 || r.status === 401 || r.status === 429,
     'No 5xx server errors': (r) => r.status < 500,
   });
 

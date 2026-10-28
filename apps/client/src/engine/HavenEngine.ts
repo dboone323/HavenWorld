@@ -1,6 +1,7 @@
 import { Engine, Scene } from '@babylonjs/core';
 import { socketService } from '../services/socket';
 import { authService } from '../services/auth';
+import { debugLog } from '../utils/debugLog';
 
 export type PerformanceQuality = 'HIGH' | 'MEDIUM' | 'LOW' | 'BATTERY_SAVER';
 export type AvatarLOD = 'FULL' | 'REDUCED' | 'CULLED';
@@ -65,13 +66,13 @@ export class HavenEngine {
     // a "graphics paused" overlay on loss and hides it on restore. Babylon
     // recreates GL resources automatically unless doNotHandleContextLost is set.
     this._engine.onContextLostObservable.add(() => {
-      console.warn('[HavenEngine] WebGL context lost — rendering paused.');
+      debugLog.warn('[HavenEngine] WebGL context lost — rendering paused.');
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('haven:webgl-context-lost'));
       }
     });
     this._engine.onContextRestoredObservable.add(() => {
-      console.info('[HavenEngine] WebGL context restored — rendering resumed.');
+      debugLog.info('[HavenEngine] WebGL context restored — rendering resumed.');
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('haven:webgl-context-restored'));
       }
@@ -98,7 +99,7 @@ export class HavenEngine {
       document.addEventListener('visibilitychange', this._onVisibilityChange);
     }
 
-    console.log(`[HavenEngine] Babylon.js ${Engine.Version} initialized.`);
+    debugLog.log(`[HavenEngine] Babylon.js ${Engine.Version} initialized.`);
   }
 
   /** Singleton accessor. Call HavenEngine.getInstance() to get or create. */
@@ -122,9 +123,9 @@ export class HavenEngine {
     try {
       await import('@babylonjs/inspector');
       this._inspectorLoaded = true;
-      console.log('[HavenEngine] Inspector loaded. Press Ctrl+I (or Cmd+I) to toggle.');
+      debugLog.log('[HavenEngine] Inspector loaded. Press Ctrl+I (or Cmd+I) to toggle.');
     } catch (err) {
-      console.warn('[HavenEngine] Inspector could not be loaded:', err);
+      debugLog.warn('[HavenEngine] Inspector could not be loaded:', err);
     }
   }
 
@@ -158,25 +159,26 @@ export class HavenEngine {
   // ── Performance Quality & DPR Scaling ──────────────────────────────────────
   public setQuality(quality: PerformanceQuality): void {
     this._quality = quality;
+    const baseDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     switch (quality) {
       case 'HIGH':
         this._targetFps = 60;
-        this._customDprScale = 2.0;
+        this._customDprScale = Math.min(baseDpr, 2.0);
         this.setLODThresholds(20, 45);
         break;
       case 'MEDIUM':
         this._targetFps = 60;
-        this._customDprScale = 1.25;
+        this._customDprScale = Math.min(baseDpr, 1.25);
         this.setLODThresholds(15, 30);
         break;
       case 'LOW':
         this._targetFps = 30;
-        this._customDprScale = 1.0;
+        this._customDprScale = Math.min(baseDpr, 1.0);
         this.setLODThresholds(10, 20);
         break;
       case 'BATTERY_SAVER':
         this._targetFps = 30;
-        this._customDprScale = 0.75;
+        this._customDprScale = Math.min(baseDpr, 0.75);
         this.setLODThresholds(8, 15);
         break;
     }
@@ -244,7 +246,7 @@ export class HavenEngine {
         this._updateHardwareScaling();
         // Foreground resume: Check WebSocket connectivity and dispatch resume event
         if (!socketService.connected && authService.isLoggedIn) {
-          console.info('[HavenEngine] Resuming from background: Reconnecting socket...');
+          debugLog.info('[HavenEngine] Resuming from background: Reconnecting socket...');
           socketService.connect();
         }
         if (typeof window !== 'undefined') {
@@ -271,6 +273,6 @@ export class HavenEngine {
     this._activeScene?.dispose();
     this._engine.dispose();
     HavenEngine._instance = null;
-    console.log('[HavenEngine] Disposed.');
+    debugLog.log('[HavenEngine] Disposed.');
   }
 }

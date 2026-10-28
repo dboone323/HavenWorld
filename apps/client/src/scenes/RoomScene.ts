@@ -11,6 +11,7 @@ import {
   PointerEventTypes,
   ParticleSystem,
   DynamicTexture,
+  Tags,
 } from '@babylonjs/core';
 import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
@@ -37,6 +38,7 @@ import { ChatOverlay } from '../ui/ChatOverlay';
 import { socketService, type SocketStatusDetail } from '../services/socket';
 import { authService } from '../services/auth';
 import { API_URL, SERVER_URL, assetUrl } from '../config';
+import type { HavenMeshMetadata } from '../vite-env';
 import { DailyLoginModal } from '../ui/DailyLoginModal';
 import { LoftSettingsPanel } from '../ui/LoftSettingsPanel';
 import { showToast, clearToasts } from '../ui/ToastNotification';
@@ -229,10 +231,31 @@ export async function createRoomScene(
     }
   }
 
-  // Setup shadow receivers
+  // Setup shadow receivers and disable raycast picking on non-interactive architectural elements
   for (const m of roomMeshes) {
-    if (m.metadata?.walkable || m.name === 'placeholder_ground' || m.name.startsWith('Walkable_')) {
+    if (m.metadata?.walkable || m.name === 'placeholder_ground' || m.name.startsWith('Walkable_') || m.name === 'Floor') {
       m.receiveShadows = true;
+      m.isPickable = true;
+    } else if (
+      !m.metadata?.interactable &&
+      !Tags.MatchesQuery(m, 'door_exit') &&
+      !Tags.MatchesQuery(m, 'interactable') &&
+      !m.name.startsWith('door_') &&
+      !m.name.startsWith('Walkable_')
+    ) {
+      const lower = m.name.toLowerCase();
+      if (
+        lower.includes('wall') ||
+        lower.includes('ceiling') ||
+        lower.includes('lip_') ||
+        lower.includes('base_') ||
+        lower.includes('frame') ||
+        lower.includes('trim') ||
+        lower.includes('boundary') ||
+        lower.includes('blocker')
+      ) {
+        m.isPickable = false;
+      }
     }
   }
 
@@ -777,7 +800,7 @@ export async function createRoomScene(
   const pointerObserver = scene.onPointerObservable.add((pointerInfo) => {
     const handleAvatarInteraction = (mesh: any, clientX: number, clientY: number) => {
       if (!mesh) return false;
-      const meta = mesh.metadata || mesh.parent?.metadata;
+      const meta = (mesh.metadata || mesh.parent?.metadata) as HavenMeshMetadata | undefined;
       if (meta?.isRemoteAvatar && meta?.userId && meta?.username) {
         AvatarContextMenu.show({
           x: clientX,
@@ -803,7 +826,7 @@ export async function createRoomScene(
 
     // Right-click on meshes (POINTERDOWN with right button or POINTERTAP)
     if (pointerInfo.type === PointerEventTypes.POINTERDOWN && pointerInfo.event.button === 2) {
-      const pick = scene.pick(scene.pointerX, scene.pointerY);
+      const pick = scene.pick(scene.pointerX, scene.pointerY, (mesh) => mesh.isPickable && mesh.isVisible);
       if (pick?.hit && pick.pickedMesh) {
         handleAvatarInteraction(pick.pickedMesh, pointerInfo.event.clientX, pointerInfo.event.clientY);
       }
@@ -945,13 +968,23 @@ export async function createRoomScene(
       if (!pid) return;
       if (pid === user.id) {
         if (typeof pos.seq === 'number' && avatarController.rootMesh) {
-          const res = avatarController.reconciliation.reconcile(pos.seq, {
-            x: pos.x,
-            y: pos.z ?? 0,
-          });
-          if (res.reconciled) {
-            avatarController.rootMesh.position.x = res.correctedPosition.x;
-            avatarController.rootMesh.position.z = res.correctedPosition.y;
+          // While the avatar is actively following waypoints, avoid snapping back to intermediate ticks.
+          // Reconcile on destination arrival or apply damped smoothing if drift occurs.
+          if (!avatarController.isMoving) {
+            const res = avatarController.reconciliation.reconcile(pos.seq, {
+              x: pos.x,
+              y: pos.z ?? 0,
+            }, 0.25);
+            if (res.reconciled) {
+              avatarController.rootMesh.position.x = res.correctedPosition.x;
+              avatarController.rootMesh.position.z = res.correctedPosition.y;
+            }
+          } else {
+            avatarController.pendingServerEcho = {
+              seq: pos.seq,
+              x: pos.x,
+              z: pos.z ?? 0,
+            };
           }
         }
         return;
@@ -1355,11 +1388,11 @@ export async function createRoomScene(
     AvatarContextMenu.dismiss();
     document.getElementById('room-info-pill')?.classList.add('hidden');
     document.getElementById('room-controls-card')?.classList.add('hidden');
-    (window as any).__havenRoomReady = false;
+    window.__havenRoomReady = false;
   });
 
   // Sync room header & controls at the exact instant the 3D scene is ready and activated
   syncRoomHeaderUI();
-  (window as any).__havenRoomReady = true;
+  window.__havenRoomReady = true;
   return scene;
 }

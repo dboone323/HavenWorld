@@ -52,7 +52,7 @@ export class AudioEngine {
 
   private initContext(): void {
     if (this.ctx) return;
-    const AudioCtx = (typeof window !== 'undefined' ? (window.AudioContext || (window as any).webkitAudioContext) : null);
+    const AudioCtx = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
     if (!AudioCtx) return;
 
     this.ctx = new AudioCtx();

@@ -104,38 +104,38 @@ enum ListingStatus {
 }
 
 model User {
-  id               String       @id @default(uuid())
-  username         String       @unique
-  email            String       @unique
+  id               String     @id @default(uuid())
+  username         String     @unique
+  email            String     @unique
   passwordHash     String
-  role             Role         @default(PLAYER)
-  status           UserStatus   @default(ACTIVE)
-  emailVerified    Boolean      @default(false)
+  role             Role       @default(PLAYER)
+  status           UserStatus @default(ACTIVE)
+  emailVerified    Boolean    @default(false)
   emailVerifyToken String?
   mutedUntil       DateTime?
-  createdAt        DateTime     @default(now())
+  createdAt        DateTime   @default(now())
   lastLoginAt      DateTime?
 
   // Phase 3 Economy & Prestige
-  havenCoins       Int          @default(100)
-  havenGems        Int          @default(0)
-  isVIP            Boolean      @default(false)
-  vipSince         DateTime?
+  havenCoins Int       @default(100)
+  havenGems  Int       @default(0)
+  isVIP      Boolean   @default(false)
+  vipSince   DateTime?
 
   // Existing Relations
-  avatar           Avatar?
-  inventory        Inventory[]
-  ownedRooms       Room[]       @relation("RoomOwner")
-  placedFurniture  RoomFurniture[]
-  sentMessages     ChatMessage[]
+  avatar                 Avatar?
+  inventory              Inventory[]
+  ownedRooms             Room[]          @relation("RoomOwner")
+  placedFurniture        RoomFurniture[]
+  sentMessages           ChatMessage[]
   sentDirectMessages     DirectMessage[] @relation("DMSent")
   receivedDirectMessages DirectMessage[] @relation("DMReceived")
-  sentReports      Report[]     @relation("Reporter")
-  receivedReports  Report[]     @relation("Reported")
-  initiatedFriends Friend[]     @relation("Requester")
-  receivedFriends  Friend[]     @relation("Addressee")
-  createdInviteCodes InviteCode[] @relation("InviteCreator")
-  usedInviteCode   InviteCode?  @relation("InviteUser")
+  sentReports            Report[]        @relation("Reporter")
+  receivedReports        Report[]        @relation("Reported")
+  initiatedFriends       Friend[]        @relation("Requester")
+  receivedFriends        Friend[]        @relation("Addressee")
+  createdInviteCodes     InviteCode[]    @relation("InviteCreator")
+  usedInviteCode         InviteCode?     @relation("InviteUser")
 
   // Phase 3 Relations
   fishCatches        FishCatch[]
@@ -164,27 +164,29 @@ model User {
   photoLikes         PhotoLike[]
 
   // Part 8 Security Hardening
-  isBanned           Boolean              @default(false)
-  bannedAt           DateTime?
-  weeklyEarnings     Int                  @default(0)
-  refreshTokens      RefreshToken[]
-  adminAuditLogs     AdminAuditLog[]      @relation("AdminAuditAdmin")
-  transactionsSent   TransactionLog[]     @relation("TransactionSender")
-  transactionsReceived TransactionLog[]   @relation("TransactionReceiver")
-  loftAccesses       LoftAccess[]
+  isBanned             Boolean          @default(false)
+  bannedAt             DateTime?
+  weeklyEarnings       Int              @default(0)
+  refreshTokens        RefreshToken[]
+  adminAuditLogs       AdminAuditLog[]  @relation("AdminAuditAdmin")
+  transactionsSent     TransactionLog[] @relation("TransactionSender")
+  transactionsReceived TransactionLog[] @relation("TransactionReceiver")
+  loftAccesses         LoftAccess[]
 
   // Part 9B Onboarding (tutorial + welcome badge)
-  tutorialCompleted  Boolean              @default(false)
-  tutorialStep       Int                  @default(0)
-  welcomeBadgeAt     DateTime?
-  sessionId          String?
+  tutorialCompleted Boolean   @default(false)
+  tutorialStep      Int       @default(0)
+  welcomeBadgeAt    DateTime?
+  sessionId         String?
 
   // Part 9B Analytics
-  gameEvents         GameEvent[]
+  gameEvents GameEvent[]
 
   // Track 4.6 Marketplace
   marketplaceListings MarketplaceListing[] @relation("MarketplaceSeller")
 
+  @@index([status])
+  @@index([role])
   @@map("users")
 }
 
@@ -208,7 +210,9 @@ model Avatar {
   bodyTypeVal Float    @default(0.5)
   heightVal   Float    @default(0.5)
   buildVal    Float    @default(0.5)
-  /** 'male' | 'female' | 'unspecified' — set in the wardrobe customizer. */
+  /**
+   * 'male' | 'female' | 'unspecified' — set in the wardrobe customizer.
+   */
   gender      String   @default("unspecified")
   topColor    String   @default("#4169E1")
   bottomColor String   @default("#2E8B57")
@@ -218,19 +222,19 @@ model Avatar {
 }
 
 model Item {
-  id            String        @id @default(uuid())
-  name          String        @unique
-  description   String        @default("")
-  category      ItemCategory
-  rarity        ItemRarity    @default(COMMON)
-  isTradeable   Boolean       @default(false)
-  isDefault     Boolean       @default(false)
-  price         Int           @default(0)
-  spriteKey     String
-  assetUrl      String?
-  createdAt     DateTime      @default(now())
-  inventories   Inventory[]
-  roomFurniture RoomFurniture[]
+  id                  String               @id @default(uuid())
+  name                String               @unique
+  description         String               @default("")
+  category            ItemCategory
+  rarity              ItemRarity           @default(COMMON)
+  isTradeable         Boolean              @default(false)
+  isDefault           Boolean              @default(false)
+  price               Int                  @default(0)
+  spriteKey           String
+  assetUrl            String?
+  createdAt           DateTime             @default(now())
+  inventories         Inventory[]
+  roomFurniture       RoomFurniture[]
   marketplaceListings MarketplaceListing[]
 
   @@map("items")
@@ -251,30 +255,30 @@ model Inventory {
 }
 
 model Room {
-  id            String          @id @default(uuid())
+  id            String   @id @default(uuid())
   name          String
-  description   String          @default("")
+  description   String   @default("")
   ownerId       String?
-  owner         User?           @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  isPublic      Boolean         @default(false)
-  maxOccupants  Int             @default(50)
-  theme         String          @default("default")
-  width         Int             @default(20)
-  height        Int             @default(15)
-  backgroundKey String          @default("map-lobby")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  owner         User?    @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  isPublic      Boolean  @default(false)
+  maxOccupants  Int      @default(50)
+  theme         String   @default("default")
+  width         Int      @default(20)
+  height        Int      @default(15)
+  backgroundKey String   @default("map-lobby")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  privacy       RoomPrivacy     @default(PUBLIC)
-  passwordHash  String?
-  awayMessage   String?
-  moodPreset    String          @default("day")
-  floorTexture  String?         @default("floor-wood-oak")
-  wallTexture   String?         @default("wall-plaster-white")
+  privacy      RoomPrivacy @default(PUBLIC)
+  passwordHash String?
+  awayMessage  String?
+  moodPreset   String      @default("day")
+  floorTexture String?     @default("floor-wood-oak")
+  wallTexture  String?     @default("wall-plaster-white")
 
   // Existing Relations
-  furniture     RoomFurniture[]
-  chatMessages  ChatMessage[]
+  furniture    RoomFurniture[]
+  chatMessages ChatMessage[]
 
   // Phase 3 Relations
   decorators       RoomDecorator[]
@@ -283,35 +287,38 @@ model Room {
   club             Club?
 
   // Part 8 Security Hardening
-  accessMode       String          @default("PUBLIC")
-  isActive         Boolean         @default(true)
-  loftAccesses     LoftAccess[]
+  accessMode   String       @default("PUBLIC")
+  isActive     Boolean      @default(true)
+  loftAccesses LoftAccess[]
 
   // Part 9B Onboarding — Welcome Island solo tutorial room
-  isTutorial       Boolean         @default(false)
-  isSolo           Boolean         @default(false)
+  isTutorial Boolean @default(false)
+  isSolo     Boolean @default(false)
 
+  @@index([ownerId])
+  @@index([isPublic, isActive])
   @@map("rooms")
 }
 
 model RoomFurniture {
-  id        String   @id @default(uuid())
-  roomId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  itemId    String
-  item      Item     @relation(fields: [itemId], references: [id])
-  placedBy  String
-  placer    User     @relation(fields: [placedBy], references: [id])
-  x         Float
-  y         Float
-  z         Float    @default(0)
-  rotation  Float    @default(0)
-  scaleX    Float    @default(1)
-  scaleY    Float    @default(1)
-  scaleZ    Float    @default(1)
-  layer     Int      @default(0)
-  placedAt  DateTime @default(now())
+  id       String   @id @default(uuid())
+  roomId   String
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     Item     @relation(fields: [itemId], references: [id])
+  placedBy String
+  placer   User     @relation(fields: [placedBy], references: [id])
+  x        Float
+  y        Float
+  z        Float    @default(0)
+  rotation Float    @default(0)
+  scaleX   Float    @default(1)
+  scaleY   Float    @default(1)
+  scaleZ   Float    @default(1)
+  layer    Int      @default(0)
+  placedAt DateTime @default(now())
 
+  @@index([roomId])
   @@map("room_furniture")
 }
 
@@ -340,6 +347,7 @@ model Friend {
   updatedAt   DateTime     @updatedAt
 
   @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
   @@map("friends")
 }
 
@@ -522,16 +530,16 @@ model GiftTransaction {
 
 // §7 Pet Companions
 model Pet {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   ownerId      String
-  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   petType      PetType
-  name         String    @db.VarChar(16)
-  happiness    Int       @default(100)
-  hunger       Int       @default(100)
-  accessoryIds Json      @default("[]")
-  lastFedAt    DateTime  @default(now())
-  createdAt    DateTime  @default(now())
+  name         String   @db.VarChar(16)
+  happiness    Int      @default(100)
+  hunger       Int      @default(100)
+  accessoryIds Json     @default("[]")
+  lastFedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   @@index([ownerId])
   @@map("pets")
@@ -591,7 +599,6 @@ model ArcadeSettlementOutbox {
   @@map("arcade_settlement_outbox")
 }
 
-
 // §9 Workshop Crafting
 model MaterialInventory {
   id           String @id @default(uuid())
@@ -606,13 +613,13 @@ model MaterialInventory {
 }
 
 model CraftingQueue {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   recipeId    String
-  startedAt   DateTime @default(now())
+  startedAt   DateTime  @default(now())
   completesAt DateTime
-  claimed     Boolean  @default(false)
+  claimed     Boolean   @default(false)
   // Set by the every-5-minutes completion cron so a craft is announced exactly once.
   notifiedAt  DateTime?
 
@@ -643,14 +650,14 @@ model PassportFrame {
 
 // §12 Seasonal Events
 model SeasonalEvent {
-  id        String             @id @default(uuid())
-  name      String
-  theme     String
-  startsAt  DateTime
-  endsAt    DateTime
-  isActive  Boolean            @default(false)
-  rewards   Json
-  progress  SeasonalProgress[]
+  id       String             @id @default(uuid())
+  name     String
+  theme    String
+  startsAt DateTime
+  endsAt   DateTime
+  isActive Boolean            @default(false)
+  rewards  Json
+  progress SeasonalProgress[]
 
   @@map("seasonal_events")
 }
@@ -840,5 +847,3 @@ model MarketplaceListing {
   @@index([sellerId])
   @@map("marketplace_listings")
 }
-
-

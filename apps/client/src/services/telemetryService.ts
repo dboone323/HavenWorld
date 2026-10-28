@@ -82,7 +82,7 @@ export class TelemetryService {
       recentBreadcrumbs: this.getRecentBreadcrumbs().slice(-5),
     };
 
-    if (typeof window !== 'undefined' && (window as any).__HAVEN_DEV__) {
+    if (typeof window !== 'undefined' && window.__HAVEN_DEV__) {
       console.error('[Telemetry] Captured Error:', payload);
     }
 

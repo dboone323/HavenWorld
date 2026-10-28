@@ -1,6 +1,6 @@
 import { prisma } from '../../prisma';
-import { redis, redisClient, connectRedis, disconnectRedis } from '../../redis';
-import { createTestUser, defaultTestAvatar } from '../../../__tests__/helpers/factories';
+import { redis, redisClient, connectRedis } from '../../redis';
+import { createTestUser } from '../../../__tests__/helpers/factories';
 import { WeatherService } from '../WeatherService';
 import { NpcDialogueService } from '../NpcDialogueService';
 import { PetManager, PET_TRICKS } from '../PetManager';
@@ -8,7 +8,6 @@ import { BulletinBoardService } from '../BulletinBoardService';
 import { LoftRatingService } from '../LoftRatingService';
 import { Web3CollectibleService } from '../Web3CollectibleService';
 import { AfkDetectionService } from '../AfkDetectionService';
-import { roomManager } from '../RoomManager';
 import { InventoryService } from '../InventoryService';
 import { ShopService } from '../ShopService';
 import { DistributedLockManager } from '../DistributedLockManager';
@@ -188,6 +187,7 @@ describe('Batches 41–50 Milestone End-to-End Suite (Real Functional Validation
     await redis.set(`player:last_activity:${user.id}`, String(now - 16 * 60_000));
 
     const evalResult = await AfkDetectionService.evaluateRoom(roomId, now);
+    expect(evalResult).toBeDefined();
     // user is in an evictable state
     const status = await AfkDetectionService.getPlayerStatus(user.id, now);
     expect(status.isEvictable).toBe(true);

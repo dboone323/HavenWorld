@@ -42,7 +42,8 @@ export class MovementReconciliation {
    */
   public reconcile(
     serverAckSeq: number,
-    serverPosition: { x: number; y: number }
+    serverPosition: { x: number; y: number },
+    smoothingFactor?: number
   ): { reconciled: boolean; correctedPosition: { x: number; y: number } } {
     // Discard moves processed by the server up to serverAckSeq
     this.pendingMoves = this.pendingMoves.filter((m) => m.seq > serverAckSeq);
@@ -57,8 +58,14 @@ export class MovementReconciliation {
     const drift = Math.hypot(this.currentPosition.x - simulated.x, this.currentPosition.y - simulated.y);
 
     if (drift > this.driftEpsilon) {
-      // Snap to replay position
-      this.currentPosition = { ...simulated };
+      if (typeof smoothingFactor === 'number' && smoothingFactor > 0 && smoothingFactor < 1) {
+        // Exponential spring-damper smoothing towards simulated position
+        this.currentPosition.x += (simulated.x - this.currentPosition.x) * smoothingFactor;
+        this.currentPosition.y += (simulated.y - this.currentPosition.y) * smoothingFactor;
+      } else {
+        // Snap to replay position
+        this.currentPosition = { ...simulated };
+      }
       return { reconciled: true, correctedPosition: { ...this.currentPosition } };
     }
 

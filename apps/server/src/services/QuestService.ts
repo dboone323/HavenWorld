@@ -8,8 +8,8 @@ export class QuestService {
   /**
    * Initializes or returns daily quests for the user for the current UTC day
    */
-  static async getUserDailyQuests(userId: string) {
-    const today = new Date();
+  static async getUserDailyQuests(userId: string, date: Date = new Date()) {
+    const today = date;
     const startOfUtcDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     const dailyTemplates = getDailyQuests(today);
@@ -65,9 +65,10 @@ export class QuestService {
   static async incrementProgress(
     userId: string,
     actionType: QuestTemplate['actionType'],
-    amount = 1
+    amount = 1,
+    date: Date = new Date()
   ) {
-    const today = new Date();
+    const today = date;
     const startOfUtcDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     const dailyTemplates = getDailyQuests(today);

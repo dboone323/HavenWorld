@@ -99,11 +99,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   const sm = SceneManager.getInstance();
 
-  (window as any).__havenEngine = haven;
-  (window as any).__havenSceneManager = sm;
-  (window as any).__havenAuthService = authService;
-  (window as any).__havenSocket = socketService;
-  (window as any).__havenAvatarContextMenu = AvatarContextMenu;
+  window.__havenEngine = haven;
+  window.__havenSceneManager = sm;
+  window.__havenAuthService = authService;
+  window.__havenSocket = socketService;
+  window.__havenAvatarContextMenu = AvatarContextMenu;
 
   sm.register('login', createLoginScene);
   sm.register('lobby', createLobbyScene);
@@ -218,6 +218,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const handleLogout = () => {
     authService.logout();
     sm.switchTo('login').catch(console.error);
+    customizer?.dispose();
     customizer = null;
   };
 
@@ -248,7 +249,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('chk-room-lock')?.addEventListener('change', (e) => {
     const isLocked = (e.target as HTMLInputElement).checked;
-    const roomId = (window as any).__havenRoomId;
+    const roomId = window.__havenRoomId;
     if (roomId) {
       socketService.emit(SOCKET_EVENTS.SET_ROOM_PRIVACY, {
         roomId,

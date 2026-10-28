@@ -1,4 +1,4 @@
-import { DyeService, DYE_PALETTES } from '../DyeService';
+import { DyeService } from '../DyeService';
 import { prisma } from '../../prisma';
 import { createTestUser } from '../../../__tests__/helpers/factories';
 

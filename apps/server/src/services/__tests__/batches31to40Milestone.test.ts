@@ -158,7 +158,6 @@ describe('Batches 31–40 Milestone End-to-End Suite (Real Functional Validation
   });
 
   it('Batch 35: Spatial audio distance attenuation & panning calculation', () => {
-    const rm = new RoomManager();
     // Validate mathematical inverse-distance roll-off
     const dx = 200;
     const dy = 0;

@@ -1,4 +1,5 @@
 import type { PlayerState, ChatMessage, FurnitureState, AvatarData } from '@havenworld/shared';
+import { redis } from '../redis';
 
 export interface RoomBounds {
   minX: number;
@@ -40,6 +41,7 @@ class RoomManager {
   private roomCapacity = new Map<string, RoomCapacityLimits>();
   private waitingQueues = new Map<string, string[]>(); // baseRoomId → array of userIds
   private admittedQueueUsers = new Set<string>(); // users permitted entry from queue
+  private redisOccupantCounts = new Map<string, number>();
 
   // ── Room lifecycle ──────────────────────────────────────────────────────────
   private ensureRoom(roomId: string): RoomState {
@@ -66,6 +68,28 @@ class RoomManager {
     this.socketToRoom.set(socketId, roomId);
     this.socketToUser.set(socketId, player.id);
     this.userToSocket.set(player.id, socketId);
+
+    // Multi-worker cluster presence and room roster synchronization in Redis
+    if (redis.isOpen) {
+      const roomOccupantsKey = `room:${roomId}:occupants`;
+      const userPresenceKey = `user:${player.id}:presence`;
+      redis.sAdd(roomOccupantsKey, player.id).then(() => {
+        redis.expire(roomOccupantsKey, 3600).catch(() => {});
+        return redis.sCard(roomOccupantsKey);
+      }).then((count) => {
+        this.redisOccupantCounts.set(roomId, count);
+      }).catch(() => {});
+
+      redis.hSet(userPresenceKey, {
+        socketId,
+        roomId,
+        instanceId: process.env.INSTANCE_ID || '0',
+        lastSeen: String(Date.now()),
+        playerData: JSON.stringify(player),
+      }).then(() => {
+        redis.expire(userPresenceKey, 120).catch(() => {});
+      }).catch(() => {});
+    }
   }
 
   leaveRoom(socketId: string): { roomId: string; playerId: string } | null {
@@ -80,6 +104,22 @@ class RoomManager {
     this.socketToUser.delete(socketId);
     if (userId && this.userToSocket.get(userId) === socketId) {
       this.userToSocket.delete(userId);
+    }
+
+    // Multi-worker cluster presence cleanup in Redis
+    const targetUserId = player?.id || userId;
+    if (targetUserId && redis.isOpen) {
+      const roomOccupantsKey = `room:${roomId}:occupants`;
+      const userPresenceKey = `user:${targetUserId}:presence`;
+      redis.sRem(roomOccupantsKey, targetUserId).then(() => {
+        return redis.sCard(roomOccupantsKey);
+      }).then((count) => {
+        this.redisOccupantCounts.set(roomId, count);
+        if (count === 0 && roomId !== 'room-park') {
+          redis.del(roomOccupantsKey).catch(() => {});
+        }
+      }).catch(() => {});
+      redis.del(userPresenceKey).catch(() => {});
     }
 
     // Public community space (Haven Park) is kept alive when empty
@@ -149,6 +189,14 @@ class RoomManager {
       if (isMoving) {
         player.isSitting = false;
       }
+      // Refresh user presence TTL in Redis on move
+      if (redis.isOpen) {
+        redis.hSet(`user:${player.id}:presence`, {
+          playerData: JSON.stringify(player),
+          lastSeen: String(Date.now()),
+        }).catch(() => {});
+        redis.expire(`user:${player.id}:presence`, 120).catch(() => {});
+      }
     }
   }
 
@@ -170,6 +218,13 @@ class RoomManager {
       player.rotY = rotY;
       player.isMoving = false;
       player.isSitting = isSitting;
+      if (redis.isOpen) {
+        redis.hSet(`user:${player.id}:presence`, {
+          playerData: JSON.stringify(player),
+          lastSeen: String(Date.now()),
+        }).catch(() => {});
+        redis.expire(`user:${player.id}:presence`, 120).catch(() => {});
+      }
     }
   }
 
@@ -218,7 +273,26 @@ class RoomManager {
   }
 
   getOccupantCount(roomId: string): number {
-    return this.rooms.get(roomId)?.players.size ?? 0;
+    const local = this.rooms.get(roomId)?.players.size ?? 0;
+    const redisCount = this.redisOccupantCounts.get(roomId);
+    if (typeof redisCount === 'number') {
+      return Math.max(local, redisCount);
+    }
+    return local;
+  }
+
+  async getClusterOccupantCount(roomId: string): Promise<number> {
+    const local = this.rooms.get(roomId)?.players.size ?? 0;
+    if (redis.isOpen) {
+      try {
+        const count = await redis.sCard(`room:${roomId}:occupants`);
+        this.redisOccupantCounts.set(roomId, count);
+        return Math.max(local, count);
+      } catch {
+        return local;
+      }
+    }
+    return local;
   }
 
   getAllRoomOccupants(): Map<string, number> {
@@ -247,14 +321,66 @@ class RoomManager {
     const player = this.rooms.get(roomId)?.players.get(socketId);
     if (!player) return false;
     player.avatar = { ...player.avatar, ...avatarData };
+    if (redis.isOpen) {
+      redis.hSet(`user:${userId}:presence`, {
+        playerData: JSON.stringify(player),
+        lastSeen: String(Date.now()),
+      }).catch(() => {});
+      redis.expire(`user:${userId}:presence`, 120).catch(() => {});
+    }
     return true;
   }
-
 
   getRoomPlayers(roomId: string): PlayerState[] {
     const room = this.rooms.get(roomId);
     if (!room) return [];
     return Array.from(room.players.values());
+  }
+
+  async getClusterRoomPlayers(roomId: string): Promise<PlayerState[]> {
+    const localPlayers = this.getRoomPlayers(roomId);
+    if (!redis.isOpen) {
+      return localPlayers;
+    }
+
+    try {
+      const roomOccupantsKey = `room:${roomId}:occupants`;
+      const memberIds = await redis.sMembers(roomOccupantsKey);
+      if (!memberIds || memberIds.length === 0) {
+        return localPlayers;
+      }
+
+      const playerMap = new Map<string, PlayerState>();
+      for (const p of localPlayers) {
+        playerMap.set(p.id, p);
+      }
+
+      const missingIds = memberIds.filter((id) => !playerMap.has(id));
+      if (missingIds.length > 0) {
+        const presencePromises = missingIds.map(async (userId) => {
+          try {
+            const raw = await redis.hGet(`user:${userId}:presence`, 'playerData');
+            if (raw) {
+              return JSON.parse(raw) as PlayerState;
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        });
+
+        const remotePlayers = await Promise.all(presencePromises);
+        for (const rp of remotePlayers) {
+          if (rp && !playerMap.has(rp.id)) {
+            playerMap.set(rp.id, rp);
+          }
+        }
+      }
+
+      return Array.from(playerMap.values());
+    } catch {
+      return localPlayers;
+    }
   }
 
   leaveRoomByUserId(userId: string): { roomId: string; playerId: string } | null {
@@ -296,6 +422,11 @@ class RoomManager {
     // Iterate shards 1 to maxShards
     for (let i = 1; i <= maxShards; i++) {
       const shardId = i === 1 ? baseRoomId : `${baseRoomId}#${i}`;
+      if (redis.isOpen) {
+        redis.sCard(`room:${shardId}:occupants`).then((c) => {
+          this.redisOccupantCounts.set(shardId, c);
+        }).catch(() => {});
+      }
       const count = this.getOccupantCount(shardId);
 
       // VIPs can enter up to hardCap, standard players up to softCap
@@ -306,6 +437,32 @@ class RoomManager {
     }
 
     // All shards full -> enqueue player
+    const pos = this.enqueueWaitingPlayer(baseRoomId, userId);
+    return { targetRoomId: baseRoomId, canEnter: false, queuePosition: pos, shardIndex: 0 };
+  }
+
+  async resolveTargetRoomInstanceAsync(
+    baseRoomId: string,
+    userId: string,
+    isVip: boolean = false,
+    maxShards: number = 5
+  ): Promise<{ targetRoomId: string; canEnter: boolean; queuePosition?: number; shardIndex: number }> {
+    const limits = this.getRoomCapacityLimits(baseRoomId);
+
+    if (this.admittedQueueUsers.has(userId)) {
+      this.admittedQueueUsers.delete(userId);
+      return { targetRoomId: baseRoomId, canEnter: true, shardIndex: 1 };
+    }
+
+    for (let i = 1; i <= maxShards; i++) {
+      const shardId = i === 1 ? baseRoomId : `${baseRoomId}#${i}`;
+      const count = await this.getClusterOccupantCount(shardId);
+      const allowedCap = isVip ? limits.hardCap : limits.softCap;
+      if (count < allowedCap) {
+        return { targetRoomId: shardId, canEnter: true, shardIndex: i };
+      }
+    }
+
     const pos = this.enqueueWaitingPlayer(baseRoomId, userId);
     return { targetRoomId: baseRoomId, canEnter: false, queuePosition: pos, shardIndex: 0 };
   }

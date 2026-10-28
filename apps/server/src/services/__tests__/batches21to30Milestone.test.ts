@@ -5,7 +5,7 @@ import { FishingService } from '../FishingService';
 import { PizzaService } from '../PizzaService';
 import { CraftingService } from '../CraftingService';
 import { JukeboxService } from '../JukeboxService';
-import { ArcadeService, ARCADE_WIN_COINS } from '../ArcadeService';
+import { ArcadeService } from '../ArcadeService';
 import { TransitService } from '../TransitService';
 import { ScavengerHuntService } from '../ScavengerHuntService';
 import { DatabaseHealthTelemetryService } from '../DatabaseHealthTelemetryService';

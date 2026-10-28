@@ -30,6 +30,7 @@ export class AvatarController {
   public isPlaceholder = false;
   public chibiBillboard: ChibiBillboard | null = null;
   public reconciliation: MovementReconciliation = new MovementReconciliation({ x: 0, y: 0 });
+  public pendingServerEcho: { seq: number; x: number; z: number } | null = null;
   private pathWaypoints: BABYLON.Vector3[] = [];
   private lastMoveSeq: number = 0;
   private obstacleProvider?: () => Set<string>;
@@ -718,9 +719,23 @@ export class AvatarController {
       this.chibiBillboard?.updatePosition(this.rootMesh.position, false);
       this.crossFadeTo('idle');
 
+      // Reconcile on destination arrival if an authoritative server state was received while walking
+      if (this.pendingServerEcho) {
+        const res = this.reconciliation.reconcile(
+          this.pendingServerEcho.seq,
+          { x: this.pendingServerEcho.x, y: this.pendingServerEcho.z },
+          0.25
+        );
+        if (res.reconciled && this.rootMesh) {
+          this.rootMesh.position.x = res.correctedPosition.x;
+          this.rootMesh.position.z = res.correctedPosition.y;
+        }
+        this.pendingServerEcho = null;
+      }
+
       // Confirm final position to server
       const roomId =
-        (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+        (typeof window !== 'undefined' && window.__havenRoomId) ||
         this.roomId;
       socketService.emit('player:move', {
         roomId,
@@ -776,7 +791,7 @@ export class AvatarController {
     if (this.moveEmitTimer >= 100) {
       this.moveEmitTimer = 0;
       const roomId =
-        (typeof window !== 'undefined' && (window as unknown as Record<string, string>).__havenRoomId) ||
+        (typeof window !== 'undefined' && window.__havenRoomId) ||
         this.roomId;
       socketService.emit('player:move', {
         roomId,

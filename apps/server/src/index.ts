@@ -8,6 +8,7 @@ import morgan from 'morgan';
 import { connectRedis, redis } from './redis';
 import { prisma } from './prisma';
 import { initSentry, captureException } from './monitoring/sentry';
+import { logger } from './monitoring/logger';
 import {
   applySecurityMiddleware,
   verifyStartupSecurityAssertions,
@@ -112,11 +113,11 @@ async function initSocketRedisAdapter(ioServer: Server): Promise<boolean> {
       const subClient = redis.duplicate();
       await Promise.all([pubClient.connect(), subClient.connect()]);
       ioServer.adapter(createAdapter(pubClient, subClient));
-      console.log('[Socket.io] Redis adapter wired successfully for multi-worker scaling');
+      logger.info('[Socket.io] Redis adapter wired successfully for multi-worker scaling');
       return true;
     }
   } catch (err) {
-    console.warn('[Socket.io] Failed to wire Redis adapter; using default in-memory adapter:', err);
+    logger.warn('[Socket.io] Failed to wire Redis adapter; using default in-memory adapter:', { error: String(err) });
   }
   return false;
 }
@@ -196,7 +197,7 @@ async function start() {
     await connectRedis();
     await initSocketRedisAdapter(io);
     await prisma.$connect();
-    console.log('[DB] PostgreSQL connected');
+    logger.info('[DB] PostgreSQL connected');
 
     // §6.3: pay out anything a previous process owed but never managed to
     // credit. Runs before the port is bound, so no player can be mid-settlement.
@@ -206,81 +207,94 @@ async function start() {
     PetManager.init();
 
     // ── Scheduled Cron Jobs ───────────────────────────────────────────────────
-    // Weekly fishing leaderboard reset: Monday 00:00 UTC (Part 6 §1)
-    cron.schedule('0 0 * * 1', () => {
-      FishingService.resetWeeklyLeaderboard().catch((err) =>
-        console.error('[Cron] Weekly leaderboard reset failed:', err)
-      );
-    });
+    // In multi-worker clusters, scheduled tasks must execute only on worker instance 0
+    // to prevent duplicate executions, race conditions, and accelerated decay sweeps.
+    const isPrimaryWorker =
+      (!process.env.INSTANCE_ID || process.env.INSTANCE_ID === '0') &&
+      (!process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0');
 
-    // Hourly pet happiness & hunger decay
-    cron.schedule('0 * * * *', () => {
-      PetManager.decayAllPets().catch((err) =>
-        console.error('[Cron] Pet decay sweep failed:', err)
-      );
-    });
+    if (isPrimaryWorker) {
+      // Weekly fishing leaderboard reset: Monday 00:00 UTC (Part 6 §1)
+      cron.schedule('0 0 * * 1', () => {
+        FishingService.resetWeeklyLeaderboard().catch((err) =>
+          logger.error('[Cron] Weekly leaderboard reset failed:', err)
+        );
+      });
 
-    // Flash sale check: every 30 minutes
-    cron.schedule('*/30 * * * *', () => {
-      ShopService.processFlashSales().catch((err) =>
-        console.error('[Cron] Flash sale sweep failed:', err)
-      );
-    });
+      // Hourly pet happiness & hunger decay
+      cron.schedule('0 * * * *', () => {
+        PetManager.decayAllPets().catch((err) =>
+          logger.error('[Cron] Pet decay sweep failed:', err)
+        );
+      });
 
-    // Workshop crafting queue completion announcements: every 5 minutes
-    cron.schedule('*/5 * * * *', () => {
-      WorkshopService.processCompletedCrafts().catch((err) =>
-        console.error('[Cron] Crafting completion sweep failed:', err)
-      );
-    });
+      // Flash sale check: every 30 minutes
+      cron.schedule('*/30 * * * *', () => {
+        ShopService.processFlashSales().catch((err) =>
+          logger.error('[Cron] Flash sale sweep failed:', err)
+        );
+      });
 
-    // Seasonal event finalization + 1:1 currency conversion: daily at 00:05 UTC,
-    // which closes events the moment their end date has passed (Part 6 §12).
-    cron.schedule('5 0 * * *', () => {
-      SeasonalEventService.convertExpiredEvents().catch((err) =>
-        console.error('[Cron] Seasonal finalization failed:', err)
-      );
-    });
+      // Workshop crafting queue completion announcements: every 5 minutes
+      cron.schedule('*/5 * * * *', () => {
+        WorkshopService.processCompletedCrafts().catch((err) =>
+          logger.error('[Cron] Crafting completion sweep failed:', err)
+        );
+      });
 
-    // Phase 3B — Delayed mail parcel delivery sweep: every minute. Arrived
-    // parcels are credited by the service; recipients get a live toast.
-    cron.schedule('* * * * *', async () => {
-      try {
-        const arrived = await DelayedMailService.processArrivedMail();
-        for (const parcel of arrived) {
-          io.to(`user:${parcel.recipientId}`).emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
+      // Seasonal event finalization + 1:1 currency conversion: daily at 00:05 UTC,
+      // which closes events the moment their end date has passed (Part 6 §12).
+      cron.schedule('5 0 * * *', () => {
+        SeasonalEventService.convertExpiredEvents().catch((err) =>
+          logger.error('[Cron] Seasonal finalization failed:', err)
+        );
+      });
+
+      // Phase 3B — Delayed mail parcel delivery sweep: every minute. Arrived
+      // parcels are credited by the service; recipients get a live toast.
+      cron.schedule('* * * * *', async () => {
+        try {
+          const arrived = await DelayedMailService.processArrivedMail();
+          for (const parcel of arrived) {
+            io.to(`user:${parcel.recipientId}`).emit(SOCKET_EVENTS.PARCEL_ARRIVED, parcel);
+          }
+        } catch (err) {
+          logger.error('[Cron] Parcel delivery sweep failed:', err);
         }
-      } catch (err) {
-        console.error('[Cron] Parcel delivery sweep failed:', err);
-      }
-    });
+      });
 
-    // Phase 3B — Ambient world weather drift: every 20 minutes the plaza
-    // atmosphere shifts on its own, so the world feels alive without admin input.
-    cron.schedule('*/20 * * * *', () => {
-      const weathers = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'] as const;
-      const pick = weathers[Math.floor(Math.random() * weathers.length)];
-      WeatherService.setWeather(pick, 0.3 + Math.random() * 0.5);
-    });
+      // Phase 3B — Ambient world weather drift: every 20 minutes the plaza
+      // atmosphere shifts on its own, so the world feels alive without admin input.
+      cron.schedule('*/20 * * * *', () => {
+        const weathers = ['SUNNY', 'RAIN', 'AURORA', 'SNOW'] as const;
+        const pick = weathers[Math.floor(Math.random() * weathers.length)];
+        WeatherService.setWeather(pick, 0.3 + Math.random() * 0.5);
+      });
+      logger.info('[Cron] Scheduled tasks registered on primary worker (instance 0)');
+    } else {
+      logger.info(
+        `[Cron] Secondary worker (instance ${process.env.INSTANCE_ID ?? process.env.NODE_APP_INSTANCE}) skipping scheduled tasks`
+      );
+    }
 
     httpServer.listen(PORT, '0.0.0.0', () => {
-      console.log(`[Server] HavenWorld listening on port ${PORT}`);
-      console.log(`[Server] Environment: ${process.env.NODE_ENV}`);
-      console.log(`[Server] Client origin: ${process.env.CLIENT_URL}`);
+      logger.info(`[Server] HavenWorld listening on port ${PORT}`);
+      logger.info(`[Server] Environment: ${process.env.NODE_ENV}`);
+      logger.info(`[Server] Client origin: ${process.env.CLIENT_URL}`);
     });
   } catch (err) {
-    console.error('[Startup] Failed to start server:', err);
+    logger.error('[Startup] Failed to start server:', err);
     process.exit(1);
   }
 }
 
 // ── Graceful shutdown ────────────────────────────────────────────────────────
 async function shutdown(signal: string): Promise<void> {
-  console.log(`[Server] ${signal} received — shutting down gracefully`);
+  logger.info(`[Server] ${signal} received — shutting down gracefully`);
 
   // Never let a deploy/kill hang forever waiting on stuck sockets.
   const forceExit = setTimeout(() => {
-    console.error('[Server] Shutdown timed out after 10s — forcing exit');
+    logger.error('[Server] Shutdown timed out after 10s — forcing exit');
     process.exit(1);
   }, 10_000);
 
@@ -298,7 +312,7 @@ async function shutdown(signal: string): Promise<void> {
     // 2. Flush pending arcade settlements and dirty state
     await flushArcadeSettlements(io);
   } catch (err) {
-    console.error('[Shutdown] Pre-shutdown flush error:', err);
+    logger.error('[Shutdown] Pre-shutdown flush error:', err);
   }
 
   // Brief pause (500ms) to allow final frames to flush to clients before socket disconnect
@@ -309,15 +323,15 @@ async function shutdown(signal: string): Promise<void> {
     try {
       await redis.quit();
     } catch (err) {
-      console.error('[Shutdown] Redis quit failed:', err);
+      logger.error('[Shutdown] Redis quit failed:', err);
     }
     try {
       await prisma.$disconnect();
     } catch (err) {
-      console.error('[Shutdown] Prisma disconnect failed:', err);
+      logger.error('[Shutdown] Prisma disconnect failed:', err);
     }
     clearTimeout(forceExit);
-    console.log('[Server] Shutdown complete');
+    logger.info('[Server] Shutdown complete');
     process.exit(0);
   });
 }
@@ -337,11 +351,11 @@ if (shouldAutoStart) {
   // fatal: in-memory state (socket rooms, trade timers, fishing sessions) can
   // no longer be trusted — report, then exit for a supervisor to restart.
   process.on('unhandledRejection', (reason) => {
-    console.error('[FATAL] Unhandled promise rejection:', reason);
+    logger.error('[FATAL] Unhandled promise rejection:', reason);
     captureException(reason);
   });
   process.on('uncaughtException', (err) => {
-    console.error('[FATAL] Uncaught exception — exiting:', err);
+    logger.error('[FATAL] Uncaught exception — exiting:', err);
     captureException(err);
     setTimeout(() => process.exit(1), 1000);
   });
