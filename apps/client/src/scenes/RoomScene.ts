@@ -11,6 +11,7 @@ import {
   PointerEventTypes,
   ParticleSystem,
   DynamicTexture,
+  Tags,
 } from '@babylonjs/core';
 import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
@@ -230,10 +231,31 @@ export async function createRoomScene(
     }
   }
 
-  // Setup shadow receivers
+  // Setup shadow receivers and disable raycast picking on non-interactive architectural elements
   for (const m of roomMeshes) {
-    if (m.metadata?.walkable || m.name === 'placeholder_ground' || m.name.startsWith('Walkable_')) {
+    if (m.metadata?.walkable || m.name === 'placeholder_ground' || m.name.startsWith('Walkable_') || m.name === 'Floor') {
       m.receiveShadows = true;
+      m.isPickable = true;
+    } else if (
+      !m.metadata?.interactable &&
+      !Tags.MatchesQuery(m, 'door_exit') &&
+      !Tags.MatchesQuery(m, 'interactable') &&
+      !m.name.startsWith('door_') &&
+      !m.name.startsWith('Walkable_')
+    ) {
+      const lower = m.name.toLowerCase();
+      if (
+        lower.includes('wall') ||
+        lower.includes('ceiling') ||
+        lower.includes('lip_') ||
+        lower.includes('base_') ||
+        lower.includes('frame') ||
+        lower.includes('trim') ||
+        lower.includes('boundary') ||
+        lower.includes('blocker')
+      ) {
+        m.isPickable = false;
+      }
     }
   }
 
@@ -957,6 +979,12 @@ export async function createRoomScene(
               avatarController.rootMesh.position.x = res.correctedPosition.x;
               avatarController.rootMesh.position.z = res.correctedPosition.y;
             }
+          } else {
+            avatarController.pendingServerEcho = {
+              seq: pos.seq,
+              x: pos.x,
+              z: pos.z ?? 0,
+            };
           }
         }
         return;

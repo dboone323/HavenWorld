@@ -73,4 +73,23 @@ describe('MovementReconciliation (Client Netcode & Smoothing)', () => {
     expect(result.reconciled).toBe(false); // drift between current (6, 6) and simulated (6, 6) is 0
     expect(recon.getPendingMoveCount()).toBe(1); // move 1 discarded, move 2 retained
   });
+
+  it('corrects accumulated drift on waypoint arrival reconciliation', () => {
+    // Local avatar moved across waypoints to target (12, 14)
+    recon.addPredictedMove(6, 7);
+    recon.addPredictedMove(12, 14);
+    expect(recon.currentPosition).toEqual({ x: 12, y: 14 });
+
+    // Server acknowledged both moves but authoritative position ended at (12.8, 14.6)
+    // Drift = hypot(12 - 12.8, 14 - 14.6) = 1.0 > 0.5
+    const result = recon.reconcile(2, { x: 12.8, y: 14.6 }, 0.25);
+
+    expect(result.reconciled).toBe(true);
+    // Exponential smoothing pulls toward server position:
+    // 12 + (12.8 - 12) * 0.25 = 12.2
+    // 14 + (14.6 - 14) * 0.25 = 14.15
+    expect(result.correctedPosition.x).toBeCloseTo(12.2, 4);
+    expect(result.correctedPosition.y).toBeCloseTo(14.15, 4);
+    expect(recon.getPendingMoveCount()).toBe(0);
+  });
 });

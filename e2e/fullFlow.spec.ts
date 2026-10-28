@@ -44,8 +44,8 @@ test.describe('Tier 4: Full Game Flow E2E', () => {
     if (isLobbyVisible) {
       await lobbyPage.selectPublicTab();
       await lobbyPage.enterRoom('Haven Park');
-      await roomPage.waitForRoomReady(20_000);
     }
+    await roomPage.waitForRoomReady(20_000);
 
     // Step 5: Travel / Navigation in room
     expect(await roomPage.canvas.isVisible()).toBe(true);

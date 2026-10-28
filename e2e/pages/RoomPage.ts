@@ -137,7 +137,7 @@ export class RoomPage {
     await expect(this.gameContainer).toBeVisible({ timeout });
     await expect(this.canvas).toBeVisible({ timeout });
     await this.page.waitForFunction(
-      () => (window as any).__havenRoomReady === true || (window as any).__havenEngine !== undefined,
+      () => (window as any).__havenRoomReady === true,
       { timeout }
     );
   }

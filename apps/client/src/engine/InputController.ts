@@ -90,7 +90,11 @@ export class InputController {
       if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
         let pick = pointerInfo.pickInfo;
         if (!pick || !pick.hit || !pick.pickedMesh) {
-          pick = this._scene.pick(this._scene.pointerX, this._scene.pointerY);
+          pick = this._scene.pick(
+            this._scene.pointerX,
+            this._scene.pointerY,
+            (mesh) => mesh.isPickable && mesh.isVisible
+          );
         }
         const canvas = this._scene.getEngine().getRenderingCanvas();
         const furnitureManager = (typeof window !== 'undefined' && window.__havenFurnitureManager) || null;
@@ -136,7 +140,11 @@ export class InputController {
 
         let pick = pointerInfo.pickInfo;
         if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) {
-          pick = this._scene.pick(this._scene.pointerX, this._scene.pointerY);
+          pick = this._scene.pick(
+            this._scene.pointerX,
+            this._scene.pointerY,
+            (mesh) => mesh.isPickable && mesh.isVisible
+          );
         }
         if (!pick || !pick.hit || !pick.pickedPoint || !pick.pickedMesh) return;
 
@@ -242,7 +250,7 @@ export class InputController {
    */
   public castRayFromScreen(x: number, y: number): PickingInfo | null {
     const ray = this._scene.createPickingRay(x, y, Matrix.Identity(), this._camera);
-    return this._scene.pickWithRay(ray);
+    return this._scene.pickWithRay(ray, (mesh) => mesh.isPickable && mesh.isVisible);
   }
 
   public setEnabled(enabled: boolean): void {

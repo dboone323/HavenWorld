@@ -26,6 +26,10 @@ export interface HavenMeshMetadata {
   itemId?: string;
   id?: string;
   triggerType?: string;
+  walkable?: boolean;
+  interactable?: string;
+  seatDirection?: string;
+  sitFrame?: number;
 }
 
 declare global {
