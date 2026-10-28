@@ -62,8 +62,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
       parsed.data.tag
     );
     return res.status(201).json(club);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Failed to create club' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to create club';
+    return res.status(400).json({ error: message });
   }
 });
 
@@ -87,8 +88,9 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res) => {
       },
     });
     return res.status(201).json(member);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Failed to join club' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to join club';
+    return res.status(400).json({ error: message });
   }
 });
 
@@ -97,8 +99,9 @@ router.get('/:id/treasury', requireAuth, async (req: AuthRequest, res) => {
   try {
     const treasury = await ClubService.getTreasury(req.params.id as string);
     return res.json(treasury);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Failed to fetch treasury' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch treasury';
+    return res.status(400).json({ error: message });
   }
 });
 
@@ -116,8 +119,9 @@ router.post('/:id/treasury/deposit', requireAuth, async (req: AuthRequest, res) 
       Math.floor(amount)
     );
     return res.status(200).json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Treasury deposit failed' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Treasury deposit failed';
+    return res.status(400).json({ error: message });
   }
 });
 
@@ -136,8 +140,9 @@ router.patch('/:id/members/:targetUserId/role', requireAuth, async (req: AuthReq
       role
     );
     return res.json(updated);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Failed to update member role' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to update member role';
+    return res.status(400).json({ error: message });
   }
 });
 
@@ -151,8 +156,9 @@ router.patch('/:id/motd', requireAuth, async (req: AuthRequest, res) => {
       String(motd ?? '')
     );
     return res.json(updated);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Failed to update club MOTD' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to update club MOTD';
+    return res.status(400).json({ error: message });
   }
 });
 

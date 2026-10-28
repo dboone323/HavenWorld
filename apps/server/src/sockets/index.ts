@@ -43,6 +43,7 @@ import { WorkshopService } from '../services/WorkshopService';
 import { ClubService } from '../services/ClubService';
 import { QuestService } from '../services/QuestService';
 import { ALLOWED_ORIGINS, isAllowedOrigin } from '../middleware/security';
+import { logger } from '../monitoring/logger';
 import { attachIdleTimeout } from './idleTimeout';
 import { SocketRateLimiter } from './rateLimiter';
 import { MovementValidator } from '../game/movement';
@@ -242,7 +243,7 @@ export function registerSocketHandlers(io: Server): void {
       username: string;
       role: string;
     };
-    console.log(`[Socket] Connected: ${username} (${socket.id})`);
+    logger.info(`[Socket] Connected: ${username} (${socket.id})`);
     socket.join(`user:${userId}`);
 
     // Subscribe socket to player's club channel if they belong to a club
@@ -1579,7 +1580,7 @@ export function registerSocketHandlers(io: Server): void {
 
     // ── disconnect ────────────────────────────────────────────────────────────
     socket.on('disconnect', async (reason) => {
-      console.log(`[Socket] Disconnected: ${username} (${reason})`);
+      logger.info(`[Socket] Disconnected: ${username} (${reason})`);
 
       FishingService.cancelSession(userId);
       TradeManager.cancelTrade(userId, 'Player disconnected');

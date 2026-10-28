@@ -330,7 +330,7 @@ describe('Arcade Connect-4 socket payouts', () => {
     const room = await createTestRoom(winner.id);
 
     const winnerSocket = await joinRoom(winner, room.id);
-    const loserSocket = await joinRoom(loser, room.id);
+    await joinRoom(loser, room.id);
     const match = await startMatch(winnerSocket, loser.id, 'cab-restart');
 
     for (let i = 0; i < 3; i++) {

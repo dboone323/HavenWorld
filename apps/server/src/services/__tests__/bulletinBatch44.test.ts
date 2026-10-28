@@ -1,6 +1,6 @@
 import { prisma } from '../../prisma';
 import { BulletinBoardService } from '../BulletinBoardService';
-import { redis, connectRedis, disconnectRedis } from '../../redis';
+import { connectRedis, disconnectRedis } from '../../redis';
 
 describe('Batch 44: Community Bulletin Board Thread Pagination, Upvoting & Moderation', () => {
   let adminUser: any;

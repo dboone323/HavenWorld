@@ -1,4 +1,4 @@
-import { SecretRoomService, SECRET_CHAMBERS } from '../SecretRoomService';
+import { SecretRoomService } from '../SecretRoomService';
 import { prisma } from '../../prisma';
 import { createTestUser } from '../../../__tests__/helpers/factories';
 

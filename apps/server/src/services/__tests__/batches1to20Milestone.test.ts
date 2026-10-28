@@ -1,6 +1,6 @@
 import { prisma } from '../../prisma';
 import { redis, connectRedis, disconnectRedis } from '../../redis';
-import { createTestUser, createTestRoom, defaultTestAvatar } from '../../../__tests__/helpers/factories';
+import { createTestUser, createTestRoom } from '../../../__tests__/helpers/factories';
 import { EmailService } from '../EmailService';
 import { RedisHealthService } from '../RedisHealthService';
 import { AnalyticsService } from '../AnalyticsService';

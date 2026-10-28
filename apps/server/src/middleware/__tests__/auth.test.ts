@@ -130,6 +130,8 @@ describe('AuthMiddleware', () => {
     await roleMiddleware(adminReq, adminRes, adminNext);
     expect(adminNextCalled).toBe(true);
     expect(adminNextError).toBeFalsy();
+    expect(adminStatusCode).toBe(200);
+    expect(adminResponseBody).toBeNull();
 
     // Player user (JWT role PLAYER, DB role PLAYER): should be rejected
     const playerReq = {
@@ -151,6 +153,7 @@ describe('AuthMiddleware', () => {
 
     await roleMiddleware(playerReq, playerRes, playerNext);
     expect(playerNextCalled).toBe(false);
+    expect(playerNextError).toBeNull();
     expect(playerStatusCode).toBe(403);
     expect(playerResponseBody).toEqual(expect.objectContaining({ error: 'Forbidden' }));
   });
