@@ -140,6 +140,13 @@ test-e2e-all: push-schema build-shared ## Run full Playwright matrix (all browse
 .PHONY: test
 test: lint test-server test-client ## Run lint + server + client tests
 
+.PHONY: ci-docker
+ci-docker: ## Run full local CI gate inside Docker containers (lint, client tests, client build, server lint, server tests)
+	bash scripts/ci-docker.sh
+
+.PHONY: pre-push
+pre-push: ci-docker ## Pre-push verification gate (delegates to Docker local CI)
+
 .PHONY: audit
 audit: ## pnpm security audit (high+)
 	pnpm audit --audit-level=high
