@@ -2,11 +2,11 @@
 
 A browser-based social virtual world — open source, community-driven.
 
-**Game URL:** https://havenworld-game.pages.dev (Custom domain: https://havenworld.me)
+**Game URL:** https://havenworld-game.pages.dev (Planned custom domain: https://havenworld.me)
 
 ## Tech Stack
 
-Node.js 22 | Socket.io 4 | Phaser 3 | PostgreSQL 16 | Redis 7 | Vite 6 | Cloudflare Pages
+Node.js 22 | Socket.io 4 | Babylon.js | PostgreSQL 16 | Redis 7 | Vite 6 | Cloudflare Pages
 
 ## Local Setup
 

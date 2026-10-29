@@ -6,6 +6,7 @@ import { showToast } from './ToastNotification';
 import { SceneManager } from '../engine/SceneManager';
 import { PassportModal } from '../passport/PassportModal';
 import { escapeHtml } from '../utils/escapeHtml';
+import { ReportModal } from './ReportModal';
 
 export interface RoomOccupant {
   id: string;
@@ -176,6 +177,17 @@ export class PlayersListModal {
           }
         });
         actions.appendChild(btnVisit);
+
+        // Report Button
+        const btnReport = document.createElement('button');
+        btnReport.style.cssText = 'background: #dc2626; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; font-weight: 600;';
+        btnReport.textContent = 'Report';
+        btnReport.title = 'Report player for violation';
+        btnReport.addEventListener('click', () => {
+          PlayersListModal.dismiss();
+          ReportModal.show({ targetUserId: player.id, targetUsername: player.username });
+        });
+        actions.appendChild(btnReport);
 
         row.appendChild(actions);
       }

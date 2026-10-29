@@ -128,13 +128,14 @@ export class AuthService {
     username: string,
     email: string,
     password: string,
-    inviteCode?: string
+    inviteCode?: string,
+    ageConfirmed: boolean = true
   ): Promise<any> {
     const res = await fetch(`${this._apiUrl}/auth/register`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password, inviteCode }),
+      body: JSON.stringify({ username, email, password, inviteCode, ageConfirmed }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Registration failed' }));
@@ -252,6 +253,35 @@ export class AuthService {
     } catch {
       // Ignore network errors on logout
     }
+    this._accessToken = null;
+    this._user = null;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('haven_token');
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
+  }
+
+  async deleteAccount(password: string): Promise<void> {
+    const token = await this.getToken();
+    if (!token) throw new AuthError('Not authenticated');
+
+    const res = await fetch(`${this._apiUrl}/users/me`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new AuthError(err.error || 'Failed to delete account');
+    }
+
     this._accessToken = null;
     this._user = null;
     if (typeof localStorage !== 'undefined') {

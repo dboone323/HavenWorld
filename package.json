@@ -21,7 +21,8 @@
     "test:mobile": "playwright test e2e/mobile/ --project=mobile-chrome --project=mobile-safari",
     "test:e2e:report": "playwright show-report playwright-report",
     "lint": "pnpm --filter './apps/*' lint",
-    "check-licenses": "license-checker --onlyAllow 'MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;CC0-1.0;0BSD'"
+    "check-licenses": "license-checker --onlyAllow 'MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;CC0-1.0;0BSD;MPL-2.0'",
+    "prepare": "node scripts/setup-git-hooks.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -30,6 +31,7 @@
   },
   "pnpm": {
     "overrides": {
+      "qs": ">=6.16.1",
       "deepmerge-ts": ">=8.0.0",
       "handlebars": ">=4.7.10",
       "body-parser": ">=2.4.0",

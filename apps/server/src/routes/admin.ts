@@ -261,6 +261,34 @@ router.get('/reports', async (req, res) => {
   });
 });
 
+// GET /api/admin/reports/open — admin-only endpoint to list open reports
+router.get('/reports/open', requireRole(['ADMIN']), async (req, res) => {
+  const page = parseInt((req.query.page as string) ?? '1', 10);
+  const limit = 25;
+  const where = { status: 'OPEN' as ReportStatus };
+
+  const [reports, total] = await Promise.all([
+    prisma.report.findMany({
+      where,
+      include: {
+        reporter: { select: { id: true, username: true } },
+        reportedUser: { select: { id: true, username: true, status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.report.count({ where }),
+  ]);
+
+  return res.json({
+    reports,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  });
+});
+
 // PATCH /api/admin/reports/:id — update report status and add moderator notes
 router.patch('/reports/:id', async (req: AuthRequest, res) => {
   const id = req.params.id as string;

@@ -28,6 +28,7 @@
   "devDependencies": {
     "@babylonjs/inspector": "^9.28.0",
     "@babylonjs/serializers": "^9.28.0",
+    "@rollup/rollup-linux-arm64-gnu": "^4.66.0",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/user-event": "^14.6.7",
     "@types/node": "^22.20.4",

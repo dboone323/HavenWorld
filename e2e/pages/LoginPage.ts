@@ -63,6 +63,10 @@ export class LoginPage {
     if (params.inviteCode) {
       await this.regInviteInput.fill(params.inviteCode);
     }
+    const ageCheckbox = this.page.getByTestId('reg-age-confirm');
+    if ((await ageCheckbox.count()) > 0) {
+      await ageCheckbox.check();
+    }
     // Wait for the response instead of racing it: specs call verifyEmailViaTestRoute() or
     // login() immediately after this returns, and both need the account to exist already.
     // Without the wait, a slow or failing register surfaced as a confusing 404 later.

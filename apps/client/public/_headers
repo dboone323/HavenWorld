@@ -19,6 +19,7 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Access-Control-Allow-Origin: *
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
 
 /assets/*.glb
   Content-Type: model/gltf-binary

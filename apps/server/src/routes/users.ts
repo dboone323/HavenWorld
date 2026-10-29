@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { prisma } from '../prisma';
 import { inventoryService } from '../services/InventoryService';
@@ -57,6 +58,103 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
     coinBalance: user.havenCoins,
     personalRoom: personalRoom ? { id: personalRoom.id, name: personalRoom.name } : null,
   });
+});
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'Password is required to confirm account deletion.'),
+});
+
+// DELETE /api/users/me — permanently delete account and owned data in a transaction
+router.delete('/me', requireAuth, async (req: AuthRequest, res) => {
+  const parsed = deleteAccountSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Password is required to confirm account deletion.',
+      fields: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const userId = req.user!.userId;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, passwordHash: true },
+  });
+
+  if (!user) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  const isPasswordValid = await bcrypt.compare(parsed.data.password, user.passwordHash);
+  if (!isPasswordValid) {
+    return res.status(401).json({ error: 'Incorrect password.' });
+  }
+
+  // Permanently delete user and all owned data in an atomic transaction
+  await prisma.$transaction(async (tx) => {
+    // 1. Delete inventory & avatar
+    await tx.inventory.deleteMany({ where: { userId } });
+    await tx.avatar.deleteMany({ where: { userId } });
+
+    // 2. Delete messages authored by user
+    await tx.chatMessage.deleteMany({ where: { senderId: userId } });
+    await tx.directMessage.deleteMany({
+      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+    });
+
+    // 3. Delete user's room furniture and owned rooms (including layouts)
+    await tx.roomFurniture.deleteMany({ where: { placedBy: userId } });
+    const ownedRooms = await tx.room.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+    if (ownedRooms.length > 0) {
+      const roomIds = ownedRooms.map((r) => r.id);
+      await tx.roomFurniture.deleteMany({ where: { roomId: { in: roomIds } } });
+      await tx.roomDecorator.deleteMany({ where: { roomId: { in: roomIds } } });
+      await tx.roomAccessLog.deleteMany({ where: { roomId: { in: roomIds } } });
+      await tx.guestbookEntry.deleteMany({ where: { roomId: { in: roomIds } } });
+      await tx.loftAccess.deleteMany({ where: { roomId: { in: roomIds } } });
+      await tx.chatMessage.deleteMany({ where: { roomId: { in: roomIds } } });
+      await tx.room.deleteMany({ where: { id: { in: roomIds } } });
+    }
+
+    // 4. Clean up invites, transactions, relationships, reports, tokens
+    await tx.inviteCode.updateMany({ where: { usedById: userId }, data: { usedById: null } });
+    await tx.inviteCode.deleteMany({ where: { createdBy: userId } });
+    await tx.transactionLog.deleteMany({
+      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+    });
+    await tx.tipTransaction.deleteMany({
+      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+    });
+    await tx.tradeLog.deleteMany({
+      where: { OR: [{ initiatorId: userId }, { receiverId: userId }] },
+    });
+    await tx.giftTransaction.deleteMany({
+      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+    });
+    await tx.report.deleteMany({
+      where: { OR: [{ reporterId: userId }, { reportedUserId: userId }] },
+    });
+    await tx.friend.deleteMany({
+      where: { OR: [{ requesterId: userId }, { addresseeId: userId }] },
+    });
+    await tx.refreshToken.deleteMany({ where: { userId } });
+
+    // 5. Delete the user record
+    await tx.user.delete({ where: { id: userId } });
+  });
+
+  // Disconnect active socket if connected
+  try {
+    const io = getIO();
+    io?.in(`user:${userId}`).disconnectSockets(true);
+  } catch {
+    // Sockets may not be active in all test environments
+  }
+
+  res.clearCookie('refresh_token');
+  return res.json({ message: 'Your account and all associated data have been permanently deleted.' });
 });
 
 // GET /api/users/gifts — Track 5.10 Offline Postcards & Mail

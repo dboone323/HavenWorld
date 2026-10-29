@@ -127,9 +127,15 @@ export function mountLoginUI(): void {
     const confirm  = (document.getElementById('reg-confirm')  as HTMLInputElement).value;
     const inviteEl = document.getElementById('reg-invite') as HTMLInputElement | null;
     const inviteCode = inviteEl?.value.trim() || undefined;
+    const ageConfirmEl = document.getElementById('reg-age-confirm') as HTMLInputElement | null;
+    const ageConfirmed = ageConfirmEl?.checked ?? false;
 
     if (!username || !email || !password) {
       showError('All fields are required.');
+      return;
+    }
+    if (!ageConfirmed) {
+      showError('You must confirm you are 13 years of age or older.');
       return;
     }
     if (password !== confirm) {
@@ -143,7 +149,7 @@ export function mountLoginUI(): void {
 
     setLoading(true);
     try {
-      const result = await authService.register(username, email, password, inviteCode);
+      const result = await authService.register(username, email, password, inviteCode, ageConfirmed);
       if (result && result.emailVerificationRequired === false) {
         // Server auto-verified the account (no email provider configured) and
         // already established a session — take the player straight into the

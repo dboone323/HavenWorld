@@ -220,4 +220,16 @@ describe('AuthService (Real HTTP Server Validation)', () => {
     expect(recordedRequests[2].url).toBe('/api/auth/logout');
     expect(service.token).toBeNull();
   });
+
+  it('(l) register() sends ageConfirmed true in request body', async () => {
+    enqueueJson(201, { message: 'Account created', accessToken: makeJwt(3600) });
+
+    await service.register('testuser', 'testuser@havenworld.com', 'SecurePass1!', undefined, true);
+
+    expect(recordedRequests).toHaveLength(1);
+    expect(recordedRequests[0].url).toBe('/api/auth/register');
+    const body = JSON.parse(recordedRequests[0].body);
+    expect(body.ageConfirmed).toBe(true);
+    expect(body.username).toBe('testuser');
+  });
 });

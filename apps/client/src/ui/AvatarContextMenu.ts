@@ -6,6 +6,7 @@ import { blockService } from '../services/blockService';
 import { SERVER_URL } from '../config';
 import { showToast } from './ToastNotification';
 import { SceneManager } from '../engine/SceneManager';
+import { ReportModal } from './ReportModal';
 
 interface ContextMenuOptions {
   x: number;
@@ -166,32 +167,12 @@ export class AvatarContextMenu {
       const btnReport = document.createElement('button');
       btnReport.className = 'context-menu-item danger';
       btnReport.innerHTML = '<span>⚠️</span> Report';
-      btnReport.addEventListener('click', async () => {
-        const reason = prompt(`Report ${options.targetUsername} for inappropriate behavior:`);
-        if (reason && reason.trim()) {
-          try {
-            const res = await fetch(`${SERVER_URL}/api/reports`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${authService.token || ''}`,
-              },
-              body: JSON.stringify({
-                reportedUserId: options.targetUserId,
-                reason: reason.trim(),
-                category: 'HARASSMENT',
-              }),
-            });
-            if (res.ok) {
-              showToast({ icon: '🛡️', title: 'Report Submitted', subtitle: 'Report submitted to moderation team.' });
-            } else {
-              showToast({ icon: '⚠️', title: 'Report Failed', subtitle: 'Could not submit report.' });
-            }
-          } catch {
-            showToast({ icon: '⚠️', title: 'Error', subtitle: 'Network error submitting report.' });
-          }
-        }
+      btnReport.addEventListener('click', () => {
         AvatarContextMenu.dismiss();
+        ReportModal.show({
+          targetUserId: options.targetUserId,
+          targetUsername: options.targetUsername,
+        });
       });
       menu.appendChild(btnReport);
 

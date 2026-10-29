@@ -4,6 +4,8 @@ import { authService } from '../services/auth';
 import { AccessibilityManager, type ColorblindMode, type UiScale } from './AccessibilityManager';
 import { StreamerModeManager } from './StreamerModeManager';
 import { DraggablePanel } from './DraggablePanel';
+import { showToast } from './ToastNotification';
+import { SceneManager } from '../engine/SceneManager';
 
 type PrivacyMode = 'PUBLIC' | 'FRIENDS_ONLY' | 'PASSWORD_PROTECTED' | 'LOCKED';
 
@@ -147,6 +149,18 @@ export class LoftSettingsPanel {
           ">Revoke</button>
         </div>
       </section>
+
+      <!-- Account Settings / Danger Zone -->
+      <section style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
+        <h3 style="margin:0 0 10px;font-size:0.85rem;color:#ef4444;text-transform:uppercase;letter-spacing:0.05em;">Danger Zone</h3>
+        <p style="margin:0 0 10px;font-size:0.8rem;color:#aaa;line-height:1.4;">
+          Permanently delete your account, inventory, loft layouts, and chat history. This action cannot be undone.
+        </p>
+        <button id="btn-delete-account" style="
+          width:100%;background:#ef4444;border:none;border-radius:8px;
+          color:#fff;font-weight:600;padding:10px;cursor:pointer;font-size:0.875rem;
+        ">Delete My Account</button>
+      </section>
     `;
 
     panel.querySelector('#loft-settings-close')?.addEventListener('click', () => this.dismiss());
@@ -218,6 +232,27 @@ export class LoftSettingsPanel {
       if (!targetUserId) { alert('User not found'); return; }
       const { socketService } = await import('../services/socket');
       socketService.socket?.emit(SOCKET_EVENTS.REVOKE_DECORATOR, { roomId: this.opts.roomId, targetUserId });
+    });
+
+    // Danger Zone — Delete Account
+    panel.querySelector('#btn-delete-account')?.addEventListener('click', async () => {
+      const password = prompt('To confirm permanent deletion of your account and all data, please enter your password:');
+      if (!password) return;
+
+      const confirmText = prompt('Type DELETE to permanently erase your account:');
+      if (confirmText !== 'DELETE') {
+        showToast({ icon: '⚠️', title: 'Cancelled', subtitle: 'Account deletion cancelled.' });
+        return;
+      }
+
+      try {
+        await authService.deleteAccount(password);
+        this.dismiss();
+        showToast({ icon: '👋', title: 'Account Deleted', subtitle: 'Your account has been permanently removed.' });
+        SceneManager.getInstance().switchTo('login').catch(console.error);
+      } catch (err: any) {
+        showToast({ icon: '⚠️', title: 'Deletion Failed', subtitle: err?.message || 'Incorrect password or server error.' });
+      }
     });
 
     overlay.appendChild(panel);

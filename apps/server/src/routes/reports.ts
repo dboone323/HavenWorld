@@ -2,8 +2,20 @@ import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { prisma } from '../prisma';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
+
+export const reportRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'test' ? 500 : 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'REPORT_RATE_LIMIT_EXCEEDED',
+    message: 'Too many reports submitted. Please wait before submitting another report.',
+  },
+});
 
 const reportSchema = z.object({
   reportedUserId: z.string().uuid(),
@@ -19,7 +31,7 @@ const reportSchema = z.object({
 });
 
 // POST /api/reports — submit a player report
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, reportRateLimiter, async (req: AuthRequest, res) => {
   const parsed = reportSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -30,6 +42,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
   if (parsed.data.reportedUserId === req.user!.userId) {
     return res.status(400).json({ error: 'You cannot report yourself.' });
+  }
+
+  const reportedUser = await prisma.user.findUnique({
+    where: { id: parsed.data.reportedUserId },
+    select: { id: true },
+  });
+
+  if (!reportedUser) {
+    return res.status(404).json({ error: 'Reported user does not exist.' });
   }
 
   const report = await prisma.report.create({

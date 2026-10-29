@@ -24,6 +24,7 @@ describe('Auth Integration — Full HTTP Flow', () => {
         username: 'alice',
         password: 'SecurePass1!',
         inviteCode: invite.code,
+        ageConfirmed: true,
       });
 
     expect(res.status).toBe(201);
@@ -45,6 +46,7 @@ describe('Auth Integration — Full HTTP Flow', () => {
         username: 'bob',
         password: 'SecurePass1!',
         inviteCode: invite.code,
+        ageConfirmed: true,
       });
 
     expect([400, 403]).toContain(res.status);
@@ -62,9 +64,38 @@ describe('Auth Integration — Full HTTP Flow', () => {
         username: 'newuser',
         password: 'SecurePass1!',
         inviteCode: invite.code,
+        ageConfirmed: true,
       });
 
     expect(res.status).toBe(409);
+  });
+
+  it('should reject registration with 400 when age confirmation is missing or false', async () => {
+    const invite = await createTestInviteCode({ code: 'AGE_TEST_001', used: false });
+    const resNoAge = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: 'noage@test.com',
+        username: 'noage',
+        password: 'SecurePass1!',
+        inviteCode: invite.code,
+      });
+
+    expect(resNoAge.status).toBe(400);
+    expect(JSON.stringify(resNoAge.body)).toMatch(/13 years/i);
+
+    const resFalseAge = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: 'falseage@test.com',
+        username: 'falseage',
+        password: 'SecurePass1!',
+        inviteCode: invite.code,
+        ageConfirmed: false,
+      });
+
+    expect(resFalseAge.status).toBe(400);
+    expect(JSON.stringify(resFalseAge.body)).toMatch(/13 years/i);
   });
 
   it('should verify email and return 200 when given a valid verification token', async () => {
@@ -180,6 +211,7 @@ describe('Auth Integration — Full HTTP Flow', () => {
         username: 'regsession',
         password: 'SecurePass1!',
         inviteCode: invite.code,
+        ageConfirmed: true,
       });
 
     expect(res.status).toBe(201);
@@ -379,6 +411,7 @@ describe('Auth Integration — Full HTTP Flow', () => {
       username: 'resetuser',
       password: 'OldPassword123!',
       inviteCode: invite.code,
+      ageConfirmed: true,
     });
 
     // 1. Invalid email format -> 400

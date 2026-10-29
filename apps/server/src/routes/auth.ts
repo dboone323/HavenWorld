@@ -34,6 +34,9 @@ const registerSchema = z.object({
     .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
     .regex(/[0-9]/, 'Password must contain at least one number'),
   inviteCode: z.string().optional(),
+  ageConfirmed: z.literal(true, {
+    message: 'You must confirm you are at least 13 years of age.',
+  }),
 });
 
 const loginSchema = z.object({
