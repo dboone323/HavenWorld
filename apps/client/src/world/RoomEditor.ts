@@ -744,14 +744,23 @@ export class RoomEditor {
   private buildInventoryPanel(): void {
     /** Map furniture itemId → dedicated UI icon path */
     const FURNITURE_ICONS: Record<string, string> = {
-      'chair':      '/assets/sprites/furniture/furniture-chair.png',
-      'table':      '/assets/sprites/furniture/furniture-table.png',
-      'sofa':       '/assets/sprites/furniture/furniture-sofa.png',
-      'bookshelf':  '/assets/sprites/furniture/furniture-bookshelf.png',
-      'plant':      '/assets/sprites/furniture/furniture-plant.png',
-      'lamp':       '/assets/sprites/furniture/furniture-lamp.png',
-      'rug':        '/assets/sprites/furniture/furniture-rug.png',
-      'painting':   '/assets/sprites/furniture/furniture-painting.png',
+      'furniture-chair':      '/assets/sprites/furniture/furniture-chair.png',
+      'furniture-table':      '/assets/sprites/furniture/furniture-table.png',
+      'furniture-sofa':       '/assets/sprites/furniture/furniture-sofa.png',
+      'furniture-bookshelf':  '/assets/sprites/furniture/furniture-bookshelf.png',
+      'furniture-plant':      '/assets/sprites/furniture/furniture-plant.png',
+      'furniture-lamp':       '/assets/sprites/furniture/furniture-lamp.png',
+      'furniture-rug':        '/assets/sprites/furniture/furniture-rug.png',
+      'furniture-painting':   '/assets/sprites/furniture/furniture-painting.png',
+      // Legacy fallback keys without prefix
+      'chair':                '/assets/sprites/furniture/furniture-chair.png',
+      'table':                '/assets/sprites/furniture/furniture-table.png',
+      'sofa':                 '/assets/sprites/furniture/furniture-sofa.png',
+      'bookshelf':            '/assets/sprites/furniture/furniture-bookshelf.png',
+      'plant':                '/assets/sprites/furniture/furniture-plant.png',
+      'lamp':                 '/assets/sprites/furniture/furniture-lamp.png',
+      'rug':                  '/assets/sprites/furniture/furniture-rug.png',
+      'painting':             '/assets/sprites/furniture/furniture-painting.png',
     };
     const panel = document.createElement('div');
     panel.id = 'room-editor-inventory';

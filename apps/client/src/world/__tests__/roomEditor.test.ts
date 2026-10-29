@@ -174,4 +174,70 @@ describe('RoomEditor (Babylon.js NullEngine)', () => {
       window.fetch = originalFetch;
     }
   });
+
+  it('(f) Decorator inventory list renders dedicated FURNITURE_ICONS image when itemId matches', async () => {
+    const originalFetch = window.fetch;
+    try {
+      window.fetch = (async (url: RequestInfo | URL) => {
+        const urlStr = String(url);
+        if (urlStr.includes('/api/users/me/inventory?type=furniture')) {
+          return new Response(
+            JSON.stringify([
+              {
+                id: 'inv-1',
+                itemId: 'furniture-chair',
+                name: 'Wooden Chair',
+                assetUrl: '/assets/furniture/chair.glb',
+                quantity: 1,
+              },
+              {
+                id: 'inv-2',
+                itemId: 'furniture-table',
+                name: 'Round Table',
+                assetUrl: '/assets/furniture/table.glb',
+                quantity: 2,
+              },
+              {
+                id: 'inv-3',
+                itemId: 'unknown-custom-item',
+                name: 'Mystery Crate',
+                assetUrl: '/assets/furniture/crate.glb',
+                quantity: 1,
+              },
+            ]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }) as typeof window.fetch;
+
+      editor.enterEditMode();
+
+      // Allow async loadInventory to complete and DOM to populate
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const list = document.getElementById('editor-inventory-list');
+      expect(list).not.toBeNull();
+
+      const chairBtn = list!.querySelector('button[data-item-id="furniture-chair"]');
+      expect(chairBtn).not.toBeNull();
+      const chairImg = chairBtn!.querySelector('img') as HTMLImageElement | null;
+      expect(chairImg).not.toBeNull();
+      expect(chairImg?.src).toContain('/assets/sprites/furniture/furniture-chair.png');
+
+      const tableBtn = list!.querySelector('button[data-item-id="furniture-table"]');
+      expect(tableBtn).not.toBeNull();
+      const tableImg = tableBtn!.querySelector('img') as HTMLImageElement | null;
+      expect(tableImg).not.toBeNull();
+      expect(tableImg?.src).toContain('/assets/sprites/furniture/furniture-table.png');
+
+      const unknownBtn = list!.querySelector('button[data-item-id="unknown-custom-item"]');
+      expect(unknownBtn).not.toBeNull();
+      const unknownImg = unknownBtn!.querySelector('img');
+      expect(unknownImg).toBeNull();
+      expect(unknownBtn?.textContent).toContain('🛋️');
+    } finally {
+      window.fetch = originalFetch;
+    }
+  });
 });
