@@ -19,7 +19,10 @@ interface CatalogItem {
   asset: string;
   frontAsset?: string;
   backAsset?: string;
+  /** Emoji fallback – shown when iconUrl is absent or fails to load. */
   icon: string;
+  /** Path to the dedicated 512×512 PNG icon for the wardrobe card. */
+  iconUrl?: string;
 }
 
 export const MI_PLANET_CATALOG: CatalogItem[] = [
@@ -31,6 +34,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'outfitBody',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Pink Llama Sweater.png',
     icon: '🌸',
+    iconUrl: '/assets/sprites/items/pink-llama-sweater.png',
   },
   {
     id: 'underwear-top',
@@ -48,6 +52,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'outfitLegs',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Olive Green Shorts.png',
     icon: '🩳',
+    iconUrl: '/assets/sprites/items/olive-shorts.png',
   },
   {
     id: 'denim-jeans',
@@ -56,6 +61,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'outfitLegs',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Denim Jeans.png',
     icon: '👖',
+    iconUrl: '/assets/sprites/items/denim-jeans.png',
   },
   {
     id: 'underwear-bottom',
@@ -73,6 +79,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'eyes',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Basic Blue Eyes.png',
     icon: '👁️',
+    iconUrl: '/assets/sprites/items/basic-blue-eyes.png',
   },
   {
     id: 'basic-brown-eyes',
@@ -81,6 +88,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'eyes',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Basic Brown Eyes.png',
     icon: '👀',
+    iconUrl: '/assets/sprites/items/basic-brown-eyes.png',
   },
   // Headwear
   {
@@ -90,6 +98,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'outfitHead',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Trapper Hat.png',
     icon: '💂',
+    iconUrl: '/assets/sprites/items/trapper-hat.png',
   },
   // Facewear
   {
@@ -99,6 +108,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'outfitFace',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Skull Balaclava.png',
     icon: '💀',
+    iconUrl: '/assets/sprites/items/skull-balaclava.png',
   },
   // Backwear / Wings
   {
@@ -110,6 +120,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     frontAsset: '/assets/sprites/avatar/wearables/MiPlanet Black Wings Front.png',
     backAsset: '/assets/sprites/avatar/wearables/MiPlanet Black Wings Back.png',
     icon: '🪽',
+    iconUrl: '/assets/sprites/items/black-wings.png',
   },
   {
     id: 'white-wings',
@@ -120,6 +131,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     frontAsset: '/assets/sprites/avatar/wearables/MiPlanet White Wings Front.png',
     backAsset: '/assets/sprites/avatar/wearables/MiPlanet White Wings Back.png',
     icon: '🕊️',
+    iconUrl: '/assets/sprites/items/white-wings.png',
   },
   // Shoes
   {
@@ -129,6 +141,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'outfitFeet',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Purple Sneakers.png',
     icon: '👟',
+    iconUrl: '/assets/sprites/items/purple-sneakers.png',
   },
   {
     id: 'barefoot',
@@ -146,6 +159,7 @@ export const MI_PLANET_CATALOG: CatalogItem[] = [
     slot: 'hairStyle',
     asset: '/assets/sprites/avatar/wearables/MiPlanet Wavy Golden Hair.png',
     icon: '💇',
+    iconUrl: '/assets/sprites/items/wavy-hair.png',
   },
   {
     id: 'bald',
@@ -411,7 +425,19 @@ export class AvatarCustomizer {
       `;
 
       card.innerHTML = `
-        <div style="font-size: 26pt; margin-bottom: 4px;">${item.icon}</div>
+        <div style="width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; flex-shrink: 0;">
+          ${item.iconUrl
+            ? `<img
+                src="${assetUrl(item.iconUrl)}"
+                alt="${item.name}"
+                width="64"
+                height="64"
+                style="object-fit: contain; image-rendering: pixelated;"
+                onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+              /><span style="display:none; font-size: 26pt;">${item.icon}</span>`
+            : `<span style="font-size: 26pt;">${item.icon}</span>`
+          }
+        </div>
         <div style="font-size: 8.5pt; font-weight: 700; text-align: center; color: #2c3237; line-height: 1.15; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.name}</div>
         ${isEquipped ? '<div style="position: absolute; top: 6px; right: 6px; background: #4ecdc4; color: #fff; width: 16px; height: 16px; border-radius: 50%; font-size: 9pt; display: flex; align-items: center; justify-content: center; font-weight: 900;">✓</div>' : ''}
       `;

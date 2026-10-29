@@ -742,6 +742,17 @@ export class RoomEditor {
 
   // ─── Inventory Panel ──────────────────────────────────────────────────────
   private buildInventoryPanel(): void {
+    /** Map furniture itemId → dedicated UI icon path */
+    const FURNITURE_ICONS: Record<string, string> = {
+      'chair':      '/assets/sprites/furniture/furniture-chair.png',
+      'table':      '/assets/sprites/furniture/furniture-table.png',
+      'sofa':       '/assets/sprites/furniture/furniture-sofa.png',
+      'bookshelf':  '/assets/sprites/furniture/furniture-bookshelf.png',
+      'plant':      '/assets/sprites/furniture/furniture-plant.png',
+      'lamp':       '/assets/sprites/furniture/furniture-lamp.png',
+      'rug':        '/assets/sprites/furniture/furniture-rug.png',
+      'painting':   '/assets/sprites/furniture/furniture-painting.png',
+    };
     const panel = document.createElement('div');
     panel.id = 'room-editor-inventory';
     panel.style.cssText = `
@@ -939,25 +950,60 @@ export class RoomEditor {
 
         list.innerHTML = '';
         items.forEach((item) => {
+          const iconUrl = FURNITURE_ICONS[item.itemId] ?? null;
           const btn = document.createElement('button');
-          btn.textContent = `${item.name} (x${item.quantity})`;
           btn.title = `Place ${item.name}`;
           btn.className = 'editor-inventory-item-btn';
           btn.setAttribute('data-item-id', item.itemId);
           btn.style.cssText = `
-            display: block;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             width: 100%;
             background: #0f0f23;
             border: 1px solid #2a2a4a;
-            border-radius: 4px;
+            border-radius: 6px;
             color: #e0e0e0;
-            padding: 8px 10px;
+            padding: 6px 10px;
             margin-bottom: 8px;
             text-align: left;
             cursor: pointer;
             font-size: 10pt;
             transition: border-color 150ms;
           `;
+
+          // Icon element — image with emoji fallback
+          const iconEl = document.createElement('div');
+          iconEl.style.cssText = 'width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(255,255,255,0.05); overflow: hidden;';
+          if (iconUrl) {
+            const img = document.createElement('img');
+            img.src = assetUrl(iconUrl);
+            img.alt = item.name;
+            img.width = 40;
+            img.height = 40;
+            img.style.cssText = 'object-fit: contain; image-rendering: pixelated;';
+            img.onerror = () => {
+              img.style.display = 'none';
+              const fallback = document.createElement('span');
+              fallback.textContent = '🛋️';
+              fallback.style.fontSize = '22px';
+              iconEl.appendChild(fallback);
+            };
+            iconEl.appendChild(img);
+          } else {
+            iconEl.innerHTML = '<span style="font-size:22px;">🛋️</span>';
+          }
+          btn.appendChild(iconEl);
+
+          // Label + quantity
+          const labelEl = document.createElement('span');
+          labelEl.style.cssText = 'flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+          labelEl.textContent = `${item.name}`;
+          const qtyEl = document.createElement('span');
+          qtyEl.style.cssText = 'font-size: 8.5pt; color: #94a3b8; margin-left: 4px; white-space: nowrap;';
+          qtyEl.textContent = `×${item.quantity}`;
+          labelEl.appendChild(qtyEl);
+          btn.appendChild(labelEl);
           btn.addEventListener('mouseenter', () => {
             if (!btn.classList.contains('active-item')) btn.style.borderColor = '#4ecdc4';
           });
