@@ -1,6 +1,5 @@
 import { prisma } from '../prisma';
 import { QuestService } from './QuestService';
-import { AchievementService } from './AchievementService';
 import { AnalyticsService } from './AnalyticsService';
 
 export interface PizzaOrderPayload {

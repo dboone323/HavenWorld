@@ -1,7 +1,7 @@
 import { prisma } from '../prisma';
 import { WorkshopService } from './WorkshopService';
 import { AnalyticsService } from './AnalyticsService';
-import { CRAFTING_RECIPES, CraftingRecipe } from '@havenworld/shared';
+import { CRAFTING_RECIPES } from '@havenworld/shared';
 
 export interface QueueSlotStatus {
   activeCount: number;

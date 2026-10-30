@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { prisma } from '../prisma';
 import { CreateGalleryPhotoSchema } from '../validation/schemas';
 import { PhotoGalleryService, GalleryAlbumCategory } from '../services/PhotoGalleryService';
 

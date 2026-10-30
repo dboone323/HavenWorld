@@ -1,7 +1,5 @@
 import { API_URL } from '../config';
 import { authService } from '../services/auth';
-import { socketService } from '../services/socket';
-import { SOCKET_EVENTS } from '@havenworld/shared';
 import { escapeHtml } from '../utils/escapeHtml';
 
 interface ClubSummary {

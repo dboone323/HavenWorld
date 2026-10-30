@@ -160,7 +160,7 @@ router.post('/:id/furniture/layout', requireAuth, async (req: AuthRequest, res) 
   }
 
   // Verify inventory for any net additions (delta > 0)
-  const additions = [...inventoryDeltas.entries()].filter(([_, d]) => d > 0);
+  const additions = [...inventoryDeltas.entries()].filter(([, d]) => d > 0);
   if (additions.length > 0) {
     const neededItemIds = additions.map(([itemId]) => itemId);
     const userInventory = await prisma.inventory.findMany({

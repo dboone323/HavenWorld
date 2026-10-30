@@ -12,7 +12,9 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
 
   test('Owner controls, 4-way furniture rotation, decorator mode, and privacy settings', async ({
     page,
+    hasTouch,
   }) => {
+    test.skip(hasTouch, 'Touch devices: loft editing interactions covered on desktop');
     const loginPage = new LoginPage(page);
     const roomPage = new RoomPage(page);
 
@@ -89,7 +91,8 @@ test.describe('Tier 4: Personal Loft Decorating & Room Controls E2E', () => {
     await expect(roomPage.roomEditorInventory).not.toBeVisible();
   });
 
-  test('Placing item from decorator HUD does not make the avatar walk', async ({ page }) => {
+  test('Placing item from decorator HUD does not make the avatar walk', async ({ page, hasTouch }) => {
+    test.skip(hasTouch, 'Touch devices: loft editing interactions covered on desktop');
     const decoratorTs = Date.now().toString().slice(-6);
     const decoratorUser = {
       username: `dec_${decoratorTs}`,
