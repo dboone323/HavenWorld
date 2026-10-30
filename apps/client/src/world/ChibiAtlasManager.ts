@@ -52,7 +52,7 @@ export class ChibiAtlasManager {
             this.atlasImage = img;
             resolve();
           };
-          img.onerror = (err) => reject(new Error('Failed to load avatar atlas.png'));
+          img.onerror = () => reject(new Error('Failed to load avatar atlas.png'));
           img.src = assetUrl('/assets/sprites/avatar/atlas.png');
         });
       } catch (err) {

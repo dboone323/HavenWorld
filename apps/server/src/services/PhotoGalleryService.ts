@@ -92,7 +92,7 @@ export class PhotoGalleryService {
 
     if (existing) {
       // Unlike
-      const [_, updated] = await prisma.$transaction([
+      const [, updated] = await prisma.$transaction([
         prisma.photoLike.delete({ where: { id: existing.id } }),
         prisma.galleryPhoto.update({
           where: { id: photoId },
@@ -103,7 +103,7 @@ export class PhotoGalleryService {
       return { liked: false, likes: Math.max(0, updated.likes) };
     } else {
       // Like
-      const [_, updated] = await prisma.$transaction([
+      const [, updated] = await prisma.$transaction([
         prisma.photoLike.create({ data: { photoId, userId } }),
         prisma.galleryPhoto.update({
           where: { id: photoId },

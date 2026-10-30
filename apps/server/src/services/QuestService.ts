@@ -1,6 +1,6 @@
 import { prisma } from '../prisma';
 import { type DailyQuestProgress } from '@prisma/client';
-import { getDailyQuests, QuestTemplate, getUtcDayOfYear } from '@havenworld/shared';
+import { getDailyQuests, QuestTemplate } from '@havenworld/shared';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';
 
