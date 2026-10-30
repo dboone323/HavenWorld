@@ -12,7 +12,9 @@ test.describe('Tier 4: Browser 3D Movement & Pathfinding E2E', () => {
 
   test('Real canvas click moves avatar in 3D world space and updates rotation and arrival state', async ({
     page,
+    hasTouch,
   }) => {
+    test.skip(hasTouch, 'Touch devices use tap-to-move (covered by mobile.spec.ts)');
     const loginPage = new LoginPage(page);
     const roomPage = new RoomPage(page);
 
@@ -80,7 +82,9 @@ test.describe('Tier 4: Browser 3D Movement & Pathfinding E2E', () => {
 
   test('Clicking non-walkable wall or void maintains avatar safety without crash or invalid warp', async ({
     page,
+    hasTouch,
   }) => {
+    test.skip(hasTouch, 'Touch devices use tap-to-move (covered by mobile.spec.ts)');
     const loginPage = new LoginPage(page);
     const roomPage = new RoomPage(page);
 
