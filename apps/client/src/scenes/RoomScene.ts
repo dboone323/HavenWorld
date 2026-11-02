@@ -1396,15 +1396,18 @@ export async function createRoomScene(
   syncRoomHeaderUI();
   // Prototype-only dev hook: spawn two stand-in chibi remotes when flag is on.
   if (isChibiRemoteEnabled()) {
-    const standins: Array<{ id: string; username: string; avatarData: any; x: number; z: number }> = [
-      { id: 'standin-chibi-1', username: 'Chibi A', avatarData: { skinTone: '#F5CBA7', hairStyle: 'short', hairColor: '#4a3728', outfitHead: 'hat-cap', outfitLegs: 'pants-blue', bottomColor: '#2E8B57', outfitBody: 'shirt-red' }, x: 2, z: 1 },
-      { id: 'standin-chibi-2', username: 'Chibi B', avatarData: { skinTone: '#D4A574', hairStyle: 'long', hairColor: '#b8860b', outfitHead: 'none', outfitLegs: 'pants-red', bottomColor: '#8B0000', outfitBody: 'shirt-blue', outfitFeet: 'shoes-brown' }, x: -2, z: -1 },
+    const standins: Array<{ id: string; username: string; avatarData: any; x: number; z: number; targetX: number }> = [
+      // Chibi A walks +3 units in x along its hook path (open floor, mid-walk burst target).
+      { id: 'standin-chibi-1', username: 'Chibi A', avatarData: { skinTone: '#F5CBA7', hairStyle: 'short', hairColor: '#4a3728', outfitHead: 'hat-cap', outfitLegs: 'pants-blue', bottomColor: '#2E8B57', outfitBody: 'shirt-red' }, x: 2, z: 1, targetX: 5 },
+      // Chibi B holds position behind the back-right sofa so the sorting shot shows
+      // sprite-vs-furniture depth sorting (furniture in front covers the lower body).
+      { id: 'standin-chibi-2', username: 'Chibi B', avatarData: { skinTone: '#D4A574', hairStyle: 'long', hairColor: '#b8860b', outfitHead: 'none', outfitLegs: 'pants-red', bottomColor: '#8B0000', outfitBody: 'shirt-blue', outfitFeet: 'shoes-brown' }, x: -0.8, z: 6.5, targetX: -0.8 },
     ];
     for (const s of standins) {
       if (remoteAvatars.has(s.id)) continue;
       const remote = new RemoteAvatar(scene, { id: s.id, username: s.username, avatarData: s.avatarData }, { x: s.x, y: 0, z: s.z, rotY: 0 });
-      // make one walk by pushing target slightly
-      remote.updatePosition(s.x + 3, 0, s.z, 0);
+      // Push each stand-in to its walk target (Chibi B targetX === x, so it stays idle).
+      remote.updatePosition(s.targetX, 0, s.z, 0);
       remoteAvatars.set(s.id, remote);
       speechBubbles.registerRemoteAvatar(s.id, () => remote.rootMesh ? remote.rootMesh.getAbsolutePosition() : null);
     }
