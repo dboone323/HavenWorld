@@ -12,6 +12,7 @@ import { AdvancedDynamicTexture, TextBlock, Rectangle } from '@babylonjs/gui';
 import type { AvatarData } from '@havenworld/shared';
 import type { UserProfile } from './AvatarController';
 import { ChibiBillboard, type ChibiDirection } from './ChibiBillboard';
+import { isChibiRemoteEnabled, selectRemoteChibiAction } from '../utils/chibiRemoteFlag';
 
 export class RemoteAvatar {
   public rootMesh: TransformNode;
@@ -56,14 +57,18 @@ export class RemoteAvatar {
 
     this._buildPlaceholder(user.avatarData);
 
-    try {
-      this._chibiBillboard = new ChibiBillboard(`remote_chibi_${user.id}`, this._scene, this.rootMesh);
-      if (user.avatarData) {
-        this._chibiBillboard.setAvatarData(user.avatarData);
+    // Prototype-only: chibi billboard for remotes is gated behind chibiRemote=1.
+    if (isChibiRemoteEnabled()) {
+      try {
+        this._chibiBillboard = new ChibiBillboard(`remote_chibi_${user.id}`, this._scene, this.rootMesh);
+        if (user.avatarData) {
+          this._chibiBillboard.setAvatarData(user.avatarData);
+        }
+        this._chibiBillboard.setAction('idle', 'down', 0);
+      } catch {
+        // Graceful fallback in headless tests
+        this._chibiBillboard = null;
       }
-      this._chibiBillboard.setAction('idle', 'down', 0);
-    } catch {
-      // Graceful fallback in headless tests
     }
 
     this._buildNameTag();
@@ -194,16 +199,9 @@ export class RemoteAvatar {
       const dist = Math.hypot(dx, dz);
 
       if (!this._isSitting) {
-        if (dist > 0.05) {
-          // Moving with direction hysteresis to eliminate diagonal jitter
-          const absX = Math.abs(dx);
-          const absZ = Math.abs(dz);
-          const diff = absX - absZ;
-          if (diff > 0.2) {
-            this._chibiDirection = dx > 0 ? 'right' : 'left';
-          } else if (diff < -0.2) {
-            this._chibiDirection = dz > 0 ? 'up' : 'down';
-          }
+        const sel = selectRemoteChibiAction(this._chibiDirection, dx, dz, dist);
+        if (sel.isMoving) {
+          this._chibiDirection = sel.direction;
           this._chibiAnimTimer += clampedDt;
           if (this._chibiAnimTimer >= 115) {
             this._chibiAnimTimer = 0;
