@@ -57,7 +57,7 @@ export class RemoteAvatar {
 
     this._buildPlaceholder(user.avatarData);
 
-    // Prototype-only: chibi billboard for remotes is gated behind chibiRemote=1.
+    // Chibi billboard for remotes is on by default (opt-out via chibiRemote=0).
     if (isChibiRemoteEnabled()) {
       try {
         this._chibiBillboard = new ChibiBillboard(`remote_chibi_${user.id}`, this._scene, this.rootMesh);

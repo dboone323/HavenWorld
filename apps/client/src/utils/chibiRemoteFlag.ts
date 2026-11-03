@@ -1,15 +1,47 @@
 /** Prototype-only helpers for the Phase 0 chibi remote avatar prototype.
- *  Gate is the URL query param `chibiRemote=1` (or `chibiRemote=true`).
- *  Default OFF — when off, remote avatars keep their existing placeholder path. */
-export function isChibiRemoteEnabled(): boolean {
-  if (typeof window === 'undefined' || !window.location) return false;
+ *  Chibi is the DEFAULT for remote avatars (restores pre-PR-#12 production
+ *  behavior). The `chibiRemote` flag is now an opt-out kill switch:
+ *  `?chibiRemote=0` (or a stored localStorage value of '0') disables it. */
+export function isChibiRemoteEnabled(
+  search?: string,
+  storage?: Storage | null,
+): boolean {
+  const OPT_IN = new Set(['1', 'true', 'on', 'yes']);
+  const OPT_OUT = new Set(['0', 'false', 'off', 'no']);
+
+  let queryValue: string | null = null;
   try {
-    const params = new URLSearchParams(window.location.search);
-    const v = params.get('chibiRemote');
-    return v === '1' || v === 'true' || v === 'on';
+    if (search !== undefined) {
+      queryValue = new URLSearchParams(search).get('chibiRemote');
+    } else if (typeof window !== 'undefined' && window.location) {
+      queryValue = new URLSearchParams(window.location.search).get('chibiRemote');
+    }
   } catch {
-    return false;
+    queryValue = null;
   }
+
+  let storageValue: string | null = null;
+  try {
+    if (storage !== null) {
+      const s =
+        storage === undefined
+          ? typeof localStorage !== 'undefined'
+            ? localStorage
+            : null
+          : storage;
+      storageValue = s ? s.getItem('chibiRemote') : null;
+    }
+  } catch {
+    storageValue = null;
+  }
+
+  const effective = queryValue !== null ? queryValue : storageValue;
+  if (effective === null) return true; // default on
+  const v = effective.trim().toLowerCase();
+  if (OPT_OUT.has(v)) return false;
+  if (OPT_IN.has(v)) return true;
+  // Unknown value: keep the default-on behavior (not an explicit opt-out).
+  return true;
 }
 
 export type ChibiDirection = 'down' | 'up' | 'left' | 'right';
