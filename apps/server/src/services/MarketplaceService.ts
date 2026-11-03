@@ -1,6 +1,5 @@
 import { prisma } from '../prisma';
 import { redisClient } from '../redis';
-import { captureSecurityEvent } from '../monitoring/sentry';
 
 export const MARKETPLACE_TAX_RATE = 0.05; // 5% transaction tax (economic sink)
 

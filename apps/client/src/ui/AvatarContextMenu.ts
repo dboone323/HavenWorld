@@ -147,7 +147,7 @@ export class AvatarContextMenu {
             isVisiting: true,
             visitedHostName: options.targetUsername,
           }).catch(console.error);
-        } catch (err) {
+        } catch {
           showToast({ icon: '⚠️', title: 'Visit Error', subtitle: 'Failed to visit player room' });
         }
       });

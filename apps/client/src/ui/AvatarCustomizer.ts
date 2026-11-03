@@ -1,9 +1,7 @@
 import type { AvatarData } from '@havenworld/shared';
 import {
   SOCKET_EVENTS,
-  WARDROBE_TABS,
   normalizeGender,
-  type WardrobeItem,
 } from '@havenworld/shared';
 import { authService } from '../services/auth';
 import { socketService } from '../services/socket';

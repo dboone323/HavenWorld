@@ -3,7 +3,6 @@ import {
   CRAFTING_RECIPES,
   calculateRecycleYield,
   RawMaterial,
-  CraftingRecipe,
 } from '@havenworld/shared';
 import { getIO } from '../sockets';
 import { SOCKET_EVENTS } from '@havenworld/shared';

@@ -64,7 +64,6 @@ export class DirectMessagePanel {
     const myId = authService.user?.id;
     const isIncoming = dm.receiverId === myId;
     const partnerId = isIncoming ? dm.senderId : dm.receiverId;
-    const partnerName = isIncoming ? dm.senderUsername : (dm.receiverUsername || 'User');
 
     // Trigger head speech bubble if incoming and streamer mode is not active
     if (isIncoming && this._onSpeechTrigger && !StreamerModeManager.getIsEnabled()) {

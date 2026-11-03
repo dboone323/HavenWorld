@@ -4,7 +4,6 @@ import { SOCKET_EVENTS } from '@havenworld/shared';
 import { SERVER_URL } from '../config';
 import { showToast } from './ToastNotification';
 import { SceneManager } from '../engine/SceneManager';
-import { PassportModal } from '../passport/PassportModal';
 import { escapeHtml } from '../utils/escapeHtml';
 import { ReportModal } from './ReportModal';
 

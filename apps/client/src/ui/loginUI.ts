@@ -26,8 +26,6 @@ export function mountLoginUI(): void {
   const resetTokenInput = document.getElementById('reset-token') as HTMLInputElement | null;
   const errEl       = document.getElementById('login-error')!;
 
-  let mode: FormMode = 'login';
-
   const params = new URLSearchParams(window.location.search);
   if (params.get('verified') === 'true') {
     errEl.style.color = '#4ecdc4';
@@ -47,7 +45,6 @@ export function mountLoginUI(): void {
   btnCancelForgot?.addEventListener('click', () => setMode('login'));
 
   function setMode(m: FormMode): void {
-    mode = m;
     tabLogin.classList.toggle('tab--active', m === 'login');
     tabRegister.classList.toggle('tab--active', m === 'register');
     formLogin.classList.toggle('hidden', m !== 'login');

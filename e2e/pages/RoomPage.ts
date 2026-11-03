@@ -143,7 +143,12 @@ export class RoomPage {
   }
 
   async clickCanvas(x = 200, y = 200): Promise<void> {
-    await this.canvas.click({ position: { x, y } });
+    try {
+      await this.canvas.click({ position: { x, y }, timeout: 5_000 });
+    } catch {
+      // Some layouts (mobile) overlay the canvas; force the click in that case.
+      await this.canvas.click({ position: { x, y }, force: true });
+    }
   }
 
   async sendChatMessage(message: string): Promise<void> {

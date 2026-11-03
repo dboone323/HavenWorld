@@ -13,7 +13,7 @@ import {
   DynamicTexture,
   Tags,
 } from '@babylonjs/core';
-import { SOCKET_EVENTS, type PlayerState, type ChatMessage, type MoodId } from '@havenworld/shared';
+import { SOCKET_EVENTS, type PlayerState, type MoodId } from '@havenworld/shared';
 import { HavenEngine } from '../engine/HavenEngine';
 import { SceneManager } from '../engine/SceneManager';
 import { RoomLoader } from '../world/RoomLoader';
