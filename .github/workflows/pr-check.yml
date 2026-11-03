@@ -6,10 +6,10 @@ on:
 
 env:
   NODE_VERSION: '22'
-  DATABASE_URL: postgresql://havenworld_user:test_password@localhost:5432/havenworld_test
-  JWT_SECRET: ci_jwt_secret_not_for_production
-  JWT_ACCESS_SECRET: ci_jwt_secret_not_for_production
-  JWT_REFRESH_SECRET: ci_refresh_secret_not_for_production
+  DATABASE_URL: postgresql://havenworld_user:@localhost:5432/havenworld_test
+  JWT_SECRET: 
+  JWT_ACCESS_SECRET: 
+  JWT_REFRESH_SECRET: 
   REDIS_URL: redis://localhost:6379/1
   NODE_ENV: test
   PORT: 3001
@@ -24,7 +24,7 @@ jobs:
         env:
           POSTGRES_DB: havenworld_test
           POSTGRES_USER: havenworld_user
-          POSTGRES_PASSWORD: test_password
+          POSTGRES_PASSWORD: ${{ github.run_id }}_${{ github.run_attempt }}
         ports:
           - 5432:5432
         options: >-
@@ -56,6 +56,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+
+      - name: Generate per-run credentials and write to GITHUB_ENV
+        run: |
+          DB_PASSWORD="${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          DATABASE_URL="postgresql://havenworld_user:${DB_PASSWORD}@localhost:5432/havenworld_test"
+          echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
+          JWT_SECRET=$(openssl rand -hex 32)
+          echo "JWT_SECRET=${JWT_SECRET}" >> $GITHUB_ENV
+          JWT_ACCESS_SECRET=$(openssl rand -hex 32)
+          echo "JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}" >> $GITHUB_ENV
+          JWT_REFRESH_SECRET=$(openssl rand -hex 32)
+          echo "JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}" >> $GITHUB_ENV
+        shell: bash
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
