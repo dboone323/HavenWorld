@@ -178,13 +178,24 @@ this.bottomTint =
 const key = atlas.resolveFrameKey(layer, this.currentAction, this.currentDirection, this.currentFrame);
         const f = atlas.getFrame(key);
         if (f) {
-          ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, w, h);
           if (layer === 'bottom' && this.bottomTint) {
-            ctx.save();
-            ctx.globalCompositeOperation = 'source-atop';
-            ctx.fillStyle = this.bottomTint;
-            ctx.fillRect(0, 0, w, h);
-            ctx.restore();
+            const off = document.createElement('canvas');
+            off.width = w;
+            off.height = h;
+            const octx = off.getContext('2d');
+            if (octx) {
+              octx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, w, h);
+              octx.save();
+              octx.globalCompositeOperation = 'source-atop';
+              octx.fillStyle = this.bottomTint;
+              octx.fillRect(0, 0, w, h);
+              octx.restore();
+              ctx.drawImage(off, 0, 0);
+            } else {
+              ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, w, h);
+            }
+          } else {
+            ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h, 0, 0, w, h);
           }
         }
       }
