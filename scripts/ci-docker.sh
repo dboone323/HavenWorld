@@ -28,8 +28,9 @@ CYAN='\033[0;36m'
 DIM='\033[2m'
 RESET='\033[0m'
 
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-havenworld}"
 COMPOSE_FILE="docker-compose.test.yml"
-TEST_NET="havenworld_default"
+TEST_NET="${COMPOSE_PROJECT_NAME}_default"
 
 # Per-step status tracking
 STEP_CLIENT_LINT="PENDING"
@@ -95,6 +96,40 @@ docker_node() {
     node:22 \
     sh -c "corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.9 --activate >/dev/null 2>&1 && $*"
 }
+
+# Helper to check if generated Prisma client exists
+has_prisma_client() {
+  if [ -f "$REPO_ROOT/node_modules/.prisma/client/schema.prisma" ]; then
+    return 0
+  fi
+  for f in "$REPO_ROOT"/node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/schema.prisma; do
+    [ -f "$f" ] && return 0
+  done
+  return 1
+}
+
+# Self-bootstrap dependencies and generated client if missing
+if [ ! -d "$REPO_ROOT/node_modules" ]; then
+  echo -e "\n${BOLD}[Setup] Bootstrapping dependencies (pnpm install --frozen-lockfile)...${RESET}"
+  BOOTSTRAP_INSTALL_LOG="$TMP_DIR/bootstrap-install.log"
+  docker_node "pnpm install --frozen-lockfile" >"$BOOTSTRAP_INSTALL_LOG" 2>&1 || {
+    echo -e "${RED}Failed to install dependencies inside container.${RESET}"
+    cat "$BOOTSTRAP_INSTALL_LOG"
+    exit 1
+  }
+  echo -e "  ${GREEN}✔${RESET} Dependencies installed successfully"
+fi
+
+if ! has_prisma_client; then
+  echo -e "\n${BOLD}[Setup] Generating Prisma client...${RESET}"
+  BOOTSTRAP_PRISMA_LOG="$TMP_DIR/bootstrap-prisma.log"
+  docker_node "pnpm --filter server exec prisma generate" >"$BOOTSTRAP_PRISMA_LOG" 2>&1 || {
+    echo -e "${RED}Failed to generate Prisma client inside container.${RESET}"
+    cat "$BOOTSTRAP_PRISMA_LOG"
+    exit 1
+  }
+  echo -e "  ${GREEN}✔${RESET} Prisma client generated successfully"
+fi
 
 # Ensure shared package is built first inside container
 echo -e "\n${BOLD}[Setup] Building @havenworld/shared in node:22...${RESET}"
