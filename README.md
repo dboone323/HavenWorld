@@ -1,6 +1,6 @@
 # HavenWorld
 
-A browser-based social virtual world — open source, commmunity-driven.
+A browser-based social virtual world — open source, community-driven.
 
 **Game URL:** https://havenworld-game.pages.dev (Planned custom domain: https://havenworld.me)
 
