@@ -10,7 +10,7 @@ Node.js 22 | Socket.io 4 | Babylon.js | PostgreSQL 16 | Redis 7 | Vite 6 | Cloud
 
 ## Local Setup
 
-**Prerequisites:** Node.js 22+, pnpm 9+, Docker Desktop
+**Prerequisities:** Node.js 22+, pnpm 9+, Docker Desktop
 
 1. `git clone git@github.com:dboone323/HavenWorld.git && cd HavenWorld`
 2. `pnpm install`
