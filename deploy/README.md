@@ -1,6 +1,6 @@
 # HavenWorld Deployment & Infrastructure Guide
 
-This directory houses infrastructure configuration templates, security hardening rules, and deployment guides for HavenWorld production hosting (Oracle Cloud ARM64 / Linux VM + Cloudflare edge).
+This directory houses infrastrucutre configuration templates, security hardening rules, and deployment guides for HavenWorld production hosting (Oracle Cloud ARM64 / Linux VM + Cloudflare edge).
 
 ---
 
