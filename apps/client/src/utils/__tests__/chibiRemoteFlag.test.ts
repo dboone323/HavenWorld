@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { selectRemoteChibiAction, isChibiRemoteEnabled } from '../chibiRemoteFlag';
+import {
+  selectRemoteChibiAction,
+  isChibiRemoteEnabled,
+  isChibiStandinsEnabled,
+} from '../chibiRemoteFlag';
 
 function setLocation(search: string): void {
   Object.defineProperty(window, 'location', {
@@ -74,5 +78,48 @@ describe('isChibiRemoteEnabled', () => {
   it("stored '1' -> enabled", () => {
     localStorage.setItem('chibiRemote', '1');
     expect(isChibiRemoteEnabled()).toBe(true);
+  });
+});
+
+describe('isChibiStandinsEnabled', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setLocation('');
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('returns boolean', () => {
+    expect(typeof isChibiStandinsEnabled()).toBe('boolean');
+  });
+
+  it('no param + no stored value -> disabled (default off)', () => {
+    expect(isChibiStandinsEnabled()).toBe(false);
+  });
+
+  it("param '1' -> enabled", () => {
+    setLocation('?chibiStandins=1');
+    expect(isChibiStandinsEnabled()).toBe(true);
+  });
+
+  it("param 'true' -> enabled", () => {
+    setLocation('?chibiStandins=true');
+    expect(isChibiStandinsEnabled()).toBe(true);
+  });
+
+  it("param '0' -> disabled", () => {
+    setLocation('?chibiStandins=0');
+    expect(isChibiStandinsEnabled()).toBe(false);
+  });
+
+  it("stored '1' -> enabled", () => {
+    localStorage.setItem('chibiStandins', '1');
+    expect(isChibiStandinsEnabled()).toBe(true);
+  });
+
+  it("stored '0' -> disabled", () => {
+    localStorage.setItem('chibiStandins', '0');
+    expect(isChibiStandinsEnabled()).toBe(false);
   });
 });

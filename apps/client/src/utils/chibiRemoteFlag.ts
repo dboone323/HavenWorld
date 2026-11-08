@@ -44,6 +44,47 @@ export function isChibiRemoteEnabled(
   return true;
 }
 
+/** Prototype-only dev hook helper: gates the two stand-in chibi remotes
+ *  ('standin-chibi-1' and 'standin-chibi-2') used for offline visual review.
+ *  Default OFF. Opt in with `?chibiStandins=1` (or stored localStorage value). */
+export function isChibiStandinsEnabled(
+  search?: string,
+  storage?: Storage | null,
+): boolean {
+  const OPT_IN = new Set(['1', 'true', 'on', 'yes']);
+
+  let queryValue: string | null = null;
+  try {
+    if (search !== undefined) {
+      queryValue = new URLSearchParams(search).get('chibiStandins');
+    } else if (typeof window !== 'undefined' && window.location) {
+      queryValue = new URLSearchParams(window.location.search).get('chibiStandins');
+    }
+  } catch {
+    queryValue = null;
+  }
+
+  let storageValue: string | null = null;
+  try {
+    if (storage !== null) {
+      const s =
+        storage === undefined
+          ? typeof localStorage !== 'undefined'
+            ? localStorage
+            : null
+          : storage;
+      storageValue = s ? s.getItem('chibiStandins') : null;
+    }
+  } catch {
+    storageValue = null;
+  }
+
+  const effective = queryValue !== null ? queryValue : storageValue;
+  if (effective === null) return false; // default off
+  const v = effective.trim().toLowerCase();
+  return OPT_IN.has(v);
+}
+
 export type ChibiDirection = 'down' | 'up' | 'left' | 'right';
 
 export interface RemoteChibiSelection {
