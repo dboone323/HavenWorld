@@ -59,7 +59,7 @@ import { CollaborativeWhiteboard } from '../ui/CollaborativeWhiteboard';
 import { StreamerModeManager } from '../ui/StreamerModeManager';
 import { setCoinBalance } from '../ui/currency';
 import { escapeHtml } from '../utils/escapeHtml';
-import { isChibiRemoteEnabled } from '../utils/chibiRemoteFlag';
+import { isChibiStandinsEnabled } from '../utils/chibiRemoteFlag';
 
 export async function createRoomScene(
   haven: HavenEngine,
@@ -1395,7 +1395,7 @@ export async function createRoomScene(
   // Sync room header & controls at the exact instant the 3D scene is ready and activated
   syncRoomHeaderUI();
   // Prototype-only dev hook: spawn two stand-in chibi remotes when flag is on.
-  if (isChibiRemoteEnabled()) {
+  if (isChibiStandinsEnabled()) {
     const standins: Array<{ id: string; username: string; avatarData: any; x: number; z: number; targetX: number }> = [
       // Chibi A walks +3 units in x along its hook path (open floor, mid-walk burst target).
       { id: 'standin-chibi-1', username: 'Chibi A', avatarData: { skinTone: '#F5CBA7', hairStyle: 'short', hairColor: '#4a3728', outfitHead: 'hat-cap', outfitLegs: 'pants-blue', bottomColor: '#2E8B57', outfitBody: 'shirt-red' }, x: 2, z: 1, targetX: 5 },
