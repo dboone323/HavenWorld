@@ -18,6 +18,12 @@ test.describe('Tier 4: Multiplayer Synchronization E2E', () => {
   test('Multiplayer session: dual presence, position sync, chat broadcast, and disconnect', async ({
     browser,
   }) => {
+    // Multi-context test with 2 full browser sessions, 2 user registrations, and 2 3D scene loads.
+    // Under CI load (2-vCPU runner with software WebGL), setup + interaction takes 35-44.5s.
+    // Measured worst-case CI duration is 48.1s; 75s budget (48.1s * 1.5) provides sufficient
+    // headroom so the final disconnect poll at line 87 receives its full 10s assertion window.
+    test.setTimeout(75_000);
+
     // Context 1 for Player 1
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
