@@ -69,23 +69,20 @@ export class TutorialOverlay {
 
     const overlay = document.createElement('div');
     overlay.id = 'tutorial-overlay';
-    overlay.style.cssText = `
-      position: fixed; right: 84px; top: 96px; z-index: 9999; font-family: inherit;
-      width: min(320px, calc(100vw - 120px));
-    `;
+    overlay.setAttribute('data-testid', 'tutorial-overlay');
 
     overlay.innerHTML = `
       <div style="
         background:#1b1b36;border:1px solid rgba(78,205,196,0.5);border-radius:14px;
         color:#fff;padding:16px 18px;box-shadow:0 10px 36px rgba(0,0,0,0.55);position:relative;
       ">
-        <button data-action="close" style="position:absolute;top:8px;right:10px;background:none;border:none;color:#fff;font-size:14px;cursor:pointer">✕</button>
+        <button data-action="close" data-testid="tutorial-close-btn" style="position:absolute;top:8px;right:10px;background:none;border:none;color:#fff;font-size:14px;cursor:pointer">✕</button>
         <div style="font-size:26px">${step.icon}</div>
         <h3 style="margin:6px 0 4px;font-size:15px">${step.title}</h3>
         <p style="margin:0 0 12px;font-size:13px;line-height:1.5;opacity:0.88">${step.text}</p>
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button data-action="later" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.3);background:none;color:#fff;cursor:pointer;font-family:inherit;font-size:12px">Later</button>
-          <button data-action="done" style="padding:7px 14px;border-radius:8px;border:none;background:#4ecdc4;color:#12122b;font-weight:600;cursor:pointer;font-family:inherit;font-size:12px">Got it ✓</button>
+          <button data-action="later" data-testid="tutorial-later-btn" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.3);background:none;color:#fff;cursor:pointer;font-family:inherit;font-size:12px">Later</button>
+          <button data-action="done" data-testid="tutorial-done-btn" style="padding:7px 14px;border-radius:8px;border:none;background:#4ecdc4;color:#12122b;font-weight:600;cursor:pointer;font-family:inherit;font-size:12px">Got it ✓</button>
         </div>
       </div>`;
 

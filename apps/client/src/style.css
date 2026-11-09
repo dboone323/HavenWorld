@@ -288,6 +288,16 @@ body {
 
 .loading-text { color: var(--color-muted); padding: 1rem 0; }
 
+/* ── Interactive Tutorial Onboarding Overlay (§3d) ────────────────────────── */
+#tutorial-overlay {
+  position:      fixed;
+  right:         84px;
+  top:           96px;
+  z-index:       9999;
+  font-family:   inherit;
+  width:         min(320px, calc(100vw - 120px));
+}
+
 /* ── Chat panel ──────────────────────────────────────────────────────────── */
 #chat-panel {
   position:      absolute;
@@ -963,5 +973,15 @@ input:checked + .slider:before {
     width: auto;
     bottom: 10px;
     max-height: 160px;
+  }
+
+  #tutorial-overlay {
+    top:       auto;
+    bottom:    72px;
+    right:     52px;
+    left:      52px;
+    width:     auto;
+    max-width: 320px;
+    margin:    0 auto;
   }
 }

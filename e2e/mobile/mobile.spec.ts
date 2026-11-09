@@ -76,4 +76,29 @@ test.describe('Tier 4: Mobile Emulation & Touch Interactions', () => {
     await room.sendChatMessage(mobileMsg);
     await room.waitForChatMessage(mobileMsg);
   });
+
+  test('Tutorial overlay auto-opens on fresh login and is dismissible via real UI controls', async ({ page }) => {
+    const ts = Date.now();
+    const login = new LoginPage(page);
+    const room = new RoomPage(page);
+
+    await login.goto();
+    await login.register({
+      username: `tut_${ts}`,
+      email: `tut_${ts}@havenworld.test`,
+      password: 'Password123!',
+    });
+    await login.verifyEmailViaTestRoute(`tut_${ts}@havenworld.test`);
+    await login.login(`tut_${ts}@havenworld.test`, 'Password123!');
+
+    await room.waitForRoomReady();
+
+    // Verify tutorial auto-opens after 1500ms
+    await expect(room.tutorialOverlay).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('#tutorial-overlay h3')).toContainText('Step 1 — Look around');
+
+    // Dismiss using real UI control
+    await room.tutorialCloseBtn.click();
+    await expect(room.tutorialOverlay).toBeHidden();
+  });
 });

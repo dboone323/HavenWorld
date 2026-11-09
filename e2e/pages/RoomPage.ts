@@ -69,6 +69,10 @@ export class RoomPage {
   readonly btnCloseEditor: Locator;
   readonly loftSettingsClose: Locator;
   readonly emoteWheelOverlay: Locator;
+  readonly tutorialOverlay: Locator;
+  readonly tutorialCloseBtn: Locator;
+  readonly tutorialLaterBtn: Locator;
+  readonly tutorialDoneBtn: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -131,6 +135,17 @@ export class RoomPage {
     this.btnCloseEditor = page.locator('#btn-close-editor');
     this.loftSettingsClose = page.locator('#loft-settings-close');
     this.emoteWheelOverlay = page.locator('#emote-wheel-overlay');
+    this.tutorialOverlay = page.locator('#tutorial-overlay');
+    this.tutorialCloseBtn = page.locator('#tutorial-overlay [data-action="close"]');
+    this.tutorialLaterBtn = page.locator('#tutorial-overlay [data-action="later"]');
+    this.tutorialDoneBtn = page.locator('#tutorial-overlay [data-action="done"]');
+  }
+
+  async dismissTutorialIfVisible(): Promise<void> {
+    if (await this.tutorialOverlay.isVisible().catch(() => false)) {
+      await this.tutorialCloseBtn.click();
+      await expect(this.tutorialOverlay).toBeHidden();
+    }
   }
 
   async waitForRoomReady(timeout = 20_000): Promise<void> {
@@ -204,6 +219,7 @@ export class RoomPage {
   }
 
   async signOut(): Promise<void> {
+    await this.dismissTutorialIfVisible();
     await this.btnSignOut.click({ force: true });
     await expect(this.page.locator('[data-testid="login-panel"]')).toBeVisible({ timeout: 10_000 });
   }
