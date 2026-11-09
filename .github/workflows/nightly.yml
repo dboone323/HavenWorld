@@ -83,7 +83,7 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run Playwright Test Matrix
-        run: npx playwright test --project=${{ matrix.project }}
+        run: xvfb-run --auto-servernum npx playwright test --project=${{ matrix.project }}
 
       - name: Upload Playwright Artifacts
         uses: actions/upload-artifact@v4
