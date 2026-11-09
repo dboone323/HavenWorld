@@ -9,6 +9,10 @@ permissions:
   # Grants model inference only; repository writes remain gated by safe-outputs.
   copilot-requests: write
 
+engine:
+  id: copilot
+  model: mai-code-1.1-flash
+
 safe-outputs:
   add-comment:
     max: 1
