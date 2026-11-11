@@ -32,10 +32,16 @@ export class LobbyPage {
   }
 
   async dismissTutorialIfVisible(): Promise<void> {
-    if (await this.tutorialOverlay.isVisible().catch(() => false)) {
-      await this.tutorialCloseBtn.click();
-      await expect(this.tutorialOverlay).toBeHidden();
-    }
+    // The tutorial overlay auto-opens asynchronously after app init (~1.5s +
+    // an async /api/tutorial/status fetch) and can render between any check
+    // and the next click, intercepting pointer events. Force-remove it from
+    // the DOM right before the caller's click so there is no window for it to
+    // appear and intercept. Once removed it won't re-appear this session
+    // (autoShown flag). The tutorial is not what this suite asserts on.
+    await this.page.evaluate(() => {
+      const el = document.getElementById('tutorial-overlay');
+      if (el) el.remove();
+    });
   }
 
   async selectPublicTab(): Promise<void> {
@@ -51,8 +57,13 @@ export class LobbyPage {
   }
 
   async enterRoom(roomName: string): Promise<void> {
+    await this.dismissTutorialIfVisible();
     const roomBtn = this.page.locator(`text=${roomName}`).first();
     await expect(roomBtn).toBeVisible({ timeout: 10_000 });
+    // Dismiss again right before clicking: the tutorial overlay auto-opens
+    // asynchronously (~1.5s after app init) and can render in the gap between
+    // an earlier dismiss and this click, intercepting pointer events.
+    await this.dismissTutorialIfVisible();
     await roomBtn.click();
   }
 

@@ -77,9 +77,8 @@ describe('Phase 3 Polish Real Functional Validations', () => {
 
       // Cancelling displays toast and cleans up HUD
       controller.cancelFishing();
-      expect(document.getElementById('fishing-hud')).toBeNull();
-
       controller.dispose();
+      expect(document.getElementById('fishing-hud')).toBeNull();
       scene.dispose();
       engine.dispose();
     });

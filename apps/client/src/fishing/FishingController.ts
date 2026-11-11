@@ -54,13 +54,19 @@ export class FishingController {
 
   cancelFishing(): void {
     if (!this.isFishing) return;
-    this.endSession();
+    this.isFishing = false;
+    this.clearBiteTimeout();
     socketService.emit(SOCKET_EVENTS.CANCEL_FISHING, {});
     showToast({
       icon: '🎣',
       title: 'Fishing cancelled',
       subtitle: 'You packed up your fishing rod.',
     });
+    // Defer HUD removal so the click action completes before the
+    // #fishing-hud element is detached from the DOM. Removing it
+    // synchronously inside the click handler causes Playwright to
+    // detect the element as detached and retry until the test timeout.
+    setTimeout(() => this.destroyUI(), 0);
   }
 
   private createUI(): void {
