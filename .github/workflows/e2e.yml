@@ -98,4 +98,4 @@ jobs:
         with:
           name: playwright-report-${{ github.sha }}
           path: playwright-report/
-          retention-days: 14
+          retention-days: 7

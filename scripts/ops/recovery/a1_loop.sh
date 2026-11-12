@@ -12,6 +12,25 @@ IMG=$(cat "$STATE_DIR/a1_img.txt")
 SUCCESS="$STATE_DIR/a1_success.json"
 ACTION="$STATE_DIR/a1_action_needed"
 LOG="$STATE_DIR/a1_loop.log"
+
+# Rotation: a1_loop.log appends one line every pass with no cap — rotate once
+# it exceeds 10 MB, keep 5 archives, prune archives older than 30 days.
+# The state files beside it (a1_success.json, a1_img.txt, a1_meta.json) are
+# current-state and are never rotated or removed here.
+LOG_MAX=10485760
+LOG_KEEP=5
+if [ -f "$LOG" ]; then
+  log_sz=$(stat -f%z "$LOG" 2>/dev/null || stat -c%s "$LOG" 2>/dev/null || echo 0)
+  if [ "$log_sz" -gt "$LOG_MAX" ]; then
+    ts=$(date +%Y%m%d-%H%M%S)
+    mv "$LOG" "$LOG.$ts"
+    ls -1t "$LOG".* 2>/dev/null | tail -n +$((LOG_KEEP + 1)) | while read -r old_log; do
+      [ -n "$old_log" ] && rm -f "$old_log"
+    done
+    find "$STATE_DIR" -maxdepth 1 -name 'a1_loop.log.*' -mtime +30 -delete 2>/dev/null || true
+  fi
+fi
+
 rm -f "$ACTION"
 ADs=(RqiG:US-CHICAGO-1-AD-1 RqiG:US-CHICAGO-1-AD-2 RqiG:US-CHICAGO-1-AD-3)
 SIZES=("1 6" "1 12" "2 6" "2 12")

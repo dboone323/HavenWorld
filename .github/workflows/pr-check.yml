@@ -94,7 +94,7 @@ jobs:
         with:
           name: coverage-report-${{ github.sha }}
           path: apps/server/coverage/
-          retention-days: 14
+          retention-days: 7
 
   client-check:
     name: Client — TypeScript, Lint & Tests
