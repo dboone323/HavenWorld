@@ -252,6 +252,14 @@ clean: ## Remove dist/ and coverage/ directories
 	rm -rf apps/server/dist apps/server/coverage apps/client/dist apps/client/coverage
 	rm -rf playwright-report test-results
 
+.PHONY: clean-all
+clean-all: ## Run the full retention sweep (7-day rinse-and-repeat + 30-day important classes)
+	bash scripts/retention-sweep.sh
+
+.PHONY: clean-all-dry
+clean-all-dry: ## Dry-run the retention sweep (list what would be removed, remove nothing)
+	bash scripts/retention-sweep.sh --dry-run
+
 .PHONY: reset-db
 reset-db: dev-up ## Drop and recreate test database schema
 	pnpm --filter server exec prisma db push --force-reset
