@@ -11,7 +11,9 @@
 #   apps/server/dist/, apps/client/dist/, packages/*/dist/    (build outputs, rebuilt on next build)
 #   tmp/, scratch/, supabase/.temp/                            (scratch by definition)
 #   logs/*.log                                                 (scratch logs; logs/local/ is the 30-day class below)
-#   runs/*.log, runs/*.done, runs/gate-queue/*.log, runs/wt-main-verify/**  (raw per-run gate logs)
+#   runs/*.log, runs/*.done, runs/gate-queue/*.log            (raw per-run gate logs)
+#   runs/wt-main-verify/ is NEVER swept — it is a full repo checkout from the
+#   Nov 11 main-verify run (Daniel's standing order: leave it as is).
 #   $TMPDIR/havenworld-ci-docker-*                             (ci-docker.sh leftovers from killed runs)
 #
 # 30-day (important) class:
@@ -91,9 +93,11 @@ for d in packages/*/dist; do
 done
 
 # ── 7-day class: scratch ──
-remove_path "tmp"
-remove_path "scratch"
-[ -d "supabase" ] && remove_path "supabase/.temp"
+# Age-gated: delete only items older than 7 days, keep the directories
+# themselves (a running gate may have just created files in them).
+sweep_tree "tmp" 7
+sweep_tree "scratch" 7
+[ -d "supabase" ] && sweep_tree "supabase/.temp" 7
 
 # ── 7-day class: scratch logs outside logs/local/ (logs/local/ is 30-day) ──
 if [ -d "logs" ]; then
@@ -121,15 +125,16 @@ if [ -d "logs/local" ]; then
 fi
 
 # ── 7-day class: raw per-run gate logs under runs/ ──
+# runs/wt-main-verify/ is a full repo checkout (Nov 11 main-verify run) and is
+# never swept — prune it from both the log sweep and the empty-dir sweep.
 if [ -d "runs" ]; then
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     say "remove file: $f"
     if [ "$DRY_RUN" = 0 ]; then rm -f "$f"; fi
     removed=$((removed + 1))
-  done < <(find runs -type f \( -name '*.log' -o -name '*.done' \) -mtime +7 -print 2>/dev/null)
-  sweep_tree "runs/wt-main-verify" 7
-  find runs -mindepth 1 -type d -empty -delete 2>/dev/null || true
+  done < <(find runs -type f -not -path 'runs/wt-main-verify/*' \( -name '*.log' -o -name '*.done' \) -mtime +7 -print 2>/dev/null)
+  find runs -mindepth 1 -type d -empty -not -path 'runs/wt-main-verify' -not -path 'runs/wt-main-verify/*' -delete 2>/dev/null || true
 fi
 
 # ── 30-day class: run summaries/reports ──
