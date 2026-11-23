@@ -179,6 +179,12 @@ _ssh-deploy-server:
 	ssh $(ORACLE_HOST) 'sudo -u havenworld -H bash $(APP_DIR)/scripts/remote-deploy.sh </dev/null'
 	@printf "$(GREEN)==> Server deploy complete.$(RESET)\n"
 
+.PHONY: deploy-vm
+deploy-vm: ## Run full gate + deploy directly on Oracle VM
+	@printf "$(BOLD)==> Executing unified VM gate and deploy...$(RESET)\n"
+	ssh $(ORACLE_HOST) 'bash /home/ubuntu/Developer/HavenWorld/scripts/vm-full-deploy.sh'
+
+
 # ── Deploy — Client ──────────────────────────────────────────────────────────
 .PHONY: deploy-client
 deploy-client: build-client ## Build + deploy client to Cloudflare Pages
