@@ -10,6 +10,15 @@ set -euo pipefail
 
 APP_DIR="/opt/havenworld"
 LOG_DIR="$APP_DIR/logs"
+LOCK_FILE="/tmp/havenworld-deploy.lock"
+
+# Serialize all server deployments via flock (held until script exits)
+exec 200>"$LOCK_FILE"
+chmod 666 "$LOCK_FILE" 2>/dev/null || true
+if ! flock -n 200; then
+  echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — ERROR: Another server deployment is in progress (lock held on $LOCK_FILE). Aborting." >&2
+  exit 1
+fi
 
 # Load nvm if present (for interactive PATH when using ubuntu user)
 export NVM_DIR="$HOME/.nvm"
