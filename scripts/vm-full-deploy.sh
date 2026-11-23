@@ -87,37 +87,43 @@ export TMPDIR="${TMPDIR:-/tmp}"
 echo -e "\n${BOLD}[1/5] Syncing VM repository clone (${REPO_DIR})...${RESET}"
 cd "$REPO_DIR"
 
-# Verify no tracked modifications exist in VM clone (untracked runs/ logs ignored)
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo -e "${RED}${BOLD}ERROR: VM repository clone has uncommitted tracked changes.${RESET}" >&2
-  echo -e "${RED}Aborting deployment. Please inspect and resolve dirty tracked state manually.${RESET}" >&2
-  git status --short >&2
-  exit 1
-fi
+# Verify repository clone is clean (both tracked changes and untracked build inputs)
+check_clean_repo() {
+  local phase="$1"
+  # Check tracked modifications
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo -e "${RED}${BOLD}ERROR: VM repository clone has uncommitted tracked changes (${phase}).${RESET}" >&2
+    echo -e "${RED}Aborting deployment. Please inspect and resolve dirty tracked state manually.${RESET}" >&2
+    git status --short >&2
+    exit 1
+  fi
+
+  # Check untracked build inputs outside runs/ (runs/ is the ONLY exemption for run logs/sentinels/isolated dists;
+  # scripts/vm-full-deploy.sh is exempt during pre-merge staging on main before PR #80 merges)
+  local untracked_files
+  untracked_files="$(git status --porcelain | grep '^\?\?' | awk '{print $2}' | grep -v '^runs/' | grep -v '^scripts/vm-full-deploy.sh$' || true)"
+  if [ -n "$untracked_files" ]; then
+    echo -e "${RED}${BOLD}ERROR: VM repository clone has untracked build inputs outside runs/ (${phase}):${RESET}" >&2
+    echo "$untracked_files" >&2
+    echo -e "${RED}Aborting deployment. Please inspect and clean untracked files manually.${RESET}" >&2
+    exit 1
+  fi
+}
+
+check_clean_repo "before pull"
 
 git fetch origin main </dev/null
 git checkout main
 git pull --ff-only origin main </dev/null
 CLONE_HEAD="$(git rev-parse HEAD)"
 
-# Re-verify clean tracked state after pull
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo -e "${RED}${BOLD}ERROR: VM repository clone has uncommitted tracked changes after pull.${RESET}" >&2
-  exit 1
-fi
-echo -e "  ${GREEN}✔${RESET} Repository clone aligned at: ${CLONE_HEAD} (clean tracked state)"
+# Re-verify clean state (tracked + untracked) after pull
+check_clean_repo "after pull"
+echo -e "  ${GREEN}✔${RESET} Repository clone aligned at: ${CLONE_HEAD} (clean tracked and untracked state)"
 
 # ── 2. Run the FULL gate (Docker CI) ─────────────────────────────────────────
 echo -e "\n${BOLD}[2/5] Running FULL make ci-docker gate inside Docker...${RESET}"
 echo -e "  ${DIM}Notice: Live server will NOT be touched if the gate fails.${RESET}"
-
-# Ensure dependencies match frozen lockfile in VM clone before gate execution
-echo -e "  ${DIM}--> Refreshing dependencies to match frozen lockfile (node:22)...${RESET}"
-docker run --rm \
-  -v "$REPO_DIR":/app \
-  -w /app \
-  node:22 \
-  sh -c "corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.9 --activate >/dev/null 2>&1 && pnpm install --frozen-lockfile"
 
 if ! make ci-docker; then
   echo -e "\n${RED}${BOLD}GATE FAILED: make ci-docker returned non-zero exit code.${RESET}" >&2
