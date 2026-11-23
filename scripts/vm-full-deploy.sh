@@ -85,7 +85,7 @@ echo -e "  ${GREEN}✔${RESET} Production server deployed. /opt/havenworld HEAD:
 # ── 4. Build & deploy client to Cloudflare Pages ─────────────────────────────
 echo -e "\n${BOLD}[4/5] Deploying client to Cloudflare Pages...${RESET}"
 CLIENT_DEPLOYED=0
-if npx wrangler whoami >/dev/null 2>&1; then
+if npx wrangler whoami 2>&1 | grep -q "You are logged in"; then
   echo -e "  ${DIM}--> Building client web app (Vite)...${RESET}"
   cd "$REPO_DIR"
   pnpm --filter client build </dev/null
