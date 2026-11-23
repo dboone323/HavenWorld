@@ -10,6 +10,7 @@
 #      ABORTS if the clone has uncommitted tracked modifications (ignoring runs/).
 #   2. Execute FULL local Docker CI gate (`make ci-docker`).
 #      ABORTS IMMEDIATELY if the gate fails (live server is never touched).
+#      Immediately isolates gate-verified client artifact to revision-specific directory.
 #   3. Deploy production server (/opt/havenworld) pinned to gated CLONE_HEAD:
 #      - Ensure origin/main has not advanced during gate execution
 #      - Inspect prisma migrate status
@@ -18,20 +19,19 @@
 #        build server, reload PM2 havenworld-server)
 #      - Assert /opt/havenworld HEAD == CLONE_HEAD
 #   4. Deploy client to Cloudflare Pages (havenworld-game):
-#      - Reuses gate-verified apps/client/dist (avoids root-owned build conflicts)
+#      - Deploys from isolated revision-specific client artifact
 #      - If wrangler is authenticated on the VM, deploys directly with --branch=main
 #        and --commit-hash, asserting HTTP 200 on completion.
 #      - If wrangler is unauthenticated, reports client status as PENDING and prints
-#        exact fallback command specifying clean worktree path, revision, and --branch=main.
+#        exact fallback command pointing to isolated artifact path and --branch=main.
 #   5. End-to-end verification:
 #      - Queries /health endpoint (validates status: ok AND redis: connected)
 #      - In authenticated path: validates client endpoint returns HTTP 200 (fails if non-200)
 #      - In fallback path: reports client verification as PENDING (verified after Mac deploy)
 #
-# Durability:
-#   Automatically clears previous completion sentinel, logs full execution to
-#   runs/vm-deploy-pipeline-YYYY-MM-DD.log, and writes a .done sentinel containing
-#   exit code and UTC timestamp.
+# Durability & Concurrency:
+#   Automatically uses per-run log and sentinel paths (timestamp + PID), clears previous
+#   sentinel if present, and writes a .done sentinel containing exit code and UTC timestamp.
 # =============================================================================
 
 set -euo pipefail
@@ -39,8 +39,8 @@ set -euo pipefail
 # ── Self-contained logging and completion sentinel ───────────────────────────
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 REPO_DIR="${REPO_DIR:-/home/ubuntu/Developer/HavenWorld}"
-LOG_DATE="$(date -u '+%Y-%m-%d')"
-DEFAULT_LOG="${REPO_DIR}/runs/vm-deploy-pipeline-${LOG_DATE}.log"
+RUN_ID="${RUN_ID:-$(date -u '+%Y%m%d-%H%M%SZ')-$$}"
+DEFAULT_LOG="${REPO_DIR}/runs/vm-deploy-pipeline-${RUN_ID}.log"
 DEPLOY_LOG="${DEPLOY_LOG:-$DEFAULT_LOG}"
 SENTINEL_FILE="${DEPLOY_LOG}.done"
 
@@ -48,7 +48,9 @@ if [ "${VM_DEPLOY_LOGGING:-0}" != "1" ]; then
   mkdir -p "$(dirname "$DEPLOY_LOG")"
   rm -f "$SENTINEL_FILE"
   export VM_DEPLOY_LOGGING=1
+  export RUN_ID
   export DEPLOY_LOG
+  export SENTINEL_FILE
   set +e
   bash "$SCRIPT_PATH" "$@" 2>&1 | tee "$DEPLOY_LOG"
   PIPE_EXIT="${PIPESTATUS[0]}"
@@ -73,6 +75,7 @@ RESET='\033[0m'
 echo -e "${BOLD}${CYAN}====================================================================${RESET}"
 echo -e "${BOLD}${CYAN} HavenWorld Unified VM Gate & Deployment Pipeline${RESET}"
 echo -e "${BOLD}${CYAN} Started:  $(date -u '+%Y-%m-%d %H:%M:%SZ')${RESET}"
+echo -e "${BOLD}${CYAN} Run ID:   ${RUN_ID}${RESET}"
 echo -e "${BOLD}${CYAN} Log file: ${DEPLOY_LOG}${RESET}"
 echo -e "${BOLD}${CYAN} Sentinel: ${SENTINEL_FILE}${RESET}"
 echo -e "${BOLD}${CYAN}====================================================================${RESET}"
@@ -114,6 +117,20 @@ if ! make ci-docker; then
 fi
 echo -e "  ${GREEN}✔ PASS${RESET} — All gate checks passed in Docker."
 
+# Immediately isolate this run's gate-verified client artifact
+CLONE_HEAD_SHORT="${CLONE_HEAD:0:8}"
+ISOLATED_DIST_DIR="${REPO_DIR}/runs/vm-deploy-dist-${CLONE_HEAD_SHORT}-${RUN_ID}"
+echo -e "  ${DIM}--> Isolating gate-verified client artifact to ${ISOLATED_DIST_DIR}...${RESET}"
+rm -rf "$ISOLATED_DIST_DIR"
+mkdir -p "$ISOLATED_DIST_DIR"
+cp -r "${REPO_DIR}/apps/client/dist/." "$ISOLATED_DIST_DIR/"
+
+if [ ! -f "${ISOLATED_DIST_DIR}/index.html" ]; then
+  echo -e "${RED}FATAL: Failed to isolate client artifact — ${ISOLATED_DIST_DIR}/index.html missing!${RESET}" >&2
+  exit 1
+fi
+echo -e "  ${GREEN}✔${RESET} Client artifact isolated for revision ${CLONE_HEAD} (${ISOLATED_DIST_DIR})"
+
 # ── 3. Deploy production server (/opt/havenworld) ─────────────────────────────
 echo -e "\n${BOLD}[3/5] Deploying production server (${PROD_DIR})...${RESET}"
 if [ ! -d "$PROD_DIR" ]; then
@@ -152,14 +169,9 @@ echo -e "  ${GREEN}✔${RESET} Production server deployed. /opt/havenworld HEAD:
 echo -e "\n${BOLD}[4/5] Deploying client to Cloudflare Pages...${RESET}"
 CLIENT_DEPLOYED=0
 if npx wrangler whoami 2>&1 | grep -q "You are logged in"; then
-  echo -e "  ${DIM}--> Reusing gate-verified client artifact (${REPO_DIR}/apps/client/dist)...${RESET}"
-  if [ ! -d "$REPO_DIR/apps/client/dist" ]; then
-    echo -e "  ${DIM}--> apps/client/dist not found, building client web app...${RESET}"
-    sudo chown -R "$(id -u):$(id -g)" "$REPO_DIR/apps/client" 2>/dev/null || true
-    pnpm --filter client build </dev/null
-  fi
+  echo -e "  ${DIM}--> Deploying isolated client artifact (${ISOLATED_DIST_DIR})...${RESET}"
   echo -e "  ${DIM}--> Publishing dist to Cloudflare Pages (havenworld-game, branch: main)...${RESET}"
-  npx wrangler pages deploy apps/client/dist \
+  npx wrangler pages deploy "$ISOLATED_DIST_DIR" \
     --project-name havenworld-game \
     --branch=main \
     --commit-dirty=true \
@@ -171,9 +183,9 @@ else
   echo -e "  ${YELLOW}  Server deployment succeeded at gated revision: ${CLONE_HEAD}${RESET}"
   echo -e "  ${YELLOW}  Client bundle must be deployed from an authenticated workstation from a CLEAN worktree at revision ${CLONE_HEAD}.${RESET}"
   echo -e "  ${YELLOW}  (DO NOT deploy from a dirty personal checkout.)${RESET}"
-  echo -e "  ${BOLD}  Fallback deployment command (from clean worktree at ${CLONE_HEAD}):${RESET}"
-  echo -e "  ${CYAN}    cd <worktree-path> && git checkout ${CLONE_HEAD} && pnpm --filter client build && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
-  echo -e "  ${CYAN}    OR copy gate-built dist: scp -r ubuntu@havenworld-a1:${REPO_DIR}/apps/client/dist <worktree-path>/apps/client/dist && npx wrangler pages deploy <worktree-path>/apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
+  echo -e "  ${BOLD}  Fallback deployment command (using isolated dist from ${CLONE_HEAD}):${RESET}"
+  echo -e "  ${CYAN}    scp -r ubuntu@havenworld-a1:${ISOLATED_DIST_DIR} <worktree-path>/apps/client/dist && cd <worktree-path> && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
+  echo -e "  ${CYAN}    OR build locally: cd <worktree-path> && git checkout ${CLONE_HEAD} && pnpm --filter client build && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
 fi
 
 # ── 5. End-to-end verification ───────────────────────────────────────────────
