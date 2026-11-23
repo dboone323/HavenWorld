@@ -31,9 +31,9 @@ Per-tool shim files point here; if a shim and this file disagree, this file wins
 6. **Review** — Daniel reviews and merges. **No agent merges, ever.**
    A new problem found in review becomes a new issue labeled `follow-up`,
    never scope creep inside the PR.
-7. **Deploy** — only from `main`, only via `make deploy-server-quick` /
-   `make deploy-client`, only with Daniel's explicit go. A deploy failure
-   files an issue labeled `deploy`.
+7. **Deploy** — only from `main`, only via `make deploy-vm` (unified gate +
+   deploy on VM) or `make deploy-server-quick` / `make deploy-client`, only
+   with Daniel's explicit go. A deploy failure files an issue labeled `deploy`.
 
 ## Typing rule (every prompt, every issue)
 

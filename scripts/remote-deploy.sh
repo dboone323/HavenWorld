@@ -19,8 +19,13 @@ export NVM_DIR="$HOME/.nvm"
 echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — starting"
 cd "$APP_DIR"
 
-echo "[deploy] git pull origin main"
-git pull origin main </dev/null
+DEPLOY_REV="${DEPLOY_REV:-main}"
+echo "[deploy] aligning to revision ${DEPLOY_REV}"
+git fetch origin "${DEPLOY_REV}" </dev/null
+git checkout "${DEPLOY_REV}" </dev/null
+if [ "${DEPLOY_REV}" = "main" ]; then
+  git pull --ff-only origin main </dev/null
+fi
 
 echo "[deploy] pnpm install"
 pnpm install --frozen-lockfile </dev/null
