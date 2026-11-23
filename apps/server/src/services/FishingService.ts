@@ -199,7 +199,7 @@ export class FishingService {
 
     // Win condition: tension reaches target win (1.0)
     if (session.currentTension >= FISHING_CONSTANTS.TARGET_TENSION_WIN) {
-      this.endSessionSuccess(session);
+      await this.endSessionSuccess(session);
     } else if (session.currentTension <= 0) {
       // Lose condition: fish got away
       this.endSessionFail(session);
