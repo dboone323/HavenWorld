@@ -12,7 +12,7 @@ DEV_URL="postgresql://postgres:devpassword123@127.0.0.1:5432/havenworld_dev"
 
 start_server() { # $1 = port, $2 = db url, $3 = log
   NODE_ENV=test SERVER_AUTOSTART=true PORT="$1" DATABASE_URL="$2" \
-    REDIS_URL="redis://127.0.0.1:6379/1" nohup pnpm exec tsx src/index.ts > "$3" 2>&1 &
+    REDIS_URL="redis://127.0.0.1:6380/1" nohup pnpm exec tsx src/index.ts > "$3" 2>&1 &
   for _ in $(seq 1 60); do
     sleep 1
     curl -sf --max-time 2 "http://localhost:$1/health" >/dev/null 2>&1 && return 0

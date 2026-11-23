@@ -29,7 +29,7 @@ services:
     image: redis:7-alpine
     container_name: havenworld-test-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     command: redis-server --save "" --appendonly no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
