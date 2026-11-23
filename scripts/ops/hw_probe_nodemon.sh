@@ -9,7 +9,7 @@ mkdir -p "$STATE"
 cd "$ROOT"
 
 TEST_URL="postgresql://postgres:devpassword123@127.0.0.1:5432/havenworld_test"
-COMMON_ENV="NODE_ENV=test SERVER_AUTOSTART=true ALPHA_INVITE_ONLY=false DATABASE_URL=$TEST_URL REDIS_URL=redis://127.0.0.1:6379/1"
+COMMON_ENV="NODE_ENV=test SERVER_AUTOSTART=true ALPHA_INVITE_ONLY=false DATABASE_URL=$TEST_URL REDIS_URL=redis://127.0.0.1:6380/1"
 
 wait_health() { # $1 port
   for _ in $(seq 1 60); do sleep 1; curl -sf --max-time 2 "http://localhost:$1/health" >/dev/null 2>&1 && return 0; done
@@ -38,7 +38,7 @@ echo
 echo "=== PHASE B: plain tsx start on 3225 (same env) ==="
 cd apps/server
 env NODE_ENV=test SERVER_AUTOSTART=true ALPHA_INVITE_ONLY=false PORT=3225 DATABASE_URL="$TEST_URL" \
-  REDIS_URL="redis://127.0.0.1:6379/1" nohup pnpm exec tsx src/index.ts > "$STATE/np_tsx.log" 2>&1 &
+  REDIS_URL="redis://127.0.0.1:6380/1" nohup pnpm exec tsx src/index.ts > "$STATE/np_tsx.log" 2>&1 &
 if wait_health 3225; then echo "  health OK on 3225"; else echo "  health FAILED"; tail -15 "$STATE/np_tsx.log"; fi
 probe_register 3225
 pkill -f 'tsx src/index.ts' >/dev/null 2>&1

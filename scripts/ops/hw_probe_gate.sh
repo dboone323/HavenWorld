@@ -11,7 +11,7 @@ A="http://localhost:3224"
 U="gateprobe_$RANDOM"
 
 NODE_ENV=test SERVER_AUTOSTART=true ALPHA_INVITE_ONLY=false PORT=3224 DATABASE_URL="$TEST_URL" \
-  REDIS_URL="redis://127.0.0.1:6379/1" nohup pnpm exec tsx src/index.ts > "$STATE"/hw_gate.log 2>&1 &
+  REDIS_URL="redis://127.0.0.1:6380/1" nohup pnpm exec tsx src/index.ts > "$STATE"/hw_gate.log 2>&1 &
 for _ in $(seq 1 60); do sleep 1; curl -sf --max-time 2 "$A/health" >/dev/null 2>&1 && break; done
 
 echo "=== register with gate OFF (ALPHA_INVITE_ONLY=false) ==="

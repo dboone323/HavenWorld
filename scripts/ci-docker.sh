@@ -119,7 +119,7 @@ docker compose -f "$COMPOSE_FILE" up -d --wait >/dev/null 2>&1 || {
   exit 1
 }
 echo -e "  ${GREEN}✔${RESET} PostgreSQL (havenworld_test) ready on port 5432"
-echo -e "  ${GREEN}✔${RESET} Redis ready on port 6379"
+echo -e "  ${GREEN}✔${RESET} Redis ready on host port 6380 (container 6379)"
 
 # Helper to run commands in node:22 container
 docker_node() {
