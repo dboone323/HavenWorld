@@ -110,6 +110,15 @@ echo -e "  ${GREEN}✔${RESET} Repository clone aligned at: ${CLONE_HEAD} (clean
 # ── 2. Run the FULL gate (Docker CI) ─────────────────────────────────────────
 echo -e "\n${BOLD}[2/5] Running FULL make ci-docker gate inside Docker...${RESET}"
 echo -e "  ${DIM}Notice: Live server will NOT be touched if the gate fails.${RESET}"
+
+# Ensure dependencies match frozen lockfile in VM clone before gate execution
+echo -e "  ${DIM}--> Refreshing dependencies to match frozen lockfile (node:22)...${RESET}"
+docker run --rm \
+  -v "$REPO_DIR":/app \
+  -w /app \
+  node:22 \
+  sh -c "corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.9 --activate >/dev/null 2>&1 && pnpm install --frozen-lockfile"
+
 if ! make ci-docker; then
   echo -e "\n${RED}${BOLD}GATE FAILED: make ci-docker returned non-zero exit code.${RESET}" >&2
   echo -e "${RED}Aborting deployment. Production /opt/havenworld was NOT modified.${RESET}" >&2
@@ -129,6 +138,25 @@ if [ ! -f "${ISOLATED_DIST_DIR}/index.html" ]; then
   echo -e "${RED}FATAL: Failed to isolate client artifact — ${ISOLATED_DIST_DIR}/index.html missing!${RESET}" >&2
   exit 1
 fi
+
+# Verify isolated client bundle contains production server URL and NOT localhost:3000 as server URL
+echo -e "  ${DIM}--> Verifying production bundle integrity in ${ISOLATED_DIST_DIR}...${RESET}"
+MAIN_JS="$(find "${ISOLATED_DIST_DIR}/assets" -maxdepth 1 -name 'main-*.js' | head -n 1)"
+if [ -z "$MAIN_JS" ] || [ ! -f "$MAIN_JS" ]; then
+  echo -e "${RED}FATAL: Client build failed to generate assets/main-*.js in ${ISOLATED_DIST_DIR}!${RESET}" >&2
+  exit 1
+fi
+
+if ! grep -q "147-224-184-148.nip.io" "$MAIN_JS"; then
+  echo -e "${RED}FATAL: Isolated bundle does NOT contain production host (147-224-184-148.nip.io)!${RESET}" >&2
+  exit 1
+fi
+
+if grep -q '||"http://localhost:3000"' "$MAIN_JS" || grep -q "||'http://localhost:3000'" "$MAIN_JS"; then
+  echo -e "${RED}FATAL: Isolated bundle contains http://localhost:3000 as server URL fallback!${RESET}" >&2
+  exit 1
+fi
+echo -e "  ${GREEN}✔${RESET} Client bundle verified: production host present, localhost:3000 server URL absent."
 echo -e "  ${GREEN}✔${RESET} Client artifact isolated for revision ${CLONE_HEAD} (${ISOLATED_DIST_DIR})"
 
 # ── 3. Deploy production server (/opt/havenworld) ─────────────────────────────
@@ -152,10 +180,15 @@ fi
 echo -e "  ${DIM}--> Checking Prisma migration status on production database...${RESET}"
 sudo -u havenworld -H bash -c "cd '$PROD_DIR' && pnpm --filter server exec prisma migrate status" </dev/null || true
 
-echo -e "  ${DIM}--> Aligning ${PROD_DIR} to gated revision ${CLONE_HEAD}...${RESET}"
-sudo -u havenworld -H bash -c "cd '$PROD_DIR' && git fetch origin '$CLONE_HEAD' </dev/null && git checkout '$CLONE_HEAD' </dev/null"
-
-echo -e "  ${DIM}--> Executing server deployment as user havenworld (serialized via flock)...${RESET}"
+# Note on checkout locking: We do NOT perform a separate checkout here before invoking
+# remote-deploy.sh. Instead, remote-deploy.sh performs its own checkout to DEPLOY_REV ($CLONE_HEAD)
+# AFTER acquiring the exclusive /tmp/havenworld-deploy.lock. This ensures checkout, install, build,
+# migrations, and PM2 reload are all executed atomically under ONE lock, preventing concurrent
+# deployments from switching HEAD mid-operation. The pin to CLONE_HEAD still holds because:
+#   (a) The pipeline above aborts if origin/main advanced past CLONE_HEAD during the gate.
+#   (b) remote-deploy.sh checks out exactly DEPLOY_REV="$CLONE_HEAD".
+#   (c) The assertion below verifies PROD_HEAD == CLONE_HEAD before accepting deployment.
+echo -e "  ${DIM}--> Executing server deployment as user havenworld (checkout & build serialized under flock in remote-deploy.sh)...${RESET}"
 sudo -u havenworld -H DEPLOY_REV="$CLONE_HEAD" bash "$PROD_DIR/scripts/remote-deploy.sh" </dev/null
 
 PROD_HEAD="$(sudo -u havenworld -H git -C "$PROD_DIR" rev-parse HEAD)"
@@ -184,8 +217,8 @@ else
   echo -e "  ${YELLOW}  Client bundle must be deployed from an authenticated workstation from a CLEAN worktree at revision ${CLONE_HEAD}.${RESET}"
   echo -e "  ${YELLOW}  (DO NOT deploy from a dirty personal checkout.)${RESET}"
   echo -e "  ${BOLD}  Fallback deployment command (using isolated dist from ${CLONE_HEAD}):${RESET}"
-  echo -e "  ${CYAN}    scp -r ubuntu@havenworld-a1:${ISOLATED_DIST_DIR} <worktree-path>/apps/client/dist && cd <worktree-path> && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
-  echo -e "  ${CYAN}    OR build locally: cd <worktree-path> && git checkout ${CLONE_HEAD} && pnpm --filter client build && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
+  echo -e "  ${CYAN}    rm -rf <worktree-path>/apps/client/dist && scp -r ubuntu@havenworld-a1:${ISOLATED_DIST_DIR} <worktree-path>/apps/client/dist && cd <worktree-path> && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
+  echo -e "  ${CYAN}    OR build locally: cd <worktree-path> && git checkout ${CLONE_HEAD} && NODE_ENV=production VITE_SERVER_URL=https://147-224-184-148.nip.io pnpm --filter client build && npx wrangler pages deploy apps/client/dist --project-name havenworld-game --branch=main --commit-dirty=true --commit-hash=${CLONE_HEAD}${RESET}"
 fi
 
 # ── 5. End-to-end verification ───────────────────────────────────────────────

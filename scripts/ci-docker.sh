@@ -135,6 +135,8 @@ docker_node() {
     -e DATABASE_URL="${DATABASE_URL:-}" \
     -e REDIS_URL="${REDIS_URL:-}" \
     -e NODE_ENV="${NODE_ENV:-test}" \
+    -e VITE_SERVER_URL="${VITE_SERVER_URL:-}" \
+    -e VITE_API_URL="${VITE_API_URL:-}" \
     -v "$REPO_ROOT":/app \
     -w /app \
     node:22 \
@@ -152,17 +154,15 @@ has_prisma_client() {
   return 1
 }
 
-# Self-bootstrap dependencies and generated client if missing
-if [ ! -d "$REPO_ROOT/node_modules" ]; then
-  echo -e "\n${BOLD}[Setup] Bootstrapping dependencies (pnpm install --frozen-lockfile)...${RESET}"
-  BOOTSTRAP_INSTALL_LOG="$TMP_DIR/bootstrap-install.log"
-  docker_node "pnpm install --frozen-lockfile" >"$BOOTSTRAP_INSTALL_LOG" 2>&1 || {
-    echo -e "${RED}Failed to install dependencies inside container.${RESET}"
-    cat "$BOOTSTRAP_INSTALL_LOG"
-    exit 1
-  }
-  echo -e "  ${GREEN}✔${RESET} Dependencies installed successfully"
-fi
+# Ensure dependencies match frozen lockfile on every run
+echo -e "\n${BOLD}[Setup] Verifying dependencies (pnpm install --frozen-lockfile)...${RESET}"
+BOOTSTRAP_INSTALL_LOG="$TMP_DIR/bootstrap-install.log"
+docker_node "pnpm install --frozen-lockfile" >"$BOOTSTRAP_INSTALL_LOG" 2>&1 || {
+  echo -e "${RED}Failed to install dependencies inside container.${RESET}"
+  cat "$BOOTSTRAP_INSTALL_LOG"
+  exit 1
+}
+echo -e "  ${GREEN}✔${RESET} Dependencies up to date with frozen lockfile"
 
 if ! has_prisma_client; then
   echo -e "\n${BOLD}[Setup] Generating Prisma client...${RESET}"
@@ -220,9 +220,9 @@ else
 fi
 
 # Step 3: Client Build
-echo -e "\n${BOLD}[3/5] Running Client Build (node:22, NODE_OPTIONS=--max-old-space-size=4096)...${RESET}"
+echo -e "\n${BOLD}[3/5] Running Client Build (node:22, NODE_ENV=production, NODE_OPTIONS=--max-old-space-size=4096)...${RESET}"
 CLIENT_BUILD_LOG="$TMP_DIR/client-build.log"
-if NODE_OPTIONS="--max-old-space-size=4096" docker_node "pnpm --filter client build" >"$CLIENT_BUILD_LOG" 2>&1; then
+if NODE_ENV=production VITE_SERVER_URL="https://147-224-184-148.nip.io" NODE_OPTIONS="--max-old-space-size=4096" docker_node "pnpm --filter client build" >"$CLIENT_BUILD_LOG" 2>&1; then
   STEP_CLIENT_BUILD="PASS"
   STAMP=$(grep -oE "havenworld-[0-9a-f]+" "$CLIENT_BUILD_LOG" | tail -n 1 || echo "stamped")
   DETAIL_CLIENT_BUILD="Vite bundle clean, service worker: $STAMP"

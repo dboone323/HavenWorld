@@ -9,6 +9,7 @@
 #   test-results/, playwright-report/, blob-report/          (Playwright traces/videos/screenshots, retain-on-failure)
 #   apps/server/coverage/, apps/client/coverage/, .nyc_output/ (coverage, regenerated each run)
 #   apps/server/dist/, apps/client/dist/, packages/*/dist/    (build outputs, rebuilt on next build)
+#   runs/vm-deploy-dist-*                                     (isolated client deploy bundles)
 #   tmp/, scratch/, supabase/.temp/                            (scratch by definition)
 #   logs/*.log                                                 (scratch logs; logs/local/ is the 30-day class below)
 #   runs/*.log, runs/*.done, runs/gate-queue/*.log            (raw per-run gate logs)
@@ -134,7 +135,19 @@ if [ -d "runs" ]; then
     if [ "$DRY_RUN" = 0 ]; then rm -f "$f"; fi
     removed=$((removed + 1))
   done < <(find runs -type f -not -path 'runs/wt-main-verify/*' \( -name '*.log' -o -name '*.done' \) -mtime +7 -print 2>/dev/null)
-  find runs -mindepth 1 -type d -empty -not -path 'runs/wt-main-verify' -not -path 'runs/wt-main-verify/*' -delete 2>/dev/null || true
+
+  # ── 7-day class: isolated client deploy bundles under runs/ ──
+  for d in runs/vm-deploy-dist-*; do
+    [ -d "$d" ] && sweep_tree "$d" 7
+  done
+
+  if [ "$DRY_RUN" = 1 ]; then
+    find runs -mindepth 1 -type d -empty -not -path 'runs/wt-main-verify' -not -path 'runs/wt-main-verify/*' 2>/dev/null | while IFS= read -r f; do
+      say "remove empty dir: $f"
+    done
+  else
+    find runs -mindepth 1 -type d -empty -not -path 'runs/wt-main-verify' -not -path 'runs/wt-main-verify/*' -delete 2>/dev/null || true
+  fi
 fi
 
 # ── 30-day class: run summaries/reports ──
