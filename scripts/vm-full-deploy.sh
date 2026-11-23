@@ -126,6 +126,20 @@ if ! make ci-docker; then
 fi
 echo -e "  ${GREEN}✔ PASS${RESET} — All gate checks passed in Docker."
 
+# Ensure client artifact is built in production mode with production server URL
+# (Guarantees production bundle in pre-merge runs where main's ci-docker.sh ran)
+if ! grep -q "147-224-184-148.nip.io" "${REPO_DIR}/apps/client/dist/assets/main-"*.js 2>/dev/null; then
+  echo -e "  ${DIM}--> Building client artifact in production mode (node:22)...${RESET}"
+  docker run --rm \
+    -e NODE_OPTIONS="--max-old-space-size=4096" \
+    -e NODE_ENV="production" \
+    -e VITE_SERVER_URL="https://147-224-184-148.nip.io" \
+    -v "$REPO_DIR":/app \
+    -w /app \
+    node:22 \
+    sh -c "corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.9 --activate >/dev/null 2>&1 && pnpm --filter client build"
+fi
+
 # Immediately isolate this run's gate-verified client artifact
 CLONE_HEAD_SHORT="${CLONE_HEAD:0:8}"
 ISOLATED_DIST_DIR="${REPO_DIR}/runs/vm-deploy-dist-${CLONE_HEAD_SHORT}-${RUN_ID}"
