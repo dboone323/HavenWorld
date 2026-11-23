@@ -101,7 +101,7 @@ children, and `dotenv` will not override it):
 
 ```bash
 export DATABASE_URL="postgresql://postgres:devpassword123@127.0.0.1:5432/havenworld_test"
-export REDIS_URL="redis://127.0.0.1:6379/1" NODE_ENV=test
+export REDIS_URL="redis://127.0.0.1:6380/1" NODE_ENV=test
 npx playwright test e2e/fullFlow.spec.ts --project=chromium
 ```
 
@@ -139,7 +139,7 @@ Start the stack: `docker compose -f docker-compose.dev.yml up -d`
 Stop it: `docker compose -f docker-compose.dev.yml down`
 
 > Note: `apps/server/.env.test` is the file Jest uses (`127.0.0.1:5432/havenworld_test`,
-> `redis://127.0.0.1:6379/1`), and `playwright.config.ts` now parses it and passes it to the
+> `redis://127.0.0.1:6380/1`), and `playwright.config.ts` now parses it and passes it to the
 > API `webServer` as `env:`. The **root** `.env.test` holds the browser-side `VITE_*` URLs — it was
 > empty before session 2 and is now aligned on port 3000 (`VITE_SERVER_URL=http://localhost:3000`),
 > matching the server file and Playwright's `PORT`.
