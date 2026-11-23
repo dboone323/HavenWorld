@@ -91,4 +91,4 @@ jobs:
         with:
           name: nightly-${{ matrix.project }}-${{ github.sha }}
           path: playwright-report/
-          retention-days: 14
+          retention-days: 7

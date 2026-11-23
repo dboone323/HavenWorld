@@ -45,12 +45,42 @@ DETAIL_CLIENT_BUILD=""
 DETAIL_SERVER_LINT=""
 DETAIL_SERVER_TEST=""
 
+# Concurrency guard: claim an atomic lock BEFORE any sweeping so two
+# overlapping ci-docker runs cannot destroy each other's temp dirs or live
+# test containers. Lock name must not match the havenworld-ci-docker-*
+# sweep glob, or the sweep would delete its own lock.
+GATE_LOCK="$TMPDIR/havenworld-gate.lock.d"
+LOCKED=0
+gate_unlock() {
+  [ "$LOCKED" = 1 ] || return 0
+  rm -rf "$GATE_LOCK" 2>/dev/null || true
+  LOCKED=0
+}
+if ! mkdir "$GATE_LOCK" 2>/dev/null; then
+  echo "another ci-docker run is in flight, wait" >&2
+  exit 1
+fi
+LOCKED=1
+
+# Orphan sweep: remove temp dirs left by previous/killed runs (a trap cannot
+# run on SIGKILL or OOM-kill). Must run before mktemp below so this run's own
+# temp dir is never swept. Temp dirs are never "kept".
+for d in "$TMPDIR"/havenworld-ci-docker-*; do
+  [ -e "$d" ] || continue
+  echo -e "  ${DIM}removing stale temp dir${RESET}: $d"
+  rm -rf "$d"
+done
+
 TMP_DIR="$(mktemp -d -t havenworld-ci-docker-XXXXXX)"
 cleanup() {
   local exit_code=$?
   echo ""
   echo -e "${DIM}==> Tearing down test stack containers...${RESET}"
   docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
+  # Force-remove the named test containers in case compose down missed them.
+  # A killed run cannot run this trap — containers are never "kept".
+  docker rm -f havenworld-test-postgres havenworld-test-redis >/dev/null 2>&1 || true
+  gate_unlock
   rm -rf "$TMP_DIR"
   exit $exit_code
 }
@@ -67,6 +97,20 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 echo -e "  ${GREEN}✔${RESET} Docker daemon online: $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'running')"
+
+# Container orphan sweep: remove test-stack and act containers left by
+# previous/killed runs (a trap cannot run on SIGKILL or OOM-kill). Containers
+# are never "kept".
+echo -e "\\n${DIM}==> Sweeping orphaned containers from previous runs...${RESET}"
+for c in $(docker ps -a --filter "name=havenworld-test-postgres" --format '{{.Names}}' 2>/dev/null); do
+  docker rm -f "$c" >/dev/null 2>&1 && echo "  ${DIM}removed stale container${RESET}: $c"
+done
+for c in $(docker ps -a --filter "name=havenworld-test-redis" --format '{{.Names}}' 2>/dev/null); do
+  docker rm -f "$c" >/dev/null 2>&1 && echo "  ${DIM}removed stale container${RESET}: $c"
+done
+for c in $(docker ps -a --filter "ancestor=catthehacker/ubuntu:act-22.04" --format '{{.Names}}' 2>/dev/null); do
+  docker rm -f "$c" >/dev/null 2>&1 && echo "  ${DIM}removed stale act container${RESET}: $c"
+done
 
 # 1. Bring up containerized test stack
 echo -e "\n${BOLD}[Test Stack] Starting Postgres + Redis test containers...${RESET}"

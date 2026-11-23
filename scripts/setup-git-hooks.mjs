@@ -29,7 +29,21 @@ echo "==> Running local CI pre-push gate via Docker (make ci-docker)..." >&2
 make ci-docker
 `;
 
-  if (!fs.existsSync(prePushTarget)) {
+  // The pre-push entry in .git/hooks is a symlink into the developer's local
+  // ci/ tooling (host-only macOS paths). Inside the Linux CI/Docker containers
+  // that target does not exist, so the prepare step must never try to
+  // rewrite through it. Regular files installed inside the repo get handled
+  // below as before.
+  let isSymlink = false;
+  try {
+    isSymlink = fs.lstatSync(prePushTarget).isSymbolicLink();
+  } catch {
+    isSymlink = false;
+  }
+
+  if (isSymlink) {
+    console.log('[hooks] pre-push is a container-incompatible symlink — leaving untouched');
+  } else if (!fs.existsSync(prePushTarget)) {
     fs.writeFileSync(prePushTarget, hookScript, { mode: 0o755 });
     console.log('[hooks] Installed .git/hooks/pre-push');
   } else {
