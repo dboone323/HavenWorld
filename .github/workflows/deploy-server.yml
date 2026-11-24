@@ -1,9 +1,6 @@
 name: Deploy Server to Oracle VM
 
 on:
-  push:
-    branches: [main]
-    paths: ['apps/server/**', 'packages/shared/**']
   workflow_dispatch:
 
 jobs:
