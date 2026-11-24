@@ -10,6 +10,15 @@ set -euo pipefail
 
 APP_DIR="/opt/havenworld"
 LOG_DIR="$APP_DIR/logs"
+LOCK_FILE="/tmp/havenworld-deploy.lock"
+
+# Serialize all server deployments via flock (held until script exits)
+exec 200>"$LOCK_FILE"
+chmod 666 "$LOCK_FILE" 2>/dev/null || true
+if ! flock -n 200; then
+  echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — ERROR: Another server deployment is in progress (lock held on $LOCK_FILE). Aborting." >&2
+  exit 1
+fi
 
 # Load nvm if present (for interactive PATH when using ubuntu user)
 export NVM_DIR="$HOME/.nvm"
@@ -19,8 +28,13 @@ export NVM_DIR="$HOME/.nvm"
 echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — starting"
 cd "$APP_DIR"
 
-echo "[deploy] git pull origin main"
-git pull origin main </dev/null
+DEPLOY_REV="${DEPLOY_REV:-main}"
+echo "[deploy] aligning to revision ${DEPLOY_REV}"
+git fetch origin "${DEPLOY_REV}" </dev/null
+git checkout "${DEPLOY_REV}" </dev/null
+if [ "${DEPLOY_REV}" = "main" ]; then
+  git pull --ff-only origin main </dev/null
+fi
 
 echo "[deploy] pnpm install"
 pnpm install --frozen-lockfile </dev/null
