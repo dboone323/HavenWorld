@@ -200,16 +200,28 @@ fi
 echo -e "  ${DIM}--> Checking Prisma migration status on production database...${RESET}"
 sudo -u havenworld -H bash -c "cd '$PROD_DIR' && pnpm --filter server exec prisma migrate status" </dev/null || true
 
-# Note on checkout locking: We do NOT perform a separate checkout here before invoking
-# remote-deploy.sh. Instead, remote-deploy.sh performs its own checkout to DEPLOY_REV ($CLONE_HEAD)
-# AFTER acquiring the exclusive /tmp/havenworld-deploy.lock. This ensures checkout, install, build,
+# Note on script invocation and checkout locking:
+# We invoke the GATED CLONE's script ($REPO_DIR/scripts/remote-deploy.sh) rather than
+# $PROD_DIR/scripts/remote-deploy.sh because the clone is synced to $CLONE_HEAD before
+# the gate, so its remote-deploy.sh IS the gated revision's script (with DEPLOY_REV pin
+# and flock). The $PROD_DIR copy is stale on the first post-merge run because it is only
+# updated by the checkout inside the deploy itself.
+# remote-deploy.sh performs its own checkout to DEPLOY_REV ($CLONE_HEAD) AFTER acquiring
+# the exclusive /tmp/havenworld-deploy.lock. This ensures checkout, install, build,
 # migrations, and PM2 reload are all executed atomically under ONE lock, preventing concurrent
 # deployments from switching HEAD mid-operation. The pin to CLONE_HEAD still holds because:
 #   (a) The pipeline above aborts if origin/main advanced past CLONE_HEAD during the gate.
 #   (b) remote-deploy.sh checks out exactly DEPLOY_REV="$CLONE_HEAD".
 #   (c) The assertion below verifies PROD_HEAD == CLONE_HEAD before accepting deployment.
-echo -e "  ${DIM}--> Executing server deployment as user havenworld (checkout & build serialized under flock in remote-deploy.sh)...${RESET}"
-sudo -u havenworld -H DEPLOY_REV="$CLONE_HEAD" bash "$PROD_DIR/scripts/remote-deploy.sh" </dev/null
+
+# Verify user havenworld can read the gated clone's script before invoking
+if ! sudo -u havenworld -H test -r "$REPO_DIR/scripts/remote-deploy.sh"; then
+  echo -e "${RED}ERROR: user havenworld cannot read gated deployment script: ${REPO_DIR}/scripts/remote-deploy.sh${RESET}" >&2
+  exit 1
+fi
+
+echo -e "  ${DIM}--> Executing server deployment as user havenworld using gated clone's script (${REPO_DIR}/scripts/remote-deploy.sh, serialized under flock)...${RESET}"
+sudo -u havenworld -H DEPLOY_REV="$CLONE_HEAD" bash "$REPO_DIR/scripts/remote-deploy.sh" </dev/null
 
 PROD_HEAD="$(sudo -u havenworld -H git -C "$PROD_DIR" rev-parse HEAD)"
 if [ "$PROD_HEAD" != "$CLONE_HEAD" ]; then
