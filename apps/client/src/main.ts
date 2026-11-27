@@ -21,6 +21,7 @@ import { authService } from './services/auth';
 import { socketService } from './services/socket';
 import { DailyLoginModal } from './ui/DailyLoginModal';
 import { HelpModal } from './ui/HelpModal';
+import { AccountSettingsPanel } from './ui/AccountSettingsPanel';
 import { initPwa } from './ui/InstallPrompt';
 import { ConnectionBanner } from './ui/ConnectionBanner';
 import {
@@ -258,8 +259,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  document.getElementById('btn-quick-mood')?.addEventListener('click', () => {
-    document.getElementById('btn-loft-settings')?.click();
+  document.getElementById('btn-account-settings')?.addEventListener('click', () => {
+    AccountSettingsPanel.show();
   });
 
   // ── Phase 3B: World-wide notifications (scene-independent) ─────────────────
