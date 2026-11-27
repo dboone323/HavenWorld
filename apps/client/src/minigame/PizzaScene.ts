@@ -53,8 +53,14 @@ export class PizzaScene {
   private startTime = 0;
   private timerInterval: NodeJS.Timeout | null = null;
   private submitInFlight = false;
+  private awaitingNextOrder = false;
   private unsubscribeResult: (() => void) | null = null;
   private unsubscribeError: (() => void) | null = null;
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      this.close();
+    }
+  };
 
   /**
    * Overlay-scoped element refs, cached at render time.
@@ -71,6 +77,10 @@ export class PizzaScene {
     tray: HTMLElement | null;
     submitBtn: HTMLButtonElement | null;
     clearBtn: HTMLButtonElement | null;
+    actionRow: HTMLElement | null;
+    resultBanner: HTMLElement | null;
+    resultTitle: HTMLElement | null;
+    resultDetail: HTMLElement | null;
   } = {
     ticketName: null,
     ticketRecipe: null,
@@ -81,10 +91,15 @@ export class PizzaScene {
     tray: null,
     submitBtn: null,
     clearBtn: null,
+    actionRow: null,
+    resultBanner: null,
+    resultTitle: null,
+    resultDetail: null,
   };
 
   open(): void {
     if (this.overlay) return;
+    window.addEventListener('keydown', this.onKeyDown);
     this.subscribeToResults();
     this.startNewOrder();
     this.render();
@@ -92,6 +107,7 @@ export class PizzaScene {
   }
 
   close(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
     this.stopTimer();
     // Tear down the panel's socket subscriptions so late results can't
     // mutate a removed overlay or leak into the next order.
@@ -104,6 +120,7 @@ export class PizzaScene {
       this.unsubscribeError = null;
     }
     this.submitInFlight = false;
+    this.awaitingNextOrder = false;
     this.overlay?.remove();
     this.overlay = null;
     this.clearElementRefs();
@@ -129,6 +146,7 @@ export class PizzaScene {
     this.currentRecipe = RECIPES[Math.floor(Math.random() * RECIPES.length)];
     this.selectedIngredients = [];
     this.submitInFlight = false;
+    this.awaitingNextOrder = false;
     this.startTime = Date.now();
     socketService.emit(SOCKET_EVENTS.PIZZA_ORDER_START, {
       recipe: this.currentRecipe.id,
@@ -136,7 +154,7 @@ export class PizzaScene {
   }
 
   private addIngredient(ing: string): void {
-    if (!this.overlay || this.submitInFlight) return;
+    if (!this.overlay || this.submitInFlight || this.awaitingNextOrder) return;
 
     const stepIndex = this.selectedIngredients.length;
     const expected = this.currentRecipe.ingredients[stepIndex];
@@ -167,7 +185,7 @@ export class PizzaScene {
 
   private submitOrder(): void {
     // Submit lock: ignore duplicate submits while an order is in flight.
-    if (!this.overlay || this.submitInFlight) return;
+    if (!this.overlay || this.submitInFlight || this.awaitingNextOrder) return;
     if (this.selectedIngredients.length === 0) {
       audioEngine.playError();
       showToast({
@@ -207,20 +225,30 @@ export class PizzaScene {
       adjustCoinBalance(coins);
     }
 
+    let resultTitleText = '❌ Order failed';
+    let resultDetailText = this.describeFailure();
+    let resultAccent = '#ef4444';
+
     if (res.tier === 'PERFECT') {
       audioEngine.playFishingCatch();
+      resultTitleText = '🍕 PERFECT PIZZA!';
+      resultDetailText = `+${coins} HavenCoins · Combo x${combo}`;
+      resultAccent = '#22c55e';
       showToast({
         icon: '🍕',
         title: 'PERFECT PIZZA!',
-        subtitle: `+${coins} HavenCoins · Combo x${combo}`,
+        subtitle: resultDetailText,
         durationMs: 5000,
       });
     } else if (res.tier === 'GOOD') {
       audioEngine.playCoinPickup();
+      resultTitleText = '🍕 GOOD PIZZA!';
+      resultDetailText = `+${coins} HavenCoins — beat the clock for a Perfect!`;
+      resultAccent = '#f59e0b';
       showToast({
         icon: '🍕',
         title: 'GOOD PIZZA!',
-        subtitle: `+${coins} HavenCoins — beat the clock for a Perfect!`,
+        subtitle: resultDetailText,
         durationMs: 5000,
       });
     } else {
@@ -228,17 +256,27 @@ export class PizzaScene {
       showToast({
         icon: '❌',
         title: 'Order failed',
-        subtitle: this.describeFailure(),
+        subtitle: resultDetailText,
         durationMs: 6000,
       });
     }
 
-    // New order — and this time the ticket UI is re-rendered too. It used to
-    // keep showing the OLD recipe while a NEW one was validated server-side,
-    // making every order after the first unwinnable.
-    this.startNewOrder();
-    this.refreshOrderUI();
-    this.startTimer();
+    // Show the result and offer the next order explicitly instead of auto-advancing.
+    this.awaitingNextOrder = true;
+    this.setWaitingState(false);
+    if (this.els.timerLabel) {
+      this.els.timerLabel.textContent = '🍽️ Order complete';
+    }
+    if (this.els.resultBanner && this.els.resultTitle && this.els.resultDetail) {
+      this.els.resultBanner.style.display = 'block';
+      this.els.resultBanner.style.borderColor = resultAccent;
+      this.els.resultTitle.textContent = resultTitleText;
+      this.els.resultTitle.style.color = resultAccent;
+      this.els.resultDetail.textContent = resultDetailText;
+    }
+    if (this.els.actionRow) {
+      this.els.actionRow.style.display = 'none';
+    }
   }
 
   /** Server-side rejections (bad payload, hourly cap, …) release the lock. */
@@ -282,6 +320,9 @@ export class PizzaScene {
     overlay.style.cssText = `
       position: fixed;
       inset: 0;
+      padding: 12px;
+      box-sizing: border-box;
+      overflow-y: auto;
       background: rgba(15, 23, 42, 0.9);
       display: flex;
       align-items: center;
@@ -296,58 +337,70 @@ export class PizzaScene {
       border: 2px solid #f97316;
       border-radius: 12px;
       width: min(540px, 94vw);
-      padding: 24px;
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+      box-sizing: border-box;
+      padding: 16px 20px;
       color: #fff;
       box-shadow: 0 8px 32px rgba(249, 115, 22, 0.3);
       text-align: center;
     `;
 
     panel.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h2 style="margin: 0; color: #f97316;">👨‍🍳 Pizza Chef</h2>
-        <button id="btn-close-pizza" style="background: transparent; border: none; color: #94a3b8; font-size: 1.4rem; cursor: pointer;">✕</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h2 style="margin: 0; color: #f97316; font-size: 1.25rem;">👨‍🍳 Pizza Chef</h2>
+        <button id="btn-close-pizza" aria-label="Close Pizza Chef" style="background: transparent; border: none; color: #cbd5e1; font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 4px 6px;">✕</button>
       </div>
 
       <!-- Current Order Ticket -->
-      <div style="background: #0f172a; border: 1px dashed #f97316; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-        <div style="font-weight: bold; color: #f97316; font-size: 1.1rem;" id="pizza-ticket-name">Order: ${this.currentRecipe.name}</div>
-        <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 4px;" id="pizza-ticket-recipe">
+      <div style="background: #0f172a; border: 1px dashed #f97316; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
+        <div style="font-weight: bold; color: #f97316; font-size: 1rem;" id="pizza-ticket-name">Order: ${this.currentRecipe.name}</div>
+        <div style="font-size: 0.82rem; color: #94a3b8; margin-top: 3px;" id="pizza-ticket-recipe">
           Required: ${this.currentRecipe.ingredients.join(' ➔ ')}
         </div>
       </div>
 
       <!-- Countdown to Perfect -->
-      <div style="margin-bottom: 12px;">
-        <div id="pizza-timer-label" style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px;">⏱ --</div>
-        <div style="height: 8px; background: #0f172a; border-radius: 999px; overflow: hidden;">
+      <div style="margin-bottom: 10px;">
+        <div id="pizza-timer-label" style="font-size: 0.78rem; color: #cbd5e1; margin-bottom: 4px;">⏱ --</div>
+        <div style="height: 7px; background: #0f172a; border-radius: 999px; overflow: hidden;">
           <div id="pizza-timer-fill" style="height: 100%; width: 100%; background: #22c55e;"></div>
         </div>
       </div>
 
       <!-- Step progress -->
-      <div id="pizza-steps" style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 12px;"></div>
+      <div id="pizza-steps" style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px;"></div>
 
       <!-- Pizza Crust (Working Area) -->
-      <div style="width: 180px; height: 180px; border-radius: 50%; background: #fdba74; margin: 0 auto 20px auto; border: 6px solid #ea580c; display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: inset 0 0 12px rgba(0,0,0,0.3);">
-        <div id="pizza-assembly-display" style="font-size: 0.85rem; color: #431407; font-weight: bold;">
+      <div style="width: clamp(104px, 18vh, 160px); height: clamp(104px, 18vh, 160px); border-radius: 50%; background: #fdba74; margin: 0 auto 12px auto; border: 5px solid #ea580c; display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: inset 0 0 12px rgba(0,0,0,0.3); padding: 8px; box-sizing: border-box;">
+        <div id="pizza-assembly-display" style="font-size: 0.78rem; color: #431407; font-weight: bold; line-height: 1.25;">
           Empty Crust
         </div>
       </div>
 
       <!-- Ingredient Trays -->
-      <div id="pizza-tray" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+      <div id="pizza-tray" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px;">
         ${TRAY_ORDER.map((id) => {
           const meta = INGREDIENTS[id];
           return `
-          <button class="btn-ingredient" data-ing="${id}" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 8px 4px; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px;">
-            <span style="font-size: 1.3rem;">${meta.icon}</span>
-            <span style="font-size: 0.75rem;">${meta.name}</span>
+          <button class="btn-ingredient" data-ing="${id}" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 6px 4px; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+            <span style="font-size: 1.15rem;">${meta.icon}</span>
+            <span style="font-size: 0.72rem;">${meta.name}</span>
           </button>
         `;
         }).join('')}
       </div>
 
-      <div style="display: flex; gap: 8px; justify-content: center;">
+      <div id="pizza-result-banner" style="display: none; background: #0f172a; border: 1px solid #22c55e; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;">
+        <div id="pizza-result-title" style="font-weight: bold; font-size: 0.95rem;"></div>
+        <div id="pizza-result-detail" style="font-size: 0.8rem; color: #cbd5e1; margin: 4px 0 10px;"></div>
+        <div style="display: flex; gap: 8px; justify-content: center;">
+          <button id="btn-next-pizza" style="background: #f97316; border: none; color: #fff; border-radius: 6px; padding: 7px 16px; cursor: pointer; font-size: 0.85rem; font-weight: bold;">🍕 Next Order</button>
+          <button id="btn-result-close-pizza" style="background: transparent; border: 1px solid #64748b; color: #cbd5e1; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-size: 0.85rem;">Close</button>
+        </div>
+      </div>
+
+      <div id="pizza-action-row" style="display: flex; gap: 8px; justify-content: center;">
         <button id="btn-serve-pizza" style="background: #f97316; border: none; color: #fff; border-radius: 6px; padding: 8px 18px; cursor: pointer; font-size: 0.9rem; font-weight: bold;">🍕 Serve Pizza</button>
         <button id="btn-clear-pizza" style="background: transparent; border: 1px solid #64748b; color: #cbd5e1; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-size: 0.85rem;">Restart Crust</button>
       </div>
@@ -368,6 +421,10 @@ export class PizzaScene {
     this.els.tray = q('#pizza-tray');
     this.els.submitBtn = q<HTMLButtonElement>('#btn-serve-pizza');
     this.els.clearBtn = q<HTMLButtonElement>('#btn-clear-pizza');
+    this.els.actionRow = q('#pizza-action-row');
+    this.els.resultBanner = q('#pizza-result-banner');
+    this.els.resultTitle = q('#pizza-result-title');
+    this.els.resultDetail = q('#pizza-result-detail');
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
@@ -376,8 +433,16 @@ export class PizzaScene {
     });
 
     q('#btn-close-pizza')?.addEventListener('click', () => this.close());
+    q('#btn-result-close-pizza')?.addEventListener('click', () => this.close());
+    q('#btn-next-pizza')?.addEventListener('click', () => {
+      if (this.els.resultBanner) this.els.resultBanner.style.display = 'none';
+      if (this.els.actionRow) this.els.actionRow.style.display = 'flex';
+      this.startNewOrder();
+      this.refreshOrderUI();
+      this.startTimer();
+    });
     this.els.clearBtn?.addEventListener('click', () => {
-      if (this.submitInFlight) return;
+      if (this.submitInFlight || this.awaitingNextOrder) return;
       this.selectedIngredients = [];
       this.refreshAssemblyUI();
     });
@@ -452,7 +517,8 @@ export class PizzaScene {
 
   /** Submit lock visuals: disable Serve / Restart / tray + waiting label. */
   private setWaitingState(waiting: boolean): void {
-    const canServe = !waiting && this.selectedIngredients.length > 0;
+    const locked = waiting || this.awaitingNextOrder;
+    const canServe = !locked && this.selectedIngredients.length > 0;
     if (this.els.submitBtn) {
       this.els.submitBtn.disabled = !canServe;
       this.els.submitBtn.textContent = waiting ? '⏳ Sending order…' : '🍕 Serve Pizza';
@@ -460,13 +526,13 @@ export class PizzaScene {
       this.els.submitBtn.style.cursor = canServe ? 'pointer' : 'not-allowed';
     }
     if (this.els.clearBtn) {
-      this.els.clearBtn.disabled = waiting;
-      this.els.clearBtn.style.opacity = waiting ? '0.55' : '1';
-      this.els.clearBtn.style.cursor = waiting ? 'not-allowed' : 'pointer';
+      this.els.clearBtn.disabled = locked;
+      this.els.clearBtn.style.opacity = locked ? '0.55' : '1';
+      this.els.clearBtn.style.cursor = locked ? 'not-allowed' : 'pointer';
     }
     this.els.tray?.querySelectorAll<HTMLButtonElement>('.btn-ingredient').forEach((b) => {
-      b.disabled = waiting;
-      b.style.opacity = waiting ? '0.55' : '1';
+      b.disabled = locked;
+      b.style.opacity = locked ? '0.55' : '1';
     });
   }
 
@@ -513,5 +579,9 @@ export class PizzaScene {
     this.els.tray = null;
     this.els.submitBtn = null;
     this.els.clearBtn = null;
+    this.els.actionRow = null;
+    this.els.resultBanner = null;
+    this.els.resultTitle = null;
+    this.els.resultDetail = null;
   }
 }

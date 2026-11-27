@@ -18,12 +18,15 @@ function getContainer(): HTMLElement {
     container.id = 'haven-toast-container';
     container.style.cssText = `
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 9999;
       display: flex;
       flex-direction: column;
+      align-items: center;
       gap: 10px;
+      max-width: calc(100vw - 32px);
       pointer-events: none;
     `;
     document.body.appendChild(container);
@@ -57,7 +60,7 @@ export function showToast(
     box-shadow: 0 4px 24px rgba(0,0,0,0.5);
     pointer-events: auto;
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateY(-12px);
     transition: opacity 0.25s ease, transform 0.25s ease;
     color: #fff;
     font-family: inherit;
@@ -90,7 +93,7 @@ export function showToast(
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       toast.style.opacity = '1';
-      toast.style.transform = 'translateX(0)';
+      toast.style.transform = 'translateY(0)';
     });
   });
 
@@ -104,7 +107,7 @@ export function showToast(
 
 function dismissToast(toast: HTMLElement): void {
   toast.style.opacity = '0';
-  toast.style.transform = 'translateX(20px)';
+  toast.style.transform = 'translateY(-12px)';
   setTimeout(() => toast.remove(), 300);
 }
 

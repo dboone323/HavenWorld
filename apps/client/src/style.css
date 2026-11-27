@@ -291,9 +291,10 @@ body {
 /* ── Interactive Tutorial Onboarding Overlay (§3d) ────────────────────────── */
 #tutorial-overlay {
   position:      fixed;
-  right:         84px;
-  top:           96px;
-  z-index:       9999;
+  left:          76px;
+  right:         auto;
+  top:           76px;
+  z-index:       90;
   font-family:   inherit;
   width:         min(320px, calc(100vw - 120px));
 }
