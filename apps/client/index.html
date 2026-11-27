@@ -156,9 +156,12 @@
       <span class="pill-icon">⭐</span>
       <span id="rep-level">Lv. 1</span>
     </div>
-    <div class="status-pill status-pill--user" title="Citizen Passport">
-      <span class="pill-icon">🌿</span>
-      <span class="player-card__username" data-testid="player-card-username">Citizen</span>
+    <div class="status-pill status-pill--user" title="Account Settings">
+      <button id="btn-account-settings" type="button" title="Account Settings" data-testid="btn-account-settings" style="background:none;border:none;padding:0;margin:0;cursor:pointer;display:flex;align-items:center;gap:6px;font:inherit;color:inherit;">
+        <span class="pill-icon">🌿</span>
+        <span class="player-card__username" data-testid="player-card-username">Citizen</span>
+        <span aria-hidden="true" style="font-size:11px;opacity:0.7;">⚙️</span>
+      </button>
     </div>
   </div>
 
@@ -257,9 +260,6 @@
           <input type="checkbox" id="chk-room-lock">
           <span class="slider round"></span>
         </label>
-      </div>
-      <div class="controls-card-row">
-        <button id="btn-quick-mood" class="btn-card-action">🎭 Set Room Mood</button>
       </div>
     </div>
   </div>
