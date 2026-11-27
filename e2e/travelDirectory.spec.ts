@@ -25,9 +25,9 @@ test.describe('Tier 4: Travel Directory, Multi-Room Navigation & Fishing E2E', (
     await loginPage.login(testUser.email, testUser.password);
     await roomPage.waitForRoomReady();
 
-    // Let the one-shot tutorial auto-open timer (~1.5s after app init) fire so
-    // it cannot intercept later clicks, then dismiss the overlay if it rendered.
-    // The tutorial is not what this suite asserts on.
+    // Let the one-shot tutorial auto-open timer (~1.5s after app init) fire, then
+    // dismiss the overlay if it rendered. The tutorial itself is not what this
+    // suite asserts on.
     await page.waitForTimeout(2_000);
     await roomPage.dismissTutorialIfVisible();
 
