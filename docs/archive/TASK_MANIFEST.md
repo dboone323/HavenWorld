@@ -38,4 +38,4 @@ macOS/iOS packaging.
 ## Environment
 - macOS 27.0, Xcode 27.0 (27A5252f), Swift 6.4
 - Node v26.7.0, npm 11.19.0
-- Repository: /Users/danielstevens/Developer/HavenWorld
+- Repository: /Users/danielstevens/AI-Workspace/repos/HavenWorld

@@ -1,6 +1,6 @@
 # HavenWorld — Phase 4: Load Gate Certification, Recovery Flow & Closed Alpha Release
 
-You are an autonomous principal game systems engineer and release coordinator working on HavenWorld at `/Users/danielstevens/Developer/HavenWorld`.
+You are an autonomous principal game systems engineer and release coordinator working on HavenWorld at `/Users/danielstevens/AI-Workspace/repos/HavenWorld`.
 
 All architectural hardening phases from `HAVENWORLD_REVIEW_REPORT.md` are complete and committed:
 - **Phase 1 (`65425c5`)**: Distributed Redis room state synchronization, cluster presence tracking, primary worker cron guards.

@@ -1,7 +1,7 @@
 # HavenWorld Systems Architecture & Hardening Audit Report
 **Date:** October 27, 2026  
 **Auditor:** Autonomous Principal Full-Stack Game Systems Architect  
-**Target Repository:** HavenWorld (`/Users/danielstevens/Developer/HavenWorld`)  
+**Target Repository:** HavenWorld (`/Users/danielstevens/AI-Workspace/repos/HavenWorld`)  
 **Scope:** Client Engine (Babylon.js 9.28 + Havok), Multiplayer Networking & Redis State Synchronization, Exploit Defense, Database Performance (PostgreSQL + Prisma), Type Safety & Linter Baseline.
 
 ---
@@ -19,7 +19,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ## 1. Distributed Networking & Multi-Worker State Synchronization
 
 ### 1.1 In-Memory Room State in PM2 Cluster Mode (Critical Vulnerability)
-- **Vulnerable File:** [`apps/server/src/services/RoomManager.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/src/services/RoomManager.ts)
+- **Vulnerable File:** [`apps/server/src/services/RoomManager.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/src/services/RoomManager.ts)
 - **Problem:**
   `RoomManager` stores room instances, connected occupants, and occupant counts entirely in Node.js process memory:
   ```typescript
@@ -42,7 +42,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ---
 
 ### 1.2 Flawed Distributed Rate Limiter & User-Keying Bypass
-- **Vulnerable File:** [`apps/server/src/sockets/index.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/src/sockets/index.ts#L106-L135)
+- **Vulnerable File:** [`apps/server/src/sockets/index.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/src/sockets/index.ts#L106-L135)
 - **Problem:**
   The distributed move rate limiter has two severe architectural defects:
   ```typescript
@@ -84,7 +84,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ---
 
 ### 1.3 Scheduled Cron Job Multiplication across Cluster Nodes
-- **Vulnerable File:** [`apps/server/src/index.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/src/index.ts#L208-L265)
+- **Vulnerable File:** [`apps/server/src/index.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/src/index.ts#L208-L265)
 - **Problem:**
   In `apps/server/src/index.ts`, cron jobs are scheduled unconditionally in the server startup path:
   ```typescript
@@ -115,7 +115,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ---
 
 ### 1.4 PM2 Rolling Reload & Socket Drainage
-- **File:** [`ecosystem.config.js`](file:///Users/danielstevens/Developer/HavenWorld/ecosystem.config.js)
+- **File:** [`ecosystem.config.js`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/ecosystem.config.js)
 - **Audit Findings:**
   - `kill_timeout: 10000` and `listen_timeout: 10000` provide a generous 10s drainage window.
   - In `apps/server/src/index.ts`, `shutdown()` broadcasts `SERVER_RESTARTING` and pauses 500ms before calling `io.close()`.
@@ -127,9 +127,9 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 
 ### 2.1 Netcode & Transform Reconciliation Impedance Mismatch
 - **Vulnerable Files:**
-  - [`apps/client/src/engine/MovementReconciliation.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/engine/MovementReconciliation.ts)
-  - [`apps/client/src/world/AvatarController.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/world/AvatarController.ts#L221-L225, #L775-L789)
-  - [`apps/client/src/scenes/RoomScene.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/scenes/RoomScene.ts#L947-L956)
+  - [`apps/client/src/engine/MovementReconciliation.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/engine/MovementReconciliation.ts)
+  - [`apps/client/src/world/AvatarController.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/world/AvatarController.ts#L221-L225, #L775-L789)
+  - [`apps/client/src/scenes/RoomScene.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/scenes/RoomScene.ts#L947-L956)
 - **Problem:**
   - In `AvatarController.ts` (line 222), when the user clicks a target point on the ground, `this.reconciliation.addPredictedMove(target.x, target.z)` records a predicted move and immediately sets `this.reconciliation.currentPosition = { x: target.x, y: target.z }`.
   - However, `AvatarController` is a continuous path-following movement system (walking along waypoints at 3.5 m/s, streaming position at 10Hz).
@@ -147,9 +147,9 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 
 ### 2.2 Mesh & Texture Disposal in Room Transitions (GPU/DOM Leak)
 - **Vulnerable Files:**
-  - [`apps/client/src/world/FurnitureManager.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/world/FurnitureManager.ts#L225-L230)
-  - [`apps/client/src/world/ChibiAtlasManager.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/world/ChibiAtlasManager.ts)
-  - [`apps/client/src/scenes/RoomScene.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/scenes/RoomScene.ts#L1288-L1359)
+  - [`apps/client/src/world/FurnitureManager.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/world/FurnitureManager.ts#L225-L230)
+  - [`apps/client/src/world/ChibiAtlasManager.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/world/ChibiAtlasManager.ts)
+  - [`apps/client/src/scenes/RoomScene.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/scenes/RoomScene.ts#L1288-L1359)
 - **Problem:**
   - In `FurnitureManager.clear()`:
     ```typescript
@@ -178,7 +178,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ---
 
 ### 2.3 Unconstrained Pointer Raycasting Performance
-- **Vulnerable File:** [`apps/client/src/scenes/RoomScene.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/scenes/RoomScene.ts#L806)
+- **Vulnerable File:** [`apps/client/src/scenes/RoomScene.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/scenes/RoomScene.ts#L806)
 - **Problem:**
   On right-click and pointer interactions, `scene.pick(scene.pointerX, scene.pointerY)` is called without a predicate mask:
   ```typescript
@@ -197,7 +197,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ---
 
 ### 2.4 Viewport Scaling & HiDPI / Retina Oversampling
-- **Vulnerable File:** [`apps/client/src/engine/HavenEngine.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/engine/HavenEngine.ts#L159-L195)
+- **Vulnerable File:** [`apps/client/src/engine/HavenEngine.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/engine/HavenEngine.ts#L159-L195)
 - **Problem:**
   In `HavenEngine.setQuality('HIGH')`:
   ```typescript
@@ -225,7 +225,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ## 3. Input Sanitization & Exploit Defense
 
 ### 3.1 Server Authoritative Movement Validation & Teleportation Vector
-- **Vulnerable File:** [`apps/server/src/game/movement.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/src/game/movement.ts#L42-L56)
+- **Vulnerable File:** [`apps/server/src/game/movement.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/src/game/movement.ts#L42-L56)
 - **Problem:**
   Inspect `MovementValidator.validateMovement`:
   ```typescript
@@ -267,7 +267,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ---
 
 ### 3.2 WebSocket Zod Schema Audit
-- **Audited File:** [`apps/server/src/sockets/socketSchemas.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/src/sockets/socketSchemas.ts)
+- **Audited File:** [`apps/server/src/sockets/socketSchemas.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/src/sockets/socketSchemas.ts)
 - **Findings:**
   - Every inbound client WebSocket event (`JoinRoomSchema`, `MoveSchema`, `SitSchema`, `ChatSchema`, `FurniturePlaceSchema`, `FurnitureRemoveSchema`, `DMSendSchema`, `GuestbookSignSchema`, `TradeRequestSchema`, etc.) is strictly guarded with Zod schemas.
   - Coordinate bounds are clamped between `-10000` and `10000` finite floats.
@@ -279,10 +279,10 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 
 ### 3.3 Polyglot XSS Sanitization & DOM Safety
 - **Audited Files:**
-  - Client escaper: [`apps/client/src/utils/escapeHtml.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/utils/escapeHtml.ts)
-  - Chat overlay: [`apps/client/src/ui/ChatOverlay.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/ui/ChatOverlay.ts#L144-L146)
-  - Guestbook: [`apps/client/src/ui/GuestbookPanel.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/ui/GuestbookPanel.ts#L151-L162)
-  - In-world speech bubbles: [`apps/client/src/ui/InWorldSpeechBubbles.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/client/src/ui/InWorldSpeechBubbles.ts#L206-L210)
+  - Client escaper: [`apps/client/src/utils/escapeHtml.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/utils/escapeHtml.ts)
+  - Chat overlay: [`apps/client/src/ui/ChatOverlay.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/ui/ChatOverlay.ts#L144-L146)
+  - Guestbook: [`apps/client/src/ui/GuestbookPanel.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/ui/GuestbookPanel.ts#L151-L162)
+  - In-world speech bubbles: [`apps/client/src/ui/InWorldSpeechBubbles.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/client/src/ui/InWorldSpeechBubbles.ts#L206-L210)
 - **Findings:**
   - Client components consistently pipe dynamic text through `escapeHtml()` replacing `&`, `<`, `>`, `"`, `'`.
   - In `GuestbookPanel.ts`, user avatar colors injected into inline styles are protected by `safeColor()`:
@@ -299,7 +299,7 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 ## 4. Database & ORM Performance Review
 
 ### 4.1 Missing PostgreSQL Indexes in Prisma Schema
-- **Vulnerable File:** [`apps/server/prisma/schema.prisma`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/prisma/schema.prisma)
+- **Vulnerable File:** [`apps/server/prisma/schema.prisma`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/prisma/schema.prisma)
 - **Problem:**
   Several heavily queried database relations lack composite or foreign key indexes, resulting in sequential full table scans as the database grows:
   
@@ -326,8 +326,8 @@ This document details the exact vulnerabilities, performance bottlenecks, and a 
 
 ### 4.2 Database Connection Pool Sizing in Cluster Deployments
 - **Vulnerable Files:**
-  - [`.env.example`](file:///Users/danielstevens/Developer/HavenWorld/.env.example)
-  - [`apps/server/src/prisma.ts`](file:///Users/danielstevens/Developer/HavenWorld/apps/server/src/prisma.ts)
+  - [`.env.example`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/.env.example)
+  - [`apps/server/src/prisma.ts`](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld/apps/server/src/prisma.ts)
 - **Problem:**
   `DATABASE_URL` in `.env.example` specifies no pool limits:
   ```text

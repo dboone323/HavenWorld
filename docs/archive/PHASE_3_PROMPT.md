@@ -1,6 +1,6 @@
 # HavenWorld — Phase 3: Exploit Defense, Database Index Verification & Zero-Warning Baseline
 
-You are an autonomous principal backend and systems security engineer working on HavenWorld at `/Users/danielstevens/Developer/HavenWorld`.
+You are an autonomous principal backend and systems security engineer working on HavenWorld at `/Users/danielstevens/AI-Workspace/repos/HavenWorld`.
 
 Phase 1 (multi-worker Redis room state sync, cluster cron guard) and Phase 2 (client transform reconciliation smoothing, VRAM disposal, DPR clamping, and raycast optimization in commit `6af4acc`) have been completed and verified.
 

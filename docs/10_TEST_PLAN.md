@@ -276,7 +276,7 @@ found and fixed three more app-level defects on the way to a green `fullFlow` â€
 
 ## 6. Execution recipes
 
-All recipes assume `cd /Users/danielstevens/Developer/HavenWorld` and a running Docker stack
+All recipes assume `cd /Users/danielstevens/AI-Workspace/repos/HavenWorld` and a running Docker stack
 (`docker compose -f docker-compose.dev.yml up -d`).
 
 ### 6.1 L1 + L2 â€” server suites (safe form)

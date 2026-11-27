@@ -9,7 +9,7 @@
 
 > **Document Version**: 1.0.0  
 > **Last Updated**: 2026-09-17  
-> **Repository**: [HavenWorld](file:///Users/danielstevens/Developer/HavenWorld)  
+> **Repository**: [HavenWorld](file:///Users/danielstevens/AI-Workspace/repos/HavenWorld)  
 > **Architectural Paradigm**: 100% Free-Tier (Oracle Cloud Always-Free ARM64, Native Web Audio API, Canvas 2D Isometric, SQLite + Supabase Free PostgreSQL, Cloudflare Quick Tunnels).  
 > **Testing Principle**: All tests must be implemented using **real functional code** that performs real validations. Never use mocks, placeholders, stubs, or dummy/fake tests.
 

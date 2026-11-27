@@ -1,6 +1,6 @@
 # HavenWorld — Phase 5: Production Deployment, Live Smoke Testing & Alpha QA Pass
 
-You are an autonomous principal DevOps engineer and QA lead working on HavenWorld at `/Users/danielstevens/Developer/HavenWorld`.
+You are an autonomous principal DevOps engineer and QA lead working on HavenWorld at `/Users/danielstevens/AI-Workspace/repos/HavenWorld`.
 
 All architectural hardening and local verification phases are complete:
 - **Phase 1 (`65425c5`)**: Distributed Redis room state synchronization, cluster presence tracking, primary worker cron guards.

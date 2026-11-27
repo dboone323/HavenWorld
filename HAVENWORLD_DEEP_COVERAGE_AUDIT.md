@@ -3,7 +3,7 @@
 **Date:** 2026-10-27  
 **Scope:** `apps/server`, `apps/client`, and `packages/shared`  
 **Authors:** Principal Full-Stack TypeScript / Babylon.js Architect & QA Verification Lead  
-**Operating Directory:** `/Users/danielstevens/Developer/HavenWorld`
+**Operating Directory:** `/Users/danielstevens/AI-Workspace/repos/HavenWorld`
 
 ---
 

@@ -11,7 +11,7 @@ Per-tool shim files point here; if a shim and this file disagree, this file wins
   `packages/shared`.
 - Live client: https://havenworld-game.pages.dev
 - Server health: https://147-224-184-148.nip.io/health
-- Local repo: /Users/danielstevens/Developer/HavenWorld · GitHub: dboone323/HavenWorld
+- Local repo: /Users/danielstevens/AI-Workspace/repos/HavenWorld · GitHub: dboone323/HavenWorld
 
 ## The loop (how all work moves)
 
@@ -92,6 +92,14 @@ labels `type: goal` / `type: problem` / `type: feature`.
   Never enable usage-based billing or click "Add Credits".
 - Stay inside the task's scope. An out-of-scope find becomes an issue, not
   extra work in the current PR.
+- Safe read-only commands: `git --no-pager status`, `git --no-pager diff`,
+  `git --no-pager log -n 20`, and `DEVELOPER_DIR=/Library/Developer/CommandLineTools gitleaks git --redact`
+  are allowed without extra approval.
+- Preserve untracked working material and invalid worktrees until Daniel
+  decides on cleanup or deployment.
+- HQ task-bridge handoff: preserve `Task ID` (`SETUP-024`), `Owner/Agent`,
+  `Status`, `Dependency`, `Evidence`, and `Next Action` in local work notes
+  and the HQ Task and Approval Queues log.
 
 ## Current state pointers (update as these close)
 
@@ -123,3 +131,9 @@ Runs that take minutes (gates, builds, deploys) are never watched on a timer.
 2. **Blocking waits only.** A supervisor that must wait makes ONE blocking wait for the sentinel, sized to the run's expected duration (gates: ~7–10 min). Polling on a 30-second (or any short) timer across model turns is prohibited — each poll burns a full model turn to learn nothing.
 3. **Checkpointed reports.** The worker writes a checkpoint line to the task's report file at each phase boundary (RED done / implementation done / gate started / gate done with totals) and the completion section as its final action. The supervisor reads the report when the worker's turn ends — the turn ending is the completion event.
 4. **Failure reading.** If a run dies mid-phase, diagnose from the last checkpoint + the log tail. Never re-run just to watch it.
+
+## Economy Mode
+
+- Default to changed-file, checkpointed work; use the AI Workforce incremental audit tool for audit evidence and state its incomplete coverage.
+- Prefer shell/Python; local model work is optional, sequential, and capped at 16,384 context where supported. Stop after two failed attempts.
+- Balanced permits one targeted validation. Deep, historical, or cross-repository audits require Daniel's explicit approval before starting.

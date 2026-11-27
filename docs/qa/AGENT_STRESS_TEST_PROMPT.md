@@ -69,7 +69,7 @@ The agent operates via Playwright headless browser clusters (`playwright.config.
 
 ```bash
 # 1. Start local dependencies (PostgreSQL 16 + Redis 7) and seed databases
-cd /Users/danielstevens/Developer/HavenWorld
+cd /Users/danielstevens/AI-Workspace/repos/HavenWorld
 make push-schema
 
 # 2. Run Core Playwright E2E Spec Suites (Babylon.js 9.28 + Havok Physics)

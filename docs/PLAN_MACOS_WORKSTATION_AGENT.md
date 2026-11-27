@@ -3,7 +3,7 @@
 > **Historical environment record.** The absolute path below records the original workstation layout. Current tooling must run from the repository root and must not hardcode a user home directory.
 
 > **Target Environment**: macOS 27 (Apple Silicon arm64), Xcode 27.0 (27A5252f), Swift 6.4, Node v26.7.0  
-> **Repository Directory**: `/Users/danielstevens/Developer/HavenWorld`  
+> **Repository Directory**: `/Users/danielstevens/AI-Workspace/repos/HavenWorld`  
 > **Remote Origin**: `https://github.com/dboone323/HavenWorld.git` (`main` branch)  
 > **CI / Quality Model**: Modeled after `FaceAlterApp` (`make ci` test & coverage gate)
 
@@ -25,7 +25,7 @@ You are operating as the **Lead Software Engineer & Build Master** on Daniel's M
 When implementing game features, avatar mechanics, or room builder tools:
 
 ```bash
-cd /Users/danielstevens/Developer/HavenWorld
+cd /Users/danielstevens/AI-Workspace/repos/HavenWorld
 
 # Start local concurrent development servers
 npm run dev
@@ -40,7 +40,7 @@ npm run dev
 Before committing any changes to Git, you must pass the three verification gates:
 
 ```bash
-cd /Users/danielstevens/Developer/HavenWorld
+cd /Users/danielstevens/AI-Workspace/repos/HavenWorld
 
 # Gate 1: Strict TypeScript type-check (must return 0 errors)
 npm run tsc
@@ -59,7 +59,7 @@ make ci
 Because Apple development requires macOS, all iOS builds are generated and verified locally:
 
 ```bash
-cd /Users/danielstevens/Developer/HavenWorld
+cd /Users/danielstevens/AI-Workspace/repos/HavenWorld
 
 # 1. Compile web bundle
 npm run build:web
@@ -77,7 +77,7 @@ npm run cap:dev
 
 ### Workflow 4: Native macOS Desktop Build (Electron)
 ```bash
-cd /Users/danielstevens/Developer/HavenWorld
+cd /Users/danielstevens/AI-Workspace/repos/HavenWorld
 
 # Test Electron desktop window locally
 npm run dev:desktop
@@ -85,7 +85,7 @@ npm run dev:desktop
 # Package production Apple Silicon arm64 .dmg and .app
 npm run build:desktop
 ```
-- Output binaries are stored in `/Users/danielstevens/Developer/HavenWorld/release/`.
+- Output binaries are stored in `/Users/danielstevens/AI-Workspace/repos/HavenWorld/release/`.
 
 ---
 
@@ -93,7 +93,7 @@ npm run build:desktop
 Once changes pass all local quality checks, commit and push to GitHub, then trigger deployment to the Oracle Cloud server:
 
 ```bash
-cd /Users/danielstevens/Developer/HavenWorld
+cd /Users/danielstevens/AI-Workspace/repos/HavenWorld
 
 # 1. Stage and commit with conventional commit format
 git add .
