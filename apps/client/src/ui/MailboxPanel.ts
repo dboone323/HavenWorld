@@ -41,9 +41,15 @@ function parcelRow(p: Parcel, label: string, extra = ''): string {
 export class MailboxPanel {
   private static overlay: HTMLElement | null = null;
   private static unsub: (() => void) | null = null;
+  private static onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      MailboxPanel.dismiss();
+    }
+  };
 
   static show(): void {
     this.dismiss();
+    window.addEventListener('keydown', this.onKeyDown);
 
     const overlay = document.createElement('div');
     overlay.id = 'mailbox-panel-overlay';
@@ -93,6 +99,7 @@ export class MailboxPanel {
   }
 
   static dismiss(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
     this.unsub?.();
     this.unsub = null;
     this.overlay?.remove();

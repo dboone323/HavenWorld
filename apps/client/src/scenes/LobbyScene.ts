@@ -5,11 +5,13 @@ import { SceneManager } from '../engine/SceneManager';
 import { authService } from '../services/auth';
 import { SERVER_URL } from '../config';
 import { escapeHtml } from '../utils/escapeHtml';
+import { TutorialOverlay } from '../ui/TutorialOverlay';
 
 export async function createLobbyScene(haven: HavenEngine): Promise<Scene> {
   const scene = new Scene(haven.engine);
   scene.clearColor = new Color4(0.1, 0.1, 0.18, 1.0);
 
+  TutorialOverlay.dismiss();
   document.getElementById('login-panel')?.classList.add('hidden');
   document.getElementById('game-container')?.classList.add('hidden');
   document.getElementById('room-nav')?.classList.add('hidden');

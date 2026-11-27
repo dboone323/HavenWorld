@@ -767,13 +767,12 @@ export class RoomEditor {
     panel.style.cssText = `
       position: fixed;
       left: 74px;
-      top: 50%;
-      transform: translateY(-50%);
+      top: 72px;
       background: rgba(20, 20, 40, 0.95);
       border: 1px solid #4ecdc4;
       border-radius: 8px;
       width: 220px;
-      max-height: 75vh;
+      max-height: calc(100vh - 250px);
       overflow-y: auto;
       z-index: 9000;
       font-family: Calibri, sans-serif;

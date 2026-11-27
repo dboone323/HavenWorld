@@ -1,10 +1,12 @@
 import { Scene, Color4 } from '@babylonjs/core';
 import { HavenEngine } from '../engine/HavenEngine';
+import { TutorialOverlay } from '../ui/TutorialOverlay';
 
 export async function createLoginScene(haven: HavenEngine): Promise<Scene> {
   const scene = new Scene(haven.engine);
   scene.clearColor = new Color4(0.1, 0.1, 0.18, 1.0);
 
+  TutorialOverlay.dismiss();
   document.getElementById('login-panel')?.classList.remove('hidden');
   document.getElementById('lobby-panel')?.classList.add('hidden');
   document.getElementById('game-container')?.classList.add('hidden');
