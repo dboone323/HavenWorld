@@ -22,19 +22,59 @@ const STEPS = [
 export class TutorialOverlay {
   private static overlay: HTMLElement | null = null;
   private static autoShown = false;
+  /** True if the user clicked the page while the async auto-open was in flight. */
+  private static userInteracted = false;
+  private static interactionListenerInstalled = false;
+
+  /** Record a first page-level click/tap so the async auto-open overlay cannot open on top of it. */
+  private static onDocumentInteraction(event: Event): void {
+    const target = event.target as HTMLElement | null;
+    if (target && TutorialOverlay.overlay !== null && TutorialOverlay.overlay.contains(target)) {
+      return; // a click inside the overlay itself is not a competing interaction
+    }
+    TutorialOverlay.userInteracted = true;
+  }
+
+  private static installInteractionListener(): void {
+    if (TutorialOverlay.interactionListenerInstalled) return;
+    TutorialOverlay.interactionListenerInstalled = true;
+    document.addEventListener('pointerdown', TutorialOverlay.onDocumentInteraction, true);
+    document.addEventListener('click', TutorialOverlay.onDocumentInteraction, true);
+  }
+
+  private static removeInteractionListener(): void {
+    if (!TutorialOverlay.interactionListenerInstalled) return;
+    TutorialOverlay.interactionListenerInstalled = false;
+    try {
+      document.removeEventListener('pointerdown', TutorialOverlay.onDocumentInteraction, true);
+      document.removeEventListener('click', TutorialOverlay.onDocumentInteraction, true);
+    } catch {
+      // listener was never installed
+    }
+  }
 
   static async maybeAutoOpen(): Promise<void> {
     if (this.autoShown) return;
     const token = authService.token || (await authService.getToken());
     if (!token) return;
     this.autoShown = true;
+    // The overlay renders asynchronously (~1.5s + a /api/tutorial/status
+    // fetch). A first click can land in that window and the overlay would
+    // render on top of the very element the user just tapped. Record the
+    // interaction and skip this auto-open so the overlay never appears over
+    // an in-progress interaction.
+    this.userInteracted = false;
+    this.installInteractionListener();
     try {
       const status = await this.fetchStatus();
       if (status && !status.completed && status.step < STEPS.length) {
+        if (this.userInteracted) return; // user clicked while this was loading
         this.render(status);
       }
     } catch {
       /* silent — onboarding is best-effort */
+    } finally {
+      this.removeInteractionListener();
     }
   }
 

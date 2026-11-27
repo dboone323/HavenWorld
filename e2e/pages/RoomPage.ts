@@ -142,16 +142,17 @@ export class RoomPage {
   }
 
   async dismissTutorialIfVisible(): Promise<void> {
-    // The tutorial overlay auto-opens asynchronously after app init (~1.5s +
-    // an async /api/tutorial/status fetch) and can render between any check
-    // and the next click, intercepting pointer events. Force-remove it from
-    // the DOM right before the caller's click so there is no window for it to
-    // appear and intercept. Once removed it won't re-appear this session
-    // (autoShown flag). The tutorial is not what this suite asserts on.
-    await this.page.evaluate(() => {
-      const el = document.getElementById('tutorial-overlay');
-      if (el) el.remove();
-    });
+    // Real dismiss path: if the tutorial overlay was rendered by an async
+    // auto-open, dismiss it via its close button. This is race-free because
+    // the click is gated on the close button's presence. The overlay cannot
+    // re-render during the click itself because a first page-level click
+    // while the auto-open fetches is captured and suppresses the remaining
+    // in-flight auto-open, so the overlay is already gone (or never
+    // rendered) by the time the caller clicks.
+    const closeBtn = this.tutorialCloseBtn;
+    if (await closeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await closeBtn.click({ timeout: 3000 });
+    }
   }
 
   async waitForRoomReady(timeout = 20_000): Promise<void> {
@@ -164,6 +165,7 @@ export class RoomPage {
   }
 
   async clickCanvas(x = 200, y = 200): Promise<void> {
+    await this.dismissTutorialIfVisible();
     try {
       await this.canvas.click({ position: { x, y }, timeout: 5_000 });
     } catch {
@@ -194,6 +196,7 @@ export class RoomPage {
   }
 
   async navigateToPark(): Promise<void> {
+    await this.dismissTutorialIfVisible();
     await this.btnPark.click();
     await this.waitForRoomReady();
     await this.page.waitForFunction(
@@ -216,6 +219,7 @@ export class RoomPage {
   }
 
   async navigateToLoft(): Promise<void> {
+    await this.dismissTutorialIfVisible();
     await this.btnMyLoft.click();
     await this.waitForRoomReady();
     await this.page.waitForFunction(

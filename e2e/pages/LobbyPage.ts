@@ -32,16 +32,16 @@ export class LobbyPage {
   }
 
   async dismissTutorialIfVisible(): Promise<void> {
-    // The tutorial overlay auto-opens asynchronously after app init (~1.5s +
-    // an async /api/tutorial/status fetch) and can render between any check
-    // and the next click, intercepting pointer events. Force-remove it from
-    // the DOM right before the caller's click so there is no window for it to
-    // appear and intercept. Once removed it won't re-appear this session
-    // (autoShown flag). The tutorial is not what this suite asserts on.
-    await this.page.evaluate(() => {
-      const el = document.getElementById('tutorial-overlay');
-      if (el) el.remove();
-    });
+    // Real dismiss path: if the tutorial overlay was rendered by an async
+    // auto-open, dismiss it via its close button. The overlay cannot
+    // re-render during the click itself because a first page-level click
+    // while the auto-open fetched is recorded and suppresses the remaining
+    // in-flight auto-open, so the overlay is already gone (or never
+    // rendered) by the time the caller clicks. No pauseAutoOpen needed.
+    const closeBtn = this.tutorialCloseBtn;
+    if (await closeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await closeBtn.click({ timeout: 3000 });
+    }
   }
 
   async selectPublicTab(): Promise<void> {
@@ -60,9 +60,9 @@ export class LobbyPage {
     await this.dismissTutorialIfVisible();
     const roomBtn = this.page.locator(`text=${roomName}`).first();
     await expect(roomBtn).toBeVisible({ timeout: 10_000 });
-    // Dismiss again right before clicking: the tutorial overlay auto-opens
-    // asynchronously (~1.5s after app init) and can render in the gap between
-    // an earlier dismiss and this click, intercepting pointer events.
+    // Dismiss again right before clicking: any async auto-open that fired
+    // during the intervening gap is recorded via a first-page-level-click
+    // capture listener and cannot re-render over the button or this click.
     await this.dismissTutorialIfVisible();
     await roomBtn.click();
   }
